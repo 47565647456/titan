@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  Test:
     runs-on: ubuntu-latest
     
     # CockroachDB service container for integration tests
