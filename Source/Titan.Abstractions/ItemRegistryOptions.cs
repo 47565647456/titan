@@ -22,4 +22,11 @@ public class ItemRegistryOptions
     /// Default: false
     /// </summary>
     public bool ForceSeed { get; set; } = false;
+
+    /// <summary>
+    /// If true, allow adding items with unregistered types (uses defaults: MaxStackSize=1, IsTradeable=true).
+    /// If false, reject items with unknown types.
+    /// Default: true (permissive for development)
+    /// </summary>
+    public bool AllowUnknownItemTypes { get; set; } = true;
 }

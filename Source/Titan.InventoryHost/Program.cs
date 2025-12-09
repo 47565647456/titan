@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -9,6 +10,23 @@ builder.UseSerilog((context, config) =>
 {
     config.WriteTo.Console();
     config.WriteTo.File("logs/titan-inventory-.txt", rollingInterval: RollingInterval.Day);
+});
+
+// Configure Item Registry Options
+builder.ConfigureServices((context, services) =>
+{
+    services.Configure<ItemRegistryOptions>(options =>
+    {
+        // Default: allow unknown item types for development
+        options.AllowUnknownItemTypes = true;
+    });
+    
+    // Bind from configuration if available
+    var registrySection = context.Configuration.GetSection(ItemRegistryOptions.SectionName);
+    if (registrySection.Exists())
+    {
+        services.Configure<ItemRegistryOptions>(registrySection);
+    }
 });
 
 builder.UseOrleans(silo =>

@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Options;
 using Orleans.Runtime;
+using Titan.Abstractions;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
@@ -13,13 +15,16 @@ public class InventoryGrain : Grain, IInventoryGrain
 {
     private readonly IPersistentState<InventoryGrainState> _state;
     private readonly IGrainFactory _grainFactory;
+    private readonly ItemRegistryOptions _registryOptions;
 
     public InventoryGrain(
         [PersistentState("inventory", "OrleansStorage")] IPersistentState<InventoryGrainState> state,
-        IGrainFactory grainFactory)
+        IGrainFactory grainFactory,
+        IOptions<ItemRegistryOptions> registryOptions)
     {
         _state = state;
         _grainFactory = grainFactory;
+        _registryOptions = registryOptions.Value;
     }
 
     public Task<List<Item>> GetItemsAsync()
@@ -35,6 +40,32 @@ public class InventoryGrain : Grain, IInventoryGrain
 
     public async Task<Item> AddItemAsync(string itemTypeId, int quantity = 1, Dictionary<string, object>? metadata = null)
     {
+        // Validate against registry
+        var registry = _grainFactory.GetGrain<IItemTypeRegistryGrain>("default");
+        var definition = await registry.GetAsync(itemTypeId);
+
+        if (definition == null)
+        {
+            if (!_registryOptions.AllowUnknownItemTypes)
+                throw new InvalidOperationException($"Unknown item type: '{itemTypeId}'. Register it in the ItemTypeRegistry first.");
+            
+            // Use defaults for unknown types
+            definition = new ItemTypeDefinition
+            {
+                ItemTypeId = itemTypeId,
+                Name = itemTypeId,
+                MaxStackSize = 999,  // Permissive default for unknown types
+                IsTradeable = true
+            };
+        }
+
+        // Enforce max stack size
+        if (quantity > definition.MaxStackSize)
+            throw new InvalidOperationException($"Quantity {quantity} exceeds max stack size of {definition.MaxStackSize} for '{itemTypeId}'.");
+
+        if (quantity < 1)
+            throw new ArgumentException("Quantity must be at least 1.", nameof(quantity));
+
         var item = new Item
         {
             Id = Guid.NewGuid(),
