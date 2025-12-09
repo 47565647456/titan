@@ -4,10 +4,10 @@ using Titan.Abstractions.Models;
 namespace Titan.Abstractions.Grains;
 
 /// <summary>
-/// Grain for managing a player's inventory.
-/// Key: UserId (Guid)
+/// Grain for managing a character's inventory within a season.
+/// Key: (CharacterId, SeasonId)
 /// </summary>
-public interface IInventoryGrain : IGrainWithGuidKey
+public interface IInventoryGrain : IGrainWithGuidCompoundKey
 {
     Task<List<Item>> GetItemsAsync();
     Task<Item?> GetItemAsync(Guid itemId);

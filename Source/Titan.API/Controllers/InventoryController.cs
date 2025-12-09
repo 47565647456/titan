@@ -15,23 +15,23 @@ public class InventoryController : ControllerBase
     }
 
     /// <summary>
-    /// Get all items for a user.
+    /// Get all items for a character in a season.
     /// </summary>
-    [HttpGet("{userId:guid}")]
-    public async Task<IActionResult> GetInventory(Guid userId)
+    [HttpGet("{characterId:guid}/{seasonId}")]
+    public async Task<IActionResult> GetInventory(Guid characterId, string seasonId)
     {
-        var grain = _clusterClient.GetGrain<IInventoryGrain>(userId);
+        var grain = _clusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
         var items = await grain.GetItemsAsync();
         return Ok(items);
     }
 
     /// <summary>
-    /// Add a new item to a user's inventory.
+    /// Add a new item to a character's inventory.
     /// </summary>
-    [HttpPost("{userId:guid}/items")]
-    public async Task<IActionResult> AddItem(Guid userId, [FromBody] AddItemRequest request)
+    [HttpPost("{characterId:guid}/{seasonId}/items")]
+    public async Task<IActionResult> AddItem(Guid characterId, string seasonId, [FromBody] AddItemRequest request)
     {
-        var grain = _clusterClient.GetGrain<IInventoryGrain>(userId);
+        var grain = _clusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
         var item = await grain.AddItemAsync(request.ItemTypeId, request.Quantity, request.Metadata);
         return Ok(item);
     }

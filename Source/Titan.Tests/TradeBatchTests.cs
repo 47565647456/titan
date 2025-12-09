@@ -10,6 +10,7 @@ namespace Titan.Tests;
 public class TradeBatchTests : IAsyncLifetime
 {
     private TestCluster _cluster = null!;
+    private const string TestSeasonId = "standard";
 
     public async Task InitializeAsync()
     {
@@ -25,24 +26,33 @@ public class TradeBatchTests : IAsyncLifetime
         await _cluster.StopAllSilosAsync();
     }
 
+    private async Task<Guid> CreateTestCharacterAsync()
+    {
+        var charId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var charGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, TestSeasonId);
+        await charGrain.InitializeAsync(accountId, $"TestChar_{charId:N}", CharacterRestrictions.None);
+        return charId;
+    }
+
     [Fact]
     public async Task AddItemsAsync_ShouldAddMultipleItems()
     {
         // Arrange
         var tradeId = Guid.NewGuid();
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
 
-        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(userA);
+        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(charA, TestSeasonId);
         var item1 = await inventoryA.AddItemAsync("batch_sword_1", 1);
         var item2 = await inventoryA.AddItemAsync("batch_sword_2", 1);
         var item3 = await inventoryA.AddItemAsync("batch_sword_3", 1);
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
 
         // Act - Add multiple items in one call
-        await tradeGrain.AddItemsAsync(userA, new[] { item1.Id, item2.Id, item3.Id });
+        await tradeGrain.AddItemsAsync(charA, new[] { item1.Id, item2.Id, item3.Id });
 
         // Assert
         var session = await tradeGrain.GetSessionAsync();
@@ -57,20 +67,20 @@ public class TradeBatchTests : IAsyncLifetime
     {
         // Arrange
         var tradeId = Guid.NewGuid();
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
 
-        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(userA);
+        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(charA, TestSeasonId);
         var item1 = await inventoryA.AddItemAsync("remove_batch_1", 1);
         var item2 = await inventoryA.AddItemAsync("remove_batch_2", 1);
         var item3 = await inventoryA.AddItemAsync("remove_batch_3", 1);
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
-        await tradeGrain.AddItemsAsync(userA, new[] { item1.Id, item2.Id, item3.Id });
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
+        await tradeGrain.AddItemsAsync(charA, new[] { item1.Id, item2.Id, item3.Id });
 
         // Act - Remove two items
-        await tradeGrain.RemoveItemsAsync(userA, new[] { item1.Id, item3.Id });
+        await tradeGrain.RemoveItemsAsync(charA, new[] { item1.Id, item3.Id });
 
         // Assert
         var session = await tradeGrain.GetSessionAsync();
@@ -91,32 +101,32 @@ public class TradeBatchTests : IAsyncLifetime
         });
 
         var tradeId = Guid.NewGuid();
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
 
-        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(userA);
+        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(charA, TestSeasonId);
         var soulboundItem = await inventoryA.AddItemAsync("soulbound_gem", 1);
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            tradeGrain.AddItemAsync(userA, soulboundItem.Id));
+            tradeGrain.AddItemAsync(charA, soulboundItem.Id));
         Assert.Contains("not tradeable", ex.Message);
     }
 
     [Fact]
     public async Task AddItemsAsync_ExceedingLimit_ShouldThrow()
     {
-        // Arrange - Test MaxItemsPerUser limit (set to 50 in config, we'll test with a smaller scenario)
+        // Arrange - Test MaxItemsPerUser limit (set to 50 in config)
         var tradeId = Guid.NewGuid();
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
 
-        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(userA);
+        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(charA, TestSeasonId);
         
-        // Create many items (we'll add them in batches to test the limit)
+        // Create many items
         var items = new List<Guid>();
         for (int i = 0; i < 60; i++)
         {
@@ -125,11 +135,11 @@ public class TradeBatchTests : IAsyncLifetime
         }
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
 
         // Act & Assert - Adding 60 items should exceed the 50 item limit
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            tradeGrain.AddItemsAsync(userA, items));
+            tradeGrain.AddItemsAsync(charA, items));
         Assert.Contains("exceed limit", ex.Message);
     }
 
@@ -138,25 +148,25 @@ public class TradeBatchTests : IAsyncLifetime
     {
         // Arrange
         var tradeId = Guid.NewGuid();
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
 
-        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(userA);
-        var inventoryB = _cluster.GrainFactory.GetGrain<IInventoryGrain>(userB);
+        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(charA, TestSeasonId);
+        var inventoryB = _cluster.GrainFactory.GetGrain<IInventoryGrain>(charB, TestSeasonId);
 
         var itemA1 = await inventoryA.AddItemAsync("trade_item_a1", 1);
         var itemA2 = await inventoryA.AddItemAsync("trade_item_a2", 1);
         var itemB1 = await inventoryB.AddItemAsync("trade_item_b1", 1);
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
 
-        // Act - Both users add items in batch
-        await tradeGrain.AddItemsAsync(userA, new[] { itemA1.Id, itemA2.Id });
-        await tradeGrain.AddItemAsync(userB, itemB1.Id);
+        // Act - Both add items in batch
+        await tradeGrain.AddItemsAsync(charA, new[] { itemA1.Id, itemA2.Id });
+        await tradeGrain.AddItemAsync(charB, itemB1.Id);
 
-        await tradeGrain.AcceptAsync(userA);
-        var status = await tradeGrain.AcceptAsync(userB);
+        await tradeGrain.AcceptAsync(charA);
+        var status = await tradeGrain.AcceptAsync(charB);
 
         // Assert
         Assert.Equal(TradeStatus.Completed, status);

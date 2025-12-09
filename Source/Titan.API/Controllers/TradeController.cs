@@ -20,18 +20,24 @@ public class TradeController : ControllerBase
     }
 
     /// <summary>
-    /// Start a new trade session.
+    /// Start a new trade session between two characters.
     /// </summary>
     [HttpPost("start")]
     public async Task<IActionResult> StartTrade([FromBody] StartTradeRequest request)
     {
         var tradeId = Guid.NewGuid();
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        var session = await grain.InitiateAsync(request.InitiatorUserId, request.TargetUserId);
-
-        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, "TradeStarted", session);
-
-        return Ok(session);
+        
+        try
+        {
+            var session = await grain.InitiateAsync(request.InitiatorCharacterId, request.TargetCharacterId, request.SeasonId);
+            await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, "TradeStarted", session);
+            return Ok(session);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { Error = ex.Message });
+        }
     }
 
     /// <summary>
@@ -59,10 +65,10 @@ public class TradeController : ControllerBase
     public async Task<IActionResult> AddItem(Guid tradeId, [FromBody] TradeItemRequest request)
     {
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        await grain.AddItemAsync(request.UserId, request.ItemId);
+        await grain.AddItemAsync(request.CharacterId, request.ItemId);
         var session = await grain.GetSessionAsync();
 
-        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, "ItemAdded", new { request.UserId, request.ItemId });
+        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, "ItemAdded", new { request.CharacterId, request.ItemId });
 
         return Ok(session);
     }
@@ -74,10 +80,10 @@ public class TradeController : ControllerBase
     public async Task<IActionResult> RemoveItem(Guid tradeId, [FromBody] TradeItemRequest request)
     {
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        await grain.RemoveItemAsync(request.UserId, request.ItemId);
+        await grain.RemoveItemAsync(request.CharacterId, request.ItemId);
         var session = await grain.GetSessionAsync();
 
-        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, "ItemRemoved", new { request.UserId, request.ItemId });
+        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, "ItemRemoved", new { request.CharacterId, request.ItemId });
 
         return Ok(session);
     }
@@ -89,9 +95,9 @@ public class TradeController : ControllerBase
     public async Task<IActionResult> AcceptTrade(Guid tradeId, [FromBody] AcceptTradeRequest request)
     {
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        var status = await grain.AcceptAsync(request.UserId);
+        var status = await grain.AcceptAsync(request.CharacterId);
 
-        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, status == TradeStatus.Completed ? "TradeCompleted" : "TradeAccepted", new { request.UserId, Status = status.ToString() });
+        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, status == TradeStatus.Completed ? "TradeCompleted" : "TradeAccepted", new { request.CharacterId, Status = status.ToString() });
 
         return Ok(new { Status = status.ToString() });
     }
@@ -103,15 +109,15 @@ public class TradeController : ControllerBase
     public async Task<IActionResult> CancelTrade(Guid tradeId, [FromBody] CancelTradeRequest request)
     {
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        await grain.CancelAsync(request.UserId);
+        await grain.CancelAsync(request.CharacterId);
 
-        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, "TradeCancelled", new { request.UserId });
+        await TradeHub.NotifyTradeUpdate(_hubContext, tradeId, "TradeCancelled", new { request.CharacterId });
 
         return Ok(new { Status = "Cancelled" });
     }
 }
 
-public record StartTradeRequest(Guid InitiatorUserId, Guid TargetUserId);
-public record TradeItemRequest(Guid UserId, Guid ItemId);
-public record AcceptTradeRequest(Guid UserId);
-public record CancelTradeRequest(Guid UserId);
+public record StartTradeRequest(Guid InitiatorCharacterId, Guid TargetCharacterId, string SeasonId);
+public record TradeItemRequest(Guid CharacterId, Guid ItemId);
+public record AcceptTradeRequest(Guid CharacterId);
+public record CancelTradeRequest(Guid CharacterId);

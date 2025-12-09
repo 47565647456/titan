@@ -72,5 +72,6 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<TradeHub>("/tradeHub");
 app.MapHub<ItemTypeHub>("/itemTypeHub");
+app.MapHub<SeasonHub>("/seasonHub");
 
 app.Run();
