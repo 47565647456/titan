@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Titan.Abstractions\Titan.Abstractions.csproj" />
+    <ProjectReference Include="..\Titan.Grains\Titan.Grains.csproj" />
   </ItemGroup>
 
 </Project>
