@@ -1,0 +1,40 @@
+version: '3.9'
+
+services:
+  roach1:
+    image: cockroachdb/cockroach:latest-v23.1
+    container_name: roach1
+    hostname: roach1
+    command: start --insecure --join=roach1,roach2,roach3
+    ports:
+      - "26257:26257"
+      - "8080:8080"
+    volumes:
+      - roach1-data:/cockroach/cockroach-data
+
+  roach2:
+    image: cockroachdb/cockroach:latest-v23.1
+    container_name: roach2
+    hostname: roach2
+    command: start --insecure --join=roach1,roach2,roach3
+    volumes:
+      - roach2-data:/cockroach/cockroach-data
+
+  roach3:
+    image: cockroachdb/cockroach:latest-v23.1
+    container_name: roach3
+    hostname: roach3
+    command: start --insecure --join=roach1,roach2,roach3
+    volumes:
+      - roach3-data:/cockroach/cockroach-data
+
+  init-roach:
+    image: cockroachdb/cockroach:latest-v23.1
+    command: init --insecure --host=roach1
+    depends_on:
+      - roach1
+
+volumes:
+  roach1-data:
+  roach2-data:
+  roach3-data:

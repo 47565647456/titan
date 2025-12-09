@@ -1,0 +1,42 @@
+# Build artifacts
+**/bin/
+**/obj/
+**/out/
+
+# SDKs (proprietary, do not commit)
+SDKs/
+*.nupkg
+.nuget/
+
+# Logs
+logs/
+*.log
+
+# IDE
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test results
+TestResults/
+
+# Docusaurus (has its own repo)
+docs/
+
+# Local dev files
+*.local
+.env
+.env.*
+
+# Temp files
+*.tmp
+*.temp
+test_output*.txt
+build_output*.txt
