@@ -22,9 +22,19 @@ public interface ITradeGrain : IGrainWithGuidKey
     Task AddItemAsync(Guid userId, Guid itemId);
 
     /// <summary>
+    /// Adds multiple items to the trade at once.
+    /// </summary>
+    Task AddItemsAsync(Guid userId, IEnumerable<Guid> itemIds);
+
+    /// <summary>
     /// Removes an item from the trade.
     /// </summary>
     Task RemoveItemAsync(Guid userId, Guid itemId);
+
+    /// <summary>
+    /// Removes multiple items from the trade at once.
+    /// </summary>
+    Task RemoveItemsAsync(Guid userId, IEnumerable<Guid> itemIds);
 
     /// <summary>
     /// Accepts the trade (from one party). When both accept, trade executes.
