@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS OrleansMembershipTable
 );
 
 -- =============================================================================
--- CLUSTERING: Functions
+-- CLUSTERING: Functions (Rewritten without GET DIAGNOSTICS)
 -- =============================================================================
 CREATE OR REPLACE FUNCTION update_i_am_alive_time(
     deployment_id STRING,
@@ -59,9 +59,8 @@ CREATE OR REPLACE FUNCTION update_i_am_alive_time(
     port_arg INT,
     generation_arg INT,
     i_am_alive_time TIMESTAMPTZ)
-  RETURNS INT AS
+RETURNS INT AS
 $$
-BEGIN
     UPDATE OrleansMembershipTable
     SET IAmAliveTime = i_am_alive_time
     WHERE DeploymentId = deployment_id AND deployment_id IS NOT NULL
@@ -69,27 +68,22 @@ BEGIN
         AND Port = port_arg AND port_arg IS NOT NULL
         AND Generation = generation_arg AND generation_arg IS NOT NULL;
     
-    RETURN 0;
-END
-$$ LANGUAGE plpgsql;
+    SELECT 0;
+$$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION insert_membership_version(
     DeploymentIdArg STRING
 )
-  RETURNS INT AS
+RETURNS INT AS
 $$
-DECLARE
-    RowCountVar INT := 0;
-BEGIN
     INSERT INTO OrleansMembershipVersionTable (DeploymentId)
     VALUES (DeploymentIdArg)
     ON CONFLICT (DeploymentId) DO NOTHING;
 
-    GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-    
-    RETURN RowCountVar;
-END
-$$ LANGUAGE plpgsql;
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM OrleansMembershipVersionTable WHERE DeploymentId = DeploymentIdArg
+    ) THEN 1 ELSE 0 END;
+$$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION insert_membership(
     DeploymentIdArg STRING,
@@ -103,37 +97,25 @@ CREATE OR REPLACE FUNCTION insert_membership(
     StartTimeArg    TIMESTAMPTZ,
     IAmAliveTimeArg TIMESTAMPTZ,
     VersionArg      INT)
-  RETURNS INT AS
+RETURNS INT AS
 $$
-DECLARE
-    RowCountVar INT := 0;
-BEGIN
-    INSERT INTO OrleansMembershipTable
-    (
-        DeploymentId, Address, Port, Generation, SiloName,
-        HostName, Status, ProxyPort, StartTime, IAmAliveTime
-    )
-    VALUES
-    (
-        DeploymentIdArg, AddressArg, PortArg, GenerationArg, SiloNameArg,
-        HostNameArg, StatusArg, ProxyPortArg, StartTimeArg, IAmAliveTimeArg
-    )
-    ON CONFLICT (DeploymentId, Address, Port, Generation) DO NOTHING;
-
-    GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-
-    IF RowCountVar > 0 THEN
+    WITH inserted AS (
+        INSERT INTO OrleansMembershipTable
+        (DeploymentId, Address, Port, Generation, SiloName, HostName, Status, ProxyPort, StartTime, IAmAliveTime)
+        VALUES (DeploymentIdArg, AddressArg, PortArg, GenerationArg, SiloNameArg, HostNameArg, StatusArg, ProxyPortArg, StartTimeArg, IAmAliveTimeArg)
+        ON CONFLICT (DeploymentId, Address, Port, Generation) DO NOTHING
+        RETURNING 1
+    ),
+    updated AS (
         UPDATE OrleansMembershipVersionTable
         SET Timestamp = now(), Version = Version + 1
         WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
-            AND Version = VersionArg AND VersionArg IS NOT NULL;
-
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-    END IF;
-    
-    RETURN RowCountVar;
-END
-$$ LANGUAGE plpgsql;
+            AND Version = VersionArg AND VersionArg IS NOT NULL
+            AND EXISTS (SELECT 1 FROM inserted)
+        RETURNING 1
+    )
+    SELECT COALESCE((SELECT COUNT(*) FROM updated), 0)::INT;
+$$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION update_membership(
     DeploymentIdArg STRING,
@@ -144,33 +126,28 @@ CREATE OR REPLACE FUNCTION update_membership(
     SuspectTimesArg STRING,
     IAmAliveTimeArg TIMESTAMPTZ,
     VersionArg      INT
-  )
-  RETURNS INT AS
+)
+RETURNS INT AS
 $$
-DECLARE
-    RowCountVar INT := 0;
-BEGIN
-    UPDATE OrleansMembershipVersionTable
-    SET Timestamp = now(), Version = Version + 1
-    WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
-        AND Version = VersionArg AND VersionArg IS NOT NULL;
-
-    GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-
-    IF RowCountVar > 0 THEN
+    WITH version_updated AS (
+        UPDATE OrleansMembershipVersionTable
+        SET Timestamp = now(), Version = Version + 1
+        WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
+            AND Version = VersionArg AND VersionArg IS NOT NULL
+        RETURNING 1
+    ),
+    membership_updated AS (
         UPDATE OrleansMembershipTable
         SET Status = StatusArg, SuspectTimes = SuspectTimesArg, IAmAliveTime = IAmAliveTimeArg
         WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
             AND Address = AddressArg AND AddressArg IS NOT NULL
             AND Port = PortArg AND PortArg IS NOT NULL
-            AND Generation = GenerationArg AND GenerationArg IS NOT NULL;
-
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-    END IF;
-    
-    RETURN RowCountVar;
-END
-$$ LANGUAGE plpgsql;
+            AND Generation = GenerationArg AND GenerationArg IS NOT NULL
+            AND EXISTS (SELECT 1 FROM version_updated)
+        RETURNING 1
+    )
+    SELECT COALESCE((SELECT COUNT(*) FROM membership_updated), 0)::INT;
+$$ LANGUAGE SQL;
 
 -- =============================================================================
 -- PERSISTENCE: OrleansStorage Table
@@ -195,7 +172,7 @@ CREATE INDEX IF NOT EXISTS ix_orleansstorage
     ON orleansstorage (grainidhash, graintypehash);
 
 -- =============================================================================
--- PERSISTENCE: WriteToStorage Function
+-- PERSISTENCE: WriteToStorage Function (Rewritten without GET DIAGNOSTICS)
 -- =============================================================================
 CREATE OR REPLACE FUNCTION writetostorage(
     _grainidhash INT,
@@ -207,14 +184,21 @@ CREATE OR REPLACE FUNCTION writetostorage(
     _serviceid STRING,
     _grainstateversion INT,
     _payloadbinary BYTES)
-    RETURNS INT
-    LANGUAGE plpgsql
-AS $$
-DECLARE
-    _newGrainStateVersion INT := _GrainStateVersion;
-    RowCountVar INT := 0;
-BEGIN
-    IF _GrainStateVersion IS NOT NULL THEN
+RETURNS INT AS
+$$
+    WITH existing AS (
+        SELECT Version
+        FROM OrleansStorage
+        WHERE GrainIdHash = _GrainIdHash AND _GrainIdHash IS NOT NULL
+            AND GrainTypeHash = _GrainTypeHash AND _GrainTypeHash IS NOT NULL
+            AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
+            AND GrainIdN1 = _GrainIdN1 AND _GrainIdN1 IS NOT NULL
+            AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
+            AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) 
+                OR (_GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL))
+            AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
+    ),
+    updated AS (
         UPDATE OrleansStorage
         SET PayloadBinary = _PayloadBinary,
             ModifiedOn = now(),
@@ -224,34 +208,30 @@ BEGIN
             AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
             AND GrainIdN1 = _GrainIdN1 AND _GrainIdN1 IS NOT NULL
             AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
-            AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) OR (_GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL))
+            AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) 
+                OR (_GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL))
             AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
-            AND Version IS NOT NULL AND Version = _GrainStateVersion AND _GrainStateVersion IS NOT NULL;
-
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-        IF RowCountVar > 0 THEN
-            _newGrainStateVersion := _GrainStateVersion + 1;
-        END IF;
-    END IF;
-
-    IF _GrainStateVersion IS NULL THEN
+            AND Version IS NOT NULL AND Version = _GrainStateVersion AND _GrainStateVersion IS NOT NULL
+        RETURNING Version
+    ),
+    inserted AS (
         INSERT INTO OrleansStorage
         (GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString,
          GrainIdExtensionString, ServiceId, PayloadBinary, ModifiedOn, Version)
-        VALUES (_GrainIdHash, _GrainIdN0, _GrainIdN1, _GrainTypeHash, _GrainTypeString,
-               _GrainIdExtensionString, _ServiceId, _PayloadBinary, now(), 1)
+        SELECT _GrainIdHash, _GrainIdN0, _GrainIdN1, _GrainTypeHash, _GrainTypeString,
+               _GrainIdExtensionString, _ServiceId, _PayloadBinary, now(), 1
+        WHERE _GrainStateVersion IS NULL
+            AND NOT EXISTS (SELECT 1 FROM existing)
         ON CONFLICT (GrainIdHash, GrainTypeHash, GrainIdN0, GrainIdN1, GrainTypeString, ServiceId, COALESCE(GrainIdExtensionString, '')) 
-        DO NOTHING;
-
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-        IF RowCountVar > 0 THEN
-            _newGrainStateVersion := 1;
-        END IF;
-    END IF;
-
-    RETURN _newGrainStateVersion;
-END
-$$;
+        DO NOTHING
+        RETURNING Version
+    )
+    SELECT COALESCE(
+        (SELECT Version FROM updated),
+        (SELECT Version FROM inserted),
+        (SELECT Version FROM existing)
+    )::INT;
+$$ LANGUAGE SQL;
 
 -- =============================================================================
 -- QUERIES: Clustering Queries
