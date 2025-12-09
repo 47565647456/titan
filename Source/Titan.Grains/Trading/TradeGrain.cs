@@ -143,35 +143,62 @@ public class TradeGrain : Grain, ITradeGrain
 
     public async Task AddItemAsync(Guid userId, Guid itemId)
     {
+        await AddItemsAsync(userId, new[] { itemId });
+    }
+
+    public async Task AddItemsAsync(Guid userId, IEnumerable<Guid> itemIds)
+    {
         await EnsureNotExpiredAsync();
 
         var session = await GetSessionAsync();
         if (session.Status != TradeStatus.Pending)
             throw new InvalidOperationException($"Cannot modify a trade with status: {session.Status}");
 
-        // Verify user owns the item
         var inventory = _grainFactory.GetGrain<IInventoryGrain>(userId);
-        if (!await inventory.HasItemAsync(itemId))
-            throw new InvalidOperationException("User does not own this item.");
+        var registry = _grainFactory.GetGrain<IItemTypeRegistryGrain>("default");
 
-        if (userId == session.InitiatorUserId)
+        var itemIdList = itemIds.ToList();
+        
+        // Validate all items
+        foreach (var itemId in itemIdList)
         {
-            _state.State.Session = session with
-            {
-                InitiatorItemIds = session.InitiatorItemIds.Append(itemId).Distinct().ToList()
-            };
+            // Verify user owns the item
+            var item = await inventory.GetItemAsync(itemId);
+            if (item == null)
+                throw new InvalidOperationException($"User does not own item {itemId}.");
+
+            // Check if item type is tradeable
+            if (!await registry.IsTradeableAsync(item.ItemTypeId))
+                throw new InvalidOperationException($"Item type '{item.ItemTypeId}' is not tradeable.");
         }
+
+        // Determine which list to update
+        List<Guid> currentItems;
+        bool isInitiator = userId == session.InitiatorUserId;
+        
+        if (isInitiator)
+            currentItems = session.InitiatorItemIds.ToList();
         else if (userId == session.TargetUserId)
-        {
-            _state.State.Session = session with
-            {
-                TargetItemIds = session.TargetItemIds.Append(itemId).Distinct().ToList()
-            };
-        }
+            currentItems = session.TargetItemIds.ToList();
         else
-        {
             throw new InvalidOperationException("User is not part of this trade.");
+
+        // Add items (distinct)
+        foreach (var itemId in itemIdList)
+        {
+            if (!currentItems.Contains(itemId))
+                currentItems.Add(itemId);
         }
+
+        // Check trade limit
+        if (_options.MaxItemsPerUser > 0 && currentItems.Count > _options.MaxItemsPerUser)
+            throw new InvalidOperationException($"Cannot add items: would exceed limit of {_options.MaxItemsPerUser} items per user.");
+
+        // Update session
+        if (isInitiator)
+            _state.State.Session = session with { InitiatorItemIds = currentItems };
+        else
+            _state.State.Session = session with { TargetItemIds = currentItems };
 
         // Reset acceptance when items change
         _state.State.Session = _state.State.Session! with
@@ -181,10 +208,20 @@ public class TradeGrain : Grain, ITradeGrain
         };
 
         await _state.WriteStateAsync();
-        await PublishEventAsync("ItemAdded", userId, itemId);
+        
+        // Publish events for each item
+        foreach (var itemId in itemIdList)
+        {
+            await PublishEventAsync("ItemAdded", userId, itemId);
+        }
     }
 
     public async Task RemoveItemAsync(Guid userId, Guid itemId)
+    {
+        await RemoveItemsAsync(userId, new[] { itemId });
+    }
+
+    public async Task RemoveItemsAsync(Guid userId, IEnumerable<Guid> itemIds)
     {
         await EnsureNotExpiredAsync();
 
@@ -192,19 +229,25 @@ public class TradeGrain : Grain, ITradeGrain
         if (session.Status != TradeStatus.Pending)
             throw new InvalidOperationException($"Cannot modify a trade with status: {session.Status}");
 
+        var itemIdList = itemIds.ToList();
+
         if (userId == session.InitiatorUserId)
         {
             _state.State.Session = session with
             {
-                InitiatorItemIds = session.InitiatorItemIds.Where(id => id != itemId).ToList()
+                InitiatorItemIds = session.InitiatorItemIds.Where(id => !itemIdList.Contains(id)).ToList()
             };
         }
         else if (userId == session.TargetUserId)
         {
             _state.State.Session = session with
             {
-                TargetItemIds = session.TargetItemIds.Where(id => id != itemId).ToList()
+                TargetItemIds = session.TargetItemIds.Where(id => !itemIdList.Contains(id)).ToList()
             };
+        }
+        else
+        {
+            throw new InvalidOperationException("User is not part of this trade.");
         }
 
         // Reset acceptance
@@ -215,7 +258,12 @@ public class TradeGrain : Grain, ITradeGrain
         };
 
         await _state.WriteStateAsync();
-        await PublishEventAsync("ItemRemoved", userId, itemId);
+        
+        // Publish events for each item
+        foreach (var itemId in itemIdList)
+        {
+            await PublishEventAsync("ItemRemoved", userId, itemId);
+        }
     }
 
     public async Task<TradeStatus> AcceptAsync(Guid userId)

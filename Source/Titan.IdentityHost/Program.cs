@@ -1,7 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
 using Titan.Abstractions;
+using Titan.Grains.Registry;
 
 var builder = Host.CreateDefaultBuilder(args);
 
@@ -9,6 +11,25 @@ builder.UseSerilog((context, config) =>
 {
     config.WriteTo.Console();
     config.WriteTo.File("logs/titan-identity-.txt", rollingInterval: RollingInterval.Day);
+});
+
+// Configure Item Registry Options
+builder.ConfigureServices((context, services) =>
+{
+    services.Configure<ItemRegistryOptions>(options =>
+    {
+        options.SeedFilePath = "data/item-types.json";
+    });
+    
+    // Bind from configuration if available
+    var registrySection = context.Configuration.GetSection(ItemRegistryOptions.SectionName);
+    if (registrySection.Exists())
+    {
+        services.Configure<ItemRegistryOptions>(registrySection);
+    }
+    
+    // Register the seeding hosted service
+    services.AddHostedService<ItemTypeSeedHostedService>();
 });
 
 builder.UseOrleans(silo =>

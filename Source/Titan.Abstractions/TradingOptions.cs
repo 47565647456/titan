@@ -23,4 +23,11 @@ public class TradingOptions
     /// Default: 1 minute.
     /// </summary>
     public TimeSpan ExpirationCheckInterval { get; set; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Maximum number of distinct items per user in a single trade.
+    /// Set to 0 for unlimited.
+    /// Default: 50
+    /// </summary>
+    public int MaxItemsPerUser { get; set; } = 50;
 }

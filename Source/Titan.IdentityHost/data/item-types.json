@@ -1,0 +1,58 @@
+[
+  {
+    "ItemTypeId": "sword_legendary",
+    "Name": "Legendary Sword",
+    "Description": "A powerful legendary weapon",
+    "MaxStackSize": 1,
+    "IsTradeable": true,
+    "Category": "weapon"
+  },
+  {
+    "ItemTypeId": "sword_common",
+    "Name": "Common Sword",
+    "Description": "A basic sword",
+    "MaxStackSize": 1,
+    "IsTradeable": true,
+    "Category": "weapon"
+  },
+  {
+    "ItemTypeId": "potion_health",
+    "Name": "Health Potion",
+    "Description": "Restores health",
+    "MaxStackSize": 99,
+    "IsTradeable": true,
+    "Category": "consumable"
+  },
+  {
+    "ItemTypeId": "potion_mana",
+    "Name": "Mana Potion",
+    "Description": "Restores mana",
+    "MaxStackSize": 99,
+    "IsTradeable": true,
+    "Category": "consumable"
+  },
+  {
+    "ItemTypeId": "gem_soulbound",
+    "Name": "Soul Gem",
+    "Description": "A gem bound to your soul - cannot be traded",
+    "MaxStackSize": 1,
+    "IsTradeable": false,
+    "Category": "material"
+  },
+  {
+    "ItemTypeId": "ore_iron",
+    "Name": "Iron Ore",
+    "Description": "Raw iron ore for crafting",
+    "MaxStackSize": 50,
+    "IsTradeable": true,
+    "Category": "material"
+  },
+  {
+    "ItemTypeId": "ore_gold",
+    "Name": "Gold Ore",
+    "Description": "Raw gold ore for crafting",
+    "MaxStackSize": 50,
+    "IsTradeable": true,
+    "Category": "material"
+  }
+]
