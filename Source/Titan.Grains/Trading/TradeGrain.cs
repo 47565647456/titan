@@ -7,8 +7,6 @@ namespace Titan.Grains.Trading;
 public class TradeGrainState
 {
     public TradeSession? Session { get; set; }
-    public bool InitiatorAccepted { get; set; }
-    public bool TargetAccepted { get; set; }
 }
 
 public class TradeGrain : Grain, ITradeGrain
@@ -81,8 +79,11 @@ public class TradeGrain : Grain, ITradeGrain
         }
 
         // Reset acceptance when items change
-        _state.State.InitiatorAccepted = false;
-        _state.State.TargetAccepted = false;
+        _state.State.Session = _state.State.Session! with
+        {
+            InitiatorAccepted = false,
+            TargetAccepted = false
+        };
 
         await _state.WriteStateAsync();
     }
@@ -109,8 +110,11 @@ public class TradeGrain : Grain, ITradeGrain
         }
 
         // Reset acceptance
-        _state.State.InitiatorAccepted = false;
-        _state.State.TargetAccepted = false;
+        _state.State.Session = _state.State.Session! with
+        {
+            InitiatorAccepted = false,
+            TargetAccepted = false
+        };
 
         await _state.WriteStateAsync();
     }
@@ -122,14 +126,16 @@ public class TradeGrain : Grain, ITradeGrain
             return session.Status;
 
         if (userId == session.InitiatorUserId)
-            _state.State.InitiatorAccepted = true;
+            session = session with { InitiatorAccepted = true };
         else if (userId == session.TargetUserId)
-            _state.State.TargetAccepted = true;
+            session = session with { TargetAccepted = true };
         else
             throw new InvalidOperationException("User is not part of this trade.");
 
+        _state.State.Session = session;
+
         // Check if both accepted
-        if (_state.State.InitiatorAccepted && _state.State.TargetAccepted)
+        if (session.InitiatorAccepted && session.TargetAccepted)
         {
             await ExecuteTradeAsync();
         }
@@ -177,7 +183,8 @@ public class TradeGrain : Grain, ITradeGrain
                 await initiatorInv.RemoveItemAsync(itemId);
                 
                 // Add to target with same properties
-                // Note: In production you'd want a more robust transfer system
+                if (item != null) await targetInv.ReceiveItemAsync(item);
+                
                 var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
                 await historyGrain.AddEntryAsync("Traded", session.InitiatorUserId, session.TargetUserId);
             }
@@ -187,6 +194,8 @@ public class TradeGrain : Grain, ITradeGrain
                 var item = await targetInv.GetItemAsync(itemId);
                 await targetInv.RemoveItemAsync(itemId);
                 
+                if (item != null) await initiatorInv.ReceiveItemAsync(item);
+
                 var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
                 await historyGrain.AddEntryAsync("Traded", session.TargetUserId, session.InitiatorUserId);
             }
