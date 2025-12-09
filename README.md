@@ -52,7 +52,7 @@ See the [Testing Guide](https://titan-docs.nexusbound.xyz/testing) for more deta
 
 ## Documentation
 
-Full documentation is available at [titan-docs.nexusbound.xyz](https://titan-docs.nexusbound.xyz).
+Full documentation is available at [titan-docs.nexusbound.xyz](https://titan.nexusbound.xyz).
 To run the documentation locally:
 
 ```bash
