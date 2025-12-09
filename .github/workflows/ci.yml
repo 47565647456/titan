@@ -60,7 +60,7 @@ jobs:
         sleep 5
         # Create database and init schema
         docker exec $(docker ps -q -f ancestor=cockroachdb/cockroach:latest) ./cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS titan;"
-        docker exec $(docker ps -q -f ancestor=cockroachdb/cockroach:latest) ./cockroach sql --insecure --database=titan < scripts/init-orleans-db.sql
+        docker exec -i $(docker ps -q -f ancestor=cockroachdb/cockroach:latest) ./cockroach sql --insecure --database=titan < scripts/init-orleans-db.sql
     
     - name: Test
       run: dotnet test --no-build --verbosity normal
