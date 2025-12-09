@@ -59,7 +59,7 @@ See the [Testing Guide](https://titan-docs.nexusbound.xyz/testing) for more deta
 - [x] **Trading System** - Peer-to-peer trades with expiration, batch ops, real-time updates
 - [x] **Seasons System** - PoE-style leagues with character migration and player-chosen restrictions
 - [x] **Account/Character Split** - Global accounts with per-season characters (compound keys)
-- [x] **Player Restrictions** - Hardcore (permadeath) and Solo Self-Found (no trading) modes
+- [x] **Player Restrictions** - Hardcore (permadeath) and Solo Self-Found (via Rule Engine)
 - [ ] **Guilds/Clans** - Player organizations with roles, permissions, shared banks
 - [ ] **Currency System** - Virtual currencies, transactions, wallets
 - [ ] **Economy Controls** - Price floors/ceilings, taxes, anti-inflation mechanics
