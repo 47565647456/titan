@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Orleans.TestingHost;
 using Titan.Abstractions;
@@ -38,5 +39,18 @@ public class TestSiloConfigurator : ISiloConfigurator
             // Use in-memory storage for fast local development
             siloBuilder.AddMemoryGrainStorage("OrleansStorage");
         }
+    }
+}
+
+/// <summary>
+/// Configures the test cluster client with stream provider access.
+/// Required for client-side stream subscriptions in tests.
+/// </summary>
+public class TestClientConfigurator : IClientBuilderConfigurator
+{
+    public void Configure(IConfiguration configuration, IClientBuilder clientBuilder)
+    {
+        // Add stream provider to client so tests can subscribe
+        clientBuilder.AddMemoryStreams(TradeStreamConstants.ProviderName);
     }
 }
