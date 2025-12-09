@@ -2,6 +2,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Orleans.TestingHost;
 using Titan.Abstractions;
+using Titan.Abstractions.Rules;
+using Titan.Grains.Trading.Rules;
 
 namespace Titan.Tests;
 
@@ -45,6 +47,10 @@ public class TestSiloConfigurator : ISiloConfigurator
             // Use in-memory storage for fast local development
             siloBuilder.AddMemoryGrainStorage("OrleansStorage");
         }
+
+        // Register Trade Rules for Testing
+        siloBuilder.Services.AddSingleton<IRule<TradeRequestContext>, SameSeasonRule>();
+        siloBuilder.Services.AddSingleton<IRule<TradeRequestContext>, SoloSelfFoundRule>();
     }
 }
 

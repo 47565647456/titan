@@ -8,6 +8,8 @@ using Titan.Abstractions;
 using Titan.API.Hubs;
 using Titan.API.Services;
 using Titan.API.Services.Auth;
+using Titan.Abstractions.Rules;
+using Titan.Grains.Trading.Rules;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -56,6 +58,10 @@ builder.Services.AddHttpClient(); // For EOS auth if needed
 // Register Trade Stream Subscriber (singleton so it's shared across hubs)
 builder.Services.AddSingleton<TradeStreamSubscriber>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TradeStreamSubscriber>());
+
+// Register Trade Rules
+builder.Services.AddSingleton<IRule<TradeRequestContext>, SameSeasonRule>();
+builder.Services.AddSingleton<IRule<TradeRequestContext>, SoloSelfFoundRule>();
 
 var app = builder.Build();
 

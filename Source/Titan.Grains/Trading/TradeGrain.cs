@@ -6,6 +6,9 @@ using Titan.Abstractions.Events;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
+using Titan.Abstractions.Rules;
+using Titan.Grains.Trading.Rules;
+
 namespace Titan.Grains.Trading;
 
 public class TradeGrainState
@@ -18,21 +21,25 @@ public class TradeGrain : Grain, ITradeGrain
     private readonly IPersistentState<TradeGrainState> _state;
     private readonly IGrainFactory _grainFactory;
     private readonly TradingOptions _options;
+    private readonly IEnumerable<IRule<TradeRequestContext>> _rules;
     private IDisposable? _expirationTimer;
     private IAsyncStream<TradeEvent>? _tradeStream;
 
     public TradeGrain(
         [PersistentState("trade", "OrleansStorage")] IPersistentState<TradeGrainState> state,
         IGrainFactory grainFactory,
-        IOptions<TradingOptions> options)
+        IOptions<TradingOptions> options,
+        IEnumerable<IRule<TradeRequestContext>> rules)
     {
         _state = state;
         _grainFactory = grainFactory;
         _options = options.Value;
+        _rules = rules;
     }
 
     public override Task OnActivateAsync(CancellationToken cancellationToken)
     {
+        // ... (rest of method unchanged)
         // Initialize the stream for publishing trade events
         var streamProvider = this.GetStreamProvider(TradeStreamConstants.ProviderName);
         _tradeStream = streamProvider.GetStream<TradeEvent>(
@@ -133,15 +140,12 @@ public class TradeGrain : Grain, ITradeGrain
         var initiator = await initiatorChar.GetCharacterAsync();
         var target = await targetChar.GetCharacterAsync();
 
-        if (initiator.Restrictions.HasFlag(CharacterRestrictions.SoloSelfFound))
-            throw new InvalidOperationException("Trading is disabled for Solo Self-Found characters.");
-
-        if (target.Restrictions.HasFlag(CharacterRestrictions.SoloSelfFound))
-            throw new InvalidOperationException("Cannot trade with a Solo Self-Found character.");
-
-        // Ensure same season
-        if (initiator.SeasonId != target.SeasonId)
-            throw new InvalidOperationException("Cannot trade across seasons.");
+        // Run validation rules
+        var context = new TradeRequestContext(initiator, target);
+        foreach (var rule in _rules)
+        {
+            await rule.ValidateAsync(context);
+        }
 
         _state.State.Session = new TradeSession
         {
