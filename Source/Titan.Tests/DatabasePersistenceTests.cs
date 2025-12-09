@@ -122,4 +122,120 @@ public class DatabasePersistenceTests : IAsyncLifetime
         Assert.True(finalProfile.DisplayName == "Update1" || finalProfile.DisplayName == "Update2");
         // It shouldn't be "Initial" or corrupted.
     }
+    [Fact]
+    public async Task Persistence_ActiveTrade_ShouldSurviveRestart()
+    {
+        // 0. Guard Clause
+        if (Environment.GetEnvironmentVariable("USE_DATABASE") != "true") return;
+
+        // 1. Arrange: Setup Users and Items
+        var initiatorId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        
+        // Create Item for Initiator
+        var initInventory = _cluster.GrainFactory.GetGrain<IInventoryGrain>(initiatorId);
+        var item = await initInventory.AddItemAsync("Legendary Sword", 1);
+        
+        // 2. Arrange: Initiate Trade and key state
+        var tradeId = Guid.NewGuid();
+        var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
+        
+        await tradeGrain.InitiateAsync(initiatorId, targetId);
+        await tradeGrain.AddItemAsync(initiatorId, item.Id);
+
+        // 3. Act: Restart Silo (Simulate Crash mid-trade)
+        await _cluster.StopAllSilosAsync();
+        await _cluster.DeployAsync();
+
+        // 4. Assert: Verify Trade State Persisted (Pending, Items present)
+        var tradeGrainAfter = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
+        var session = await tradeGrainAfter.GetSessionAsync();
+        
+        Assert.Equal(TradeStatus.Pending, session.Status);
+        Assert.Contains(item.Id, session.InitiatorItemIds);
+
+        // 5. Act: Complete Trade (Resume workflow)
+        await tradeGrainAfter.AcceptAsync(initiatorId);
+        await tradeGrainAfter.AcceptAsync(targetId);
+        
+        // 6. Assert: Verify Completion and Transfer
+        var sessionFinal = await tradeGrainAfter.GetSessionAsync();
+        Assert.Equal(TradeStatus.Completed, sessionFinal.Status);
+
+        var targetInventory = _cluster.GrainFactory.GetGrain<IInventoryGrain>(targetId);
+        Assert.True(await targetInventory.HasItemAsync(item.Id), "Item should be transferred to target");
+
+        // 7. Assert: Verify History (Audit Log) is written and retrievable
+        var historyGrain = _cluster.GrainFactory.GetGrain<IItemHistoryGrain>(item.Id);
+        var history = await historyGrain.GetHistoryAsync();
+        
+        Assert.Contains(history, h => h.EventType == "Traded" && h.ActorUserId == initiatorId);
+    }
+
+    [Fact]
+    public async Task Persistence_TradeStateMachine_StepByStep()
+    {
+        // 0. Guard Clause
+        if (Environment.GetEnvironmentVariable("USE_DATABASE") != "true") return;
+
+        // 1. Arrange: Setup Users and Items
+        var initiatorId = Guid.NewGuid();
+        var targetId = Guid.NewGuid();
+        var initInventory = _cluster.GrainFactory.GetGrain<IInventoryGrain>(initiatorId);
+        var itemA = await initInventory.AddItemAsync("Item A", 1);
+        var itemB = await initInventory.AddItemAsync("Item B", 1);
+
+        var tradeId = Guid.NewGuid();
+        var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
+
+        // 2. Act: Initiate
+        await tradeGrain.InitiateAsync(initiatorId, targetId);
+
+        // 3. Act: Add Item A
+        await tradeGrain.AddItemAsync(initiatorId, itemA.Id);
+        
+        // 4. Act: Initiator Accepts
+        await tradeGrain.AcceptAsync(initiatorId);
+        
+        // Assert: Partial Acceptance
+        var session = await tradeGrain.GetSessionAsync();
+        Assert.True(session.InitiatorAccepted, "Initiator should be accepted");
+        Assert.False(session.TargetAccepted, "Target should NOT be accepted");
+        Assert.Equal(TradeStatus.Pending, session.Status);
+
+        // 5. Act: Restart to verify Partial Acceptance Persistence
+        await _cluster.StopAllSilosAsync();
+        await _cluster.DeployAsync();
+
+        // Reload Grain
+        var tradeGrain2 = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
+        var session2 = await tradeGrain2.GetSessionAsync();
+        Assert.True(session2.InitiatorAccepted, "Initiator acceptance should persist");
+        Assert.Single(session2.InitiatorItemIds);
+
+        // 6. Act: Add Item B (Should Reset Acceptance)
+        await tradeGrain2.AddItemAsync(initiatorId, itemB.Id);
+
+        // Assert: Reset Logic
+        var session3 = await tradeGrain2.GetSessionAsync();
+        Assert.False(session3.InitiatorAccepted, "Acceptance should reset when items change");
+        Assert.Equal(2, session3.InitiatorItemIds.Count);
+
+        // 7. Act: Restart again (Verify Reset Persistence)
+        await _cluster.StopAllSilosAsync();
+        await _cluster.DeployAsync();
+
+        var tradeGrain3 = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
+        var session4 = await tradeGrain3.GetSessionAsync();
+        Assert.False(session4.InitiatorAccepted, "Reset state should persist");
+        Assert.Equal(2, session4.InitiatorItemIds.Count);
+
+        // 8. Act: Complete Trade
+        await tradeGrain3.AcceptAsync(initiatorId);
+        await tradeGrain3.AcceptAsync(targetId);
+
+        // Assert: Final
+        var sessionFinal = await tradeGrain3.GetSessionAsync();
+        Assert.Equal(TradeStatus.Completed, sessionFinal.Status);
+    }
 }
