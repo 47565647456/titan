@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+# Cancel in-progress runs when a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+        dotnet-quality: 'preview'
+    
+    - name: Add Orleans Nightly Feed
+      run: dotnet nuget add source https://pkgs.dev.azure.com/dnceng/public/_packaging/orleans-nightly/nuget/v3/index.json -n orleans-nightly
+    
+    - name: Restore dependencies
+      run: dotnet restore
+      working-directory: Source
+    
+    - name: Build
+      run: dotnet build --no-restore
+      working-directory: Source
+    
+    # Only run tests on PRs to save CI minutes
+    - name: Test
+      if: github.event_name == 'pull_request'
+      run: dotnet test --no-build --verbosity normal
+      working-directory: Source
