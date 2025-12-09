@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   Test:
+    name: Integration Tests
     runs-on: ubuntu-latest
     
     # CockroachDB service container for integration tests
