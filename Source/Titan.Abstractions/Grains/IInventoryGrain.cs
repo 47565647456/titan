@@ -12,6 +12,7 @@ public interface IInventoryGrain : IGrainWithGuidKey
     Task<List<Item>> GetItemsAsync();
     Task<Item?> GetItemAsync(Guid itemId);
     Task<Item> AddItemAsync(string itemTypeId, int quantity = 1, Dictionary<string, object>? metadata = null);
+    Task ReceiveItemAsync(Item item);
     Task<bool> RemoveItemAsync(Guid itemId);
     Task<bool> HasItemAsync(Guid itemId);
 }

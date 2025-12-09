@@ -58,6 +58,13 @@ public class TradingFlowTests : IAsyncLifetime
         // Verify items were removed from original owners
         Assert.False(await inventoryA.HasItemAsync(itemA.Id));
         Assert.False(await inventoryB.HasItemAsync(itemB.Id));
+
+        // Verify history
+        var historyA = await _cluster.GrainFactory.GetGrain<IItemHistoryGrain>(itemA.Id).GetHistoryAsync();
+        Assert.Contains(historyA, h => h.EventType == "Traded" && h.ActorUserId == userA && h.TargetUserId == userB);
+
+        var historyB = await _cluster.GrainFactory.GetGrain<IItemHistoryGrain>(itemB.Id).GetHistoryAsync();
+        Assert.Contains(historyB, h => h.EventType == "Traded" && h.ActorUserId == userB && h.TargetUserId == userA);
     }
 
     [Fact]

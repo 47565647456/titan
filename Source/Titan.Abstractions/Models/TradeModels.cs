@@ -26,4 +26,6 @@ public record TradeSession
     [Id(5)] public TradeStatus Status { get; init; } = TradeStatus.Pending;
     [Id(6)] public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
     [Id(7)] public DateTimeOffset? CompletedAt { get; init; }
+    [Id(8)] public bool InitiatorAccepted { get; init; }
+    [Id(9)] public bool TargetAccepted { get; init; }
 }

@@ -54,6 +54,15 @@ public class InventoryGrain : Grain, IInventoryGrain
         return item;
     }
 
+    public async Task ReceiveItemAsync(Item item)
+    {
+        if (_state.State.Items.Any(i => i.Id == item.Id))
+            return;
+
+        _state.State.Items.Add(item);
+        await _state.WriteStateAsync();
+    }
+
     public async Task<bool> RemoveItemAsync(Guid itemId)
     {
         var item = _state.State.Items.FirstOrDefault(i => i.Id == itemId);
