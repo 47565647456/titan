@@ -1,11 +1,3 @@
--- Orleans PostgreSQL Schema
--- Combines official Orleans scripts: Main + Clustering + Persistence
--- Source: https://github.com/dotnet/orleans/tree/main/src/AdoNet
-
--- =============================================================================
--- DATABASE: Create and connect to titan database
--- =============================================================================
-SELECT 'CREATE DATABASE titan' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'titan');
 -- =============================================================================
 -- MAIN: OrleansQuery Table (Required)
 -- =============================================================================
@@ -51,11 +43,11 @@ CREATE TABLE IF NOT EXISTS OrleansMembershipTable
 -- CLUSTERING: Functions
 -- =============================================================================
 CREATE OR REPLACE FUNCTION update_i_am_alive_time(
-    deployment_id OrleansMembershipTable.DeploymentId%TYPE,
-    address_arg OrleansMembershipTable.Address%TYPE,
-    port_arg OrleansMembershipTable.Port%TYPE,
-    generation_arg OrleansMembershipTable.Generation%TYPE,
-    i_am_alive_time OrleansMembershipTable.IAmAliveTime%TYPE)
+    deployment_id varchar(150),
+    address_arg varchar(45),
+    port_arg integer,
+    generation_arg integer,
+    i_am_alive_time timestamptz(3))
   RETURNS void AS
 $func$
 BEGIN
@@ -71,7 +63,7 @@ END
 $func$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION insert_membership_version(
-    DeploymentIdArg OrleansMembershipTable.DeploymentId%TYPE
+    DeploymentIdArg varchar(150)
 )
   RETURNS TABLE(row_count integer) AS
 $func$
@@ -94,17 +86,17 @@ END
 $func$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION insert_membership(
-    DeploymentIdArg OrleansMembershipTable.DeploymentId%TYPE,
-    AddressArg      OrleansMembershipTable.Address%TYPE,
-    PortArg         OrleansMembershipTable.Port%TYPE,
-    GenerationArg   OrleansMembershipTable.Generation%TYPE,
-    SiloNameArg     OrleansMembershipTable.SiloName%TYPE,
-    HostNameArg     OrleansMembershipTable.HostName%TYPE,
-    StatusArg       OrleansMembershipTable.Status%TYPE,
-    ProxyPortArg    OrleansMembershipTable.ProxyPort%TYPE,
-    StartTimeArg    OrleansMembershipTable.StartTime%TYPE,
-    IAmAliveTimeArg OrleansMembershipTable.IAmAliveTime%TYPE,
-    VersionArg      OrleansMembershipVersionTable.Version%TYPE)
+    DeploymentIdArg varchar(150),
+    AddressArg      varchar(45),
+    PortArg         integer,
+    GenerationArg   integer,
+    SiloNameArg     varchar(150),
+    HostNameArg     varchar(150),
+    StatusArg       integer,
+    ProxyPortArg    integer,
+    StartTimeArg    timestamptz(3),
+    IAmAliveTimeArg timestamptz(3),
+    VersionArg      integer)
   RETURNS TABLE(row_count integer) AS
 $func$
 DECLARE
@@ -140,14 +132,14 @@ END
 $func$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION update_membership(
-    DeploymentIdArg OrleansMembershipTable.DeploymentId%TYPE,
-    AddressArg      OrleansMembershipTable.Address%TYPE,
-    PortArg         OrleansMembershipTable.Port%TYPE,
-    GenerationArg   OrleansMembershipTable.Generation%TYPE,
-    StatusArg       OrleansMembershipTable.Status%TYPE,
-    SuspectTimesArg OrleansMembershipTable.SuspectTimes%TYPE,
-    IAmAliveTimeArg OrleansMembershipTable.IAmAliveTime%TYPE,
-    VersionArg      OrleansMembershipVersionTable.Version%TYPE
+    DeploymentIdArg varchar(150),
+    AddressArg      varchar(45),
+    PortArg         integer,
+    GenerationArg   integer,
+    StatusArg       integer,
+    SuspectTimesArg varchar(8000),
+    IAmAliveTimeArg timestamptz(3),
+    VersionArg      integer
   )
   RETURNS TABLE(row_count integer) AS
 $func$
@@ -321,8 +313,6 @@ INSERT INTO OrleansQuery(QueryKey, QueryText) VALUES
 ON CONFLICT (QueryKey) DO UPDATE SET QueryText = EXCLUDED.QueryText;
 
 INSERT INTO OrleansQuery(QueryKey, QueryText) VALUES
--- Query required for Orleans 9.x+ (see https://github.com/dotnet/orleans/issues/8676)
--- Source: https://raw.githubusercontent.com/dotnet/orleans/refs/heads/main/src/AdoNet/Orleans.Clustering.AdoNet/Migrations/PostgreSQL-Clustering-3.7.0.sql
 ('CleanupDefunctSiloEntriesKey', '
     DELETE FROM OrleansMembershipTable
     WHERE DeploymentId = @DeploymentId
