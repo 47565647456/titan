@@ -1,7 +1,7 @@
 # run-all.ps1 - Start all services (opens new terminals)
 Write-Host "Starting Titan Services..." -ForegroundColor Cyan
 
-$sourcePath = Join-Path $PSScriptRoot "Source"
+$sourcePath = Join-Path $PSScriptRoot "..\Source"
 
 # Start each service in a new terminal
 Start-Process pwsh -ArgumentList "-NoExit", "-Command", "cd '$sourcePath'; dotnet run --project Titan.IdentityHost"

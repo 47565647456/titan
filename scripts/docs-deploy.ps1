@@ -1,7 +1,7 @@
 # docs-deploy.ps1 - Build and prepare docs for Cloudflare Pages deployment
 Write-Host "Building Titan Documentation for Cloudflare Pages..." -ForegroundColor Cyan
 
-Set-Location -Path $PSScriptRoot\docs
+Set-Location -Path $PSScriptRoot\..\docs
 
 # Install dependencies if needed
 if (-not (Test-Path "node_modules")) {

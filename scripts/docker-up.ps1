@@ -1,6 +1,6 @@
 # docker-up.ps1 - Start CockroachDB cluster
 Write-Host "Starting CockroachDB cluster..." -ForegroundColor Cyan
-Set-Location -Path $PSScriptRoot
+Set-Location -Path $PSScriptRoot\..
 docker-compose up -d
 if ($LASTEXITCODE -eq 0) {
     Write-Host "CockroachDB cluster started!" -ForegroundColor Green
