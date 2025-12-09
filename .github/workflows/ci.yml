@@ -22,7 +22,6 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '10.0.x'
-        dotnet-quality: 'preview'
     
     - name: Add Orleans Nightly Feed
       run: dotnet nuget add source https://pkgs.dev.azure.com/dnceng/public/_packaging/orleans-nightly/nuget/v3/index.json -n orleans-nightly
