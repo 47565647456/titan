@@ -159,13 +159,13 @@ CREATE TABLE IF NOT EXISTS OrleansStorage
     grainidn1 bigint NOT NULL,
     graintypehash integer NOT NULL,
     graintypestring varchar(512) NOT NULL,
-    grainidextensionstring varchar(512),
+    grainidextensionstring varchar(512) NOT NULL DEFAULT '',
     serviceid varchar(150) NOT NULL,
     payloadbinary bytes,
     modifiedon timestamp NOT NULL,
     version integer,
     
-    PRIMARY KEY (grainidhash, graintypehash, grainidn0, grainidn1, graintypestring, serviceid, COALESCE(grainidextensionstring, ''))
+    PRIMARY KEY (grainidhash, graintypehash, grainidn0, grainidn1, graintypestring, serviceid, grainidextensionstring)
 );
 
 CREATE INDEX IF NOT EXISTS ix_orleansstorage
@@ -185,17 +185,19 @@ CREATE OR REPLACE FUNCTION writetostorage(
     _grainstateversion INT,
     _payloadbinary BYTES)
 RETURNS INT AS
-$$
-    WITH existing AS (
+$
+    WITH normalized_ext AS (
+        SELECT COALESCE(_GrainIdExtensionString, '') AS ext_value
+    ),
+    existing AS (
         SELECT Version
-        FROM OrleansStorage
+        FROM OrleansStorage, normalized_ext
         WHERE GrainIdHash = _GrainIdHash AND _GrainIdHash IS NOT NULL
             AND GrainTypeHash = _GrainTypeHash AND _GrainTypeHash IS NOT NULL
             AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
             AND GrainIdN1 = _GrainIdN1 AND _GrainIdN1 IS NOT NULL
             AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
-            AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) 
-                OR (_GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL))
+            AND GrainIdExtensionString = ext_value
             AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
     ),
     updated AS (
@@ -203,26 +205,26 @@ $$
         SET PayloadBinary = _PayloadBinary,
             ModifiedOn = now(),
             Version = Version + 1
+        FROM normalized_ext
         WHERE GrainIdHash = _GrainIdHash AND _GrainIdHash IS NOT NULL
             AND GrainTypeHash = _GrainTypeHash AND _GrainTypeHash IS NOT NULL
             AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
             AND GrainIdN1 = _GrainIdN1 AND _GrainIdN1 IS NOT NULL
             AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
-            AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) 
-                OR (_GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL))
+            AND GrainIdExtensionString = normalized_ext.ext_value
             AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
             AND Version IS NOT NULL AND Version = _GrainStateVersion AND _GrainStateVersion IS NOT NULL
-        RETURNING Version
+        RETURNING OrleansStorage.Version
     ),
     inserted AS (
         INSERT INTO OrleansStorage
         (GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString,
          GrainIdExtensionString, ServiceId, PayloadBinary, ModifiedOn, Version)
         SELECT _GrainIdHash, _GrainIdN0, _GrainIdN1, _GrainTypeHash, _GrainTypeString,
-               _GrainIdExtensionString, _ServiceId, _PayloadBinary, now(), 1
+               COALESCE(_GrainIdExtensionString, ''), _ServiceId, _PayloadBinary, now(), 1
         WHERE _GrainStateVersion IS NULL
             AND NOT EXISTS (SELECT 1 FROM existing)
-        ON CONFLICT (GrainIdHash, GrainTypeHash, GrainIdN0, GrainIdN1, GrainTypeString, ServiceId, COALESCE(GrainIdExtensionString, '')) 
+        ON CONFLICT (GrainIdHash, GrainTypeHash, GrainIdN0, GrainIdN1, GrainTypeString, ServiceId, GrainIdExtensionString) 
         DO NOTHING
         RETURNING Version
     )
@@ -231,7 +233,7 @@ $$
         (SELECT Version FROM inserted),
         (SELECT Version FROM existing)
     )::INT;
-$$ LANGUAGE SQL;
+$ LANGUAGE SQL;
 
 -- =============================================================================
 -- QUERIES: Clustering Queries
@@ -311,7 +313,7 @@ INSERT INTO OrleansQuery(QueryKey, QueryText) VALUES
         AND GrainIdN0 = $3 AND $3 IS NOT NULL
         AND GrainIdN1 = $4 AND $4 IS NOT NULL
         AND GrainTypeString = $5 AND GrainTypeString IS NOT NULL
-        AND (($6 IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = $6) OR ($6 IS NULL AND GrainIdExtensionString IS NULL))
+        AND GrainIdExtensionString = COALESCE($6, '''')
         AND ServiceId = $7 AND $7 IS NOT NULL;')
 ON CONFLICT (QueryKey) DO UPDATE SET QueryText = EXCLUDED.QueryText;
 
@@ -324,7 +326,7 @@ INSERT INTO OrleansQuery(QueryKey, QueryText) VALUES
         AND GrainIdN0 = $3 AND $3 IS NOT NULL
         AND GrainIdN1 = $4 AND $4 IS NOT NULL
         AND GrainTypeString = $5 AND $5 IS NOT NULL
-        AND (($6 IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = $6) OR ($6 IS NULL AND GrainIdExtensionString IS NULL))
+        AND GrainIdExtensionString = COALESCE($6, '''')
         AND ServiceId = $7 AND $7 IS NOT NULL
         AND Version IS NOT NULL AND Version = $8 AND $8 IS NOT NULL
     RETURNING Version as NewGrainStateVersion;')
