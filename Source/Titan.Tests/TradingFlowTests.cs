@@ -5,8 +5,8 @@ using Titan.Abstractions.Models;
 namespace Titan.Tests;
 
 /// <summary>
-/// Integration tests for trading flow using Orleans TestCluster.
-/// Each test class creates its own cluster to avoid xUnit fixture issues.
+/// Integration tests for trading flow using Orleans TestCluster with CockroachDB persistence.
+/// Each test class creates its own cluster with real database integration.
 /// </summary>
 public class TradingFlowTests : IAsyncLifetime
 {
@@ -132,6 +132,24 @@ public class TestSiloConfigurator : ISiloConfigurator
 {
     public void Configure(ISiloBuilder siloBuilder)
     {
-        siloBuilder.AddMemoryGrainStorage("OrleansStorage");
+        // Use environment variable to determine storage type
+        // CI sets USE_DATABASE=true, local dev defaults to memory
+        var useDatabase = Environment.GetEnvironmentVariable("USE_DATABASE") == "true";
+        
+        if (useDatabase)
+        {
+            // Use real CockroachDB for integration tests
+            siloBuilder.AddAdoNetGrainStorage("OrleansStorage", options =>
+            {
+                options.Invariant = "Npgsql";
+                options.ConnectionString = Environment.GetEnvironmentVariable("COCKROACH_CONNECTION") 
+                    ?? "Host=localhost;Port=26257;Database=titan;Username=root;SSL Mode=Disable";
+            });
+        }
+        else
+        {
+            // Use in-memory storage for fast local development
+            siloBuilder.AddMemoryGrainStorage("OrleansStorage");
+        }
     }
 }
