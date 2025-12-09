@@ -16,6 +16,12 @@ public class TestSiloConfigurator : ISiloConfigurator
             options.ExpirationCheckInterval = TimeSpan.FromSeconds(1);
         });
 
+        // Configure Item Registry Options for tests
+        siloBuilder.Services.Configure<ItemRegistryOptions>(options =>
+        {
+            options.AllowUnknownItemTypes = true; // Allow unknown types in tests
+        });
+
         // Memory Streams for trade events (requires PubSubStore)
         siloBuilder.AddMemoryGrainStorage("PubSubStore");
         siloBuilder.AddMemoryStreams(TradeStreamConstants.ProviderName);
