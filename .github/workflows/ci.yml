@@ -5,6 +5,10 @@ on:
     branches: [ master, main ]
     paths-ignore:
       - '**.md'
+  pull_request:
+    branches: [ master, main ]
+    paths-ignore:
+      - '**.md'
   workflow_dispatch:
 
 # Cancel in-progress runs when a new commit is pushed
@@ -13,7 +17,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  Test:
+  integration-tests:
+    name: Integration Tests
     runs-on: ubuntu-latest
     
     # CockroachDB service container for integration tests
