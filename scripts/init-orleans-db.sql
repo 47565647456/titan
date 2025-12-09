@@ -70,18 +70,20 @@ $func$
 DECLARE
     RowCountVar int := 0;
 BEGIN
-    BEGIN
+    -- Workaround for missing GET DIAGNOSTICS: Use CTE + RETURNING
+    WITH rows_affected AS (
         INSERT INTO OrleansMembershipVersionTable (DeploymentId)
         SELECT DeploymentIdArg
-        ON CONFLICT (DeploymentId) DO NOTHING;
+        ON CONFLICT (DeploymentId) DO NOTHING
+        RETURNING 1
+    )
+    SELECT count(*) INTO RowCountVar FROM rows_affected;
 
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-        ASSERT RowCountVar <> 0, 'no rows affected, rollback';
-        RETURN QUERY SELECT RowCountVar;
-    EXCEPTION
+    ASSERT RowCountVar <> 0, 'no rows affected, rollback';
+    RETURN QUERY SELECT RowCountVar;
+EXCEPTION
     WHEN assert_failure THEN
         RETURN QUERY SELECT RowCountVar;
-    END;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -102,7 +104,8 @@ $func$
 DECLARE
     RowCountVar int := 0;
 BEGIN
-    BEGIN
+    -- 1. Insert into Membership Table
+    WITH rows_affected AS (
         INSERT INTO OrleansMembershipTable
         (
             DeploymentId, Address, Port, Generation, SiloName,
@@ -111,23 +114,28 @@ BEGIN
         SELECT
             DeploymentIdArg, AddressArg, PortArg, GenerationArg, SiloNameArg,
             HostNameArg, StatusArg, ProxyPortArg, StartTimeArg, IAmAliveTimeArg
-        ON CONFLICT (DeploymentId, Address, Port, Generation) DO NOTHING;
+        ON CONFLICT (DeploymentId, Address, Port, Generation) DO NOTHING
+        RETURNING 1
+    )
+    SELECT count(*) INTO RowCountVar FROM rows_affected;
 
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
+    -- 2. Update Version Table (only if previous insert succeeded)
+    IF RowCountVar > 0 THEN
+        WITH rows_affected_v AS (
+            UPDATE OrleansMembershipVersionTable
+            SET Timestamp = now(), Version = Version + 1
+            WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
+                AND Version = VersionArg AND VersionArg IS NOT NULL
+            RETURNING 1
+        )
+        SELECT count(*) INTO RowCountVar FROM rows_affected_v;
+    END IF;
 
-        UPDATE OrleansMembershipVersionTable
-        SET Timestamp = now(), Version = Version + 1
-        WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
-            AND Version = VersionArg AND VersionArg IS NOT NULL
-            AND RowCountVar > 0;
-
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-        ASSERT RowCountVar <> 0, 'no rows affected, rollback';
-        RETURN QUERY SELECT RowCountVar;
-    EXCEPTION
+    ASSERT RowCountVar <> 0, 'no rows affected, rollback';
+    RETURN QUERY SELECT RowCountVar;
+EXCEPTION
     WHEN assert_failure THEN
         RETURN QUERY SELECT RowCountVar;
-    END;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -146,29 +154,35 @@ $func$
 DECLARE
     RowCountVar int := 0;
 BEGIN
-    BEGIN
+    -- 1. Update Version Table
+    WITH rows_affected_v AS (
         UPDATE OrleansMembershipVersionTable
         SET Timestamp = now(), Version = Version + 1
         WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
-            AND Version = VersionArg AND VersionArg IS NOT NULL;
+            AND Version = VersionArg AND VersionArg IS NOT NULL
+        RETURNING 1
+    )
+    SELECT count(*) INTO RowCountVar FROM rows_affected_v;
 
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
+    -- 2. Update Membership Table (only if version update succeeded)
+    IF RowCountVar > 0 THEN
+        WITH rows_affected_m AS (
+            UPDATE OrleansMembershipTable
+            SET Status = StatusArg, SuspectTimes = SuspectTimesArg, IAmAliveTime = IAmAliveTimeArg
+            WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
+                AND Address = AddressArg AND AddressArg IS NOT NULL
+                AND Port = PortArg AND PortArg IS NOT NULL
+                AND Generation = GenerationArg AND GenerationArg IS NOT NULL
+            RETURNING 1
+        )
+        SELECT count(*) INTO RowCountVar FROM rows_affected_m;
+    END IF;
 
-        UPDATE OrleansMembershipTable
-        SET Status = StatusArg, SuspectTimes = SuspectTimesArg, IAmAliveTime = IAmAliveTimeArg
-        WHERE DeploymentId = DeploymentIdArg AND DeploymentIdArg IS NOT NULL
-            AND Address = AddressArg AND AddressArg IS NOT NULL
-            AND Port = PortArg AND PortArg IS NOT NULL
-            AND Generation = GenerationArg AND GenerationArg IS NOT NULL
-            AND RowCountVar > 0;
-
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-        ASSERT RowCountVar <> 0, 'no rows affected, rollback';
-        RETURN QUERY SELECT RowCountVar;
-    EXCEPTION
+    ASSERT RowCountVar <> 0, 'no rows affected, rollback';
+    RETURN QUERY SELECT RowCountVar;
+EXCEPTION
     WHEN assert_failure THEN
         RETURN QUERY SELECT RowCountVar;
-    END;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -213,33 +227,11 @@ DECLARE
     RowCountVar integer := 0;
 BEGIN
     IF _GrainStateVersion IS NOT NULL THEN
-        UPDATE OrleansStorage
-        SET PayloadBinary = _PayloadBinary,
-            ModifiedOn = (now() at time zone 'utc'),
-            Version = Version + 1
-        WHERE GrainIdHash = _GrainIdHash AND _GrainIdHash IS NOT NULL
-            AND GrainTypeHash = _GrainTypeHash AND _GrainTypeHash IS NOT NULL
-            AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
-            AND GrainIdN1 = _GrainIdN1 AND _GrainIdN1 IS NOT NULL
-            AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
-            AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) OR _GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL)
-            AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
-            AND Version IS NOT NULL AND Version = _GrainStateVersion AND _GrainStateVersion IS NOT NULL;
-
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
-        IF RowCountVar > 0 THEN
-            _newGrainStateVersion := _GrainStateVersion + 1;
-        END IF;
-    END IF;
-
-    IF _GrainStateVersion IS NULL THEN
-        INSERT INTO OrleansStorage
-        (GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString,
-         GrainIdExtensionString, ServiceId, PayloadBinary, ModifiedOn, Version)
-        SELECT _GrainIdHash, _GrainIdN0, _GrainIdN1, _GrainTypeHash, _GrainTypeString,
-               _GrainIdExtensionString, _ServiceId, _PayloadBinary, (now() at time zone 'utc'), 1
-        WHERE NOT EXISTS (
-            SELECT 1 FROM OrleansStorage
+        WITH rows_affected AS (
+            UPDATE OrleansStorage
+            SET PayloadBinary = _PayloadBinary,
+                ModifiedOn = (now() at time zone 'utc'),
+                Version = Version + 1
             WHERE GrainIdHash = _GrainIdHash AND _GrainIdHash IS NOT NULL
                 AND GrainTypeHash = _GrainTypeHash AND _GrainTypeHash IS NOT NULL
                 AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
@@ -247,9 +239,37 @@ BEGIN
                 AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
                 AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) OR _GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL)
                 AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
-        );
+                AND Version IS NOT NULL AND Version = _GrainStateVersion AND _GrainStateVersion IS NOT NULL
+            RETURNING 1
+        )
+        SELECT count(*) INTO RowCountVar FROM rows_affected;
 
-        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
+        IF RowCountVar > 0 THEN
+            _newGrainStateVersion := _GrainStateVersion + 1;
+        END IF;
+    END IF;
+
+    IF _GrainStateVersion IS NULL THEN
+        WITH rows_affected AS (
+            INSERT INTO OrleansStorage
+            (GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString,
+             GrainIdExtensionString, ServiceId, PayloadBinary, ModifiedOn, Version)
+            SELECT _GrainIdHash, _GrainIdN0, _GrainIdN1, _GrainTypeHash, _GrainTypeString,
+                   _GrainIdExtensionString, _ServiceId, _PayloadBinary, (now() at time zone 'utc'), 1
+            WHERE NOT EXISTS (
+                SELECT 1 FROM OrleansStorage
+                WHERE GrainIdHash = _GrainIdHash AND _GrainIdHash IS NOT NULL
+                    AND GrainTypeHash = _GrainTypeHash AND _GrainTypeHash IS NOT NULL
+                    AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
+                    AND GrainIdN1 = _GrainIdN1 AND _GrainIdN1 IS NOT NULL
+                    AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
+                    AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) OR _GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL)
+                    AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
+            )
+            RETURNING 1
+        )
+        SELECT count(*) INTO RowCountVar FROM rows_affected;
+
         IF RowCountVar > 0 THEN
             _newGrainStateVersion := 1;
         END IF;
@@ -356,4 +376,4 @@ INSERT INTO OrleansQuery(QueryKey, QueryText) VALUES
     Returning Version as NewGrainStateVersion;')
 ON CONFLICT (QueryKey) DO UPDATE SET QueryText = EXCLUDED.QueryText;
 
-SELECT 'Orleans PostgreSQL schema initialized successfully' AS message;
+SELECT 'Orleans CockroachDB/PostgreSQL schema initialized successfully' AS message;
