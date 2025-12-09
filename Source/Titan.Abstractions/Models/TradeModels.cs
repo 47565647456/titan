@@ -9,7 +9,8 @@ public enum TradeStatus
     Rejected,
     Cancelled,
     Completed,
-    Failed
+    Failed,
+    Expired
 }
 
 /// <summary>
