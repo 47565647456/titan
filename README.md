@@ -1,8 +1,8 @@
 # Titan
 
-> Distributed Game Backend for UE5 built with **Microsoft Orleans** and **.NET 10**.
+> Distributed Game Backend for [Unreal Engine 5](https://www.unrealengine.com/) built with **[Microsoft Orleans](https://learn.microsoft.com/dotnet/orleans/)** and **[.NET 10](https://dotnet.microsoft.com/)**.
 
-Titan is a high-performance, scalable backend solution designed for Unreal Engine 5 games. It creates a "Global Server" architecture where game state (Players, Inventories, Guilds) lives in a distributed mesh of "Grains".
+Titan is a high-performance, scalable backend solution designed for Unreal Engine 5 games. It creates a "Global Server" architecture where game state (Players, Inventories, Guilds) lives in a distributed mesh of **[Grains](https://learn.microsoft.com/dotnet/orleans/grains/)**.
 
 ## Features
 
@@ -10,13 +10,13 @@ Titan is a high-performance, scalable backend solution designed for Unreal Engin
 - **Inventory System**: Transactional item management.
 - **Trading**: Secure peer-to-peer item trading.
 - **Identity**: User profiles and social provider linking.
-- **CockroachDB Persistence**: Scalable, consistent SQL storage.
+- **[CockroachDB](https://www.cockroachlabs.com/) Persistence**: Scalable, consistent SQL storage.
 
 ## Quick Start
 
 ### Prerequisites
-- .NET 10 SDK
-- Docker (Desktop or Engine)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Docker](https://www.docker.com/) (Desktop or Engine)
 
 ### 1-Click Environment Setup
 Use our automation scripts to start the database and initialize the schema automatically:
@@ -41,7 +41,7 @@ Use our automation scripts to start the database and initialize the schema autom
 Titan includes a full integration test suite.
 
 ```powershell
-# Run In-Memory Testss
+# Run In-Memory Tests
 .\scripts\test.ps1
 
 # Run Database Persistence Tests
