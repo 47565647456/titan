@@ -1,8 +1,8 @@
 # Titan
 
-> Distributed Game Backend for [Unreal Engine 5](https://www.unrealengine.com/) built with **[Microsoft Orleans](https://learn.microsoft.com/dotnet/orleans/)** and **[.NET 10](https://dotnet.microsoft.com/)**.
+> Distributed Game Backend built with **[Microsoft Orleans](https://learn.microsoft.com/dotnet/orleans/)** and **[.NET 10](https://dotnet.microsoft.com/)**.
 
-Titan is a high-performance, scalable backend solution designed for Unreal Engine 5 games. It creates a "Global Server" architecture where game state (Players, Inventories, Guilds) lives in a distributed mesh of **[Grains](https://learn.microsoft.com/dotnet/orleans/grains/)**.
+Titan is a high-performance, scalable backend solution designed for modern multiplayer games. It creates a "Global Server" architecture where game state (Players, Inventories, Guilds) lives in a distributed mesh of **[Grains](https://learn.microsoft.com/dotnet/orleans/grains/)**.
 
 ## Features
 
@@ -92,8 +92,8 @@ See the [Testing Guide](https://titan-docs.nexusbound.xyz/testing) for more deta
 - [ ] **Input Validation** - Server-side verification of game actions
 - [ ] **Cheat Detection** - Anomaly detection, stat validation
 
-### Unreal Engine
-- [ ] **Client SDK** - Blueprint support, UE HTTP module integration
+### Client Integration
+- [ ] **Client SDK** - C++, C#, and Blueprint support
 
 ## Documentation
 
