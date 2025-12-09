@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Serilog;
+using Titan.Abstractions;
 
 var builder = Host.CreateDefaultBuilder(args);
 
@@ -24,6 +25,10 @@ builder.UseOrleans(silo =>
     silo.UseDashboard(options => {
         options.Port = 8081;
     });
+
+    // Memory Streams for trade events (cross-silo pub/sub)
+    silo.AddMemoryGrainStorage("PubSubStore");
+    silo.AddMemoryStreams(TradeStreamConstants.ProviderName);
 
     silo.AddAdoNetGrainStorage("OrleansStorage", options =>
     {
