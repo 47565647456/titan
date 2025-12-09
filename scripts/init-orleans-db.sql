@@ -5,9 +5,7 @@
 -- =============================================================================
 -- DATABASE: Create and connect to titan database
 -- =============================================================================
-SELECT 'CREATE DATABASE titan' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'titan')\gexec
-\c titan
-
+SELECT 'CREATE DATABASE titan' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'titan')
 -- =============================================================================
 -- MAIN: OrleansQuery Table (Required)
 -- =============================================================================
