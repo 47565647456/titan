@@ -27,6 +27,12 @@ public class InventoryGrain : Grain, IInventoryGrain
         _registryOptions = registryOptions.Value;
     }
 
+    private (Guid CharacterId, string SeasonId) GetKey()
+    {
+        var characterId = this.GetPrimaryKey(out var seasonId);
+        return (characterId, seasonId!);
+    }
+
     public Task<List<Item>> GetItemsAsync()
     {
         return Task.FromResult(_state.State.Items);
@@ -79,8 +85,9 @@ public class InventoryGrain : Grain, IInventoryGrain
         await _state.WriteStateAsync();
 
         // Record history
+        var (characterId, _) = GetKey();
         var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(item.Id);
-        await historyGrain.AddEntryAsync("Created", this.GetPrimaryKey());
+        await historyGrain.AddEntryAsync("Created", characterId);
 
         return item;
     }

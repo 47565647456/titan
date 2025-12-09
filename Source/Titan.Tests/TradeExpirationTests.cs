@@ -11,6 +11,7 @@ namespace Titan.Tests;
 public class TradeExpirationTests : IAsyncLifetime
 {
     private TestCluster _cluster = null!;
+    private const string TestSeasonId = "standard";
 
     public async Task InitializeAsync()
     {
@@ -25,16 +26,25 @@ public class TradeExpirationTests : IAsyncLifetime
         await _cluster.StopAllSilosAsync();
     }
 
+    private async Task<Guid> CreateTestCharacterAsync()
+    {
+        var charId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+        var charGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, TestSeasonId);
+        await charGrain.InitializeAsync(accountId, $"TestChar_{charId:N}", CharacterRestrictions.None);
+        return charId;
+    }
+
     [Fact]
     public async Task PendingTrade_ShouldExpire_AfterTimeout()
     {
-        // Arrange - Start a trade
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        // Arrange
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
         var tradeId = Guid.NewGuid();
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
 
         // Verify it's pending
         var session = await tradeGrain.GetSessionAsync();
@@ -52,18 +62,18 @@ public class TradeExpirationTests : IAsyncLifetime
     public async Task CompletedTrade_ShouldNotExpire()
     {
         // Arrange - Complete a trade quickly
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
         var tradeId = Guid.NewGuid();
 
-        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(userA);
+        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(charA, TestSeasonId);
         var itemA = await inventoryA.AddItemAsync("QuickTradeItem", 1);
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
-        await tradeGrain.AddItemAsync(userA, itemA.Id);
-        await tradeGrain.AcceptAsync(userA);
-        await tradeGrain.AcceptAsync(userB);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
+        await tradeGrain.AddItemAsync(charA, itemA.Id);
+        await tradeGrain.AcceptAsync(charA);
+        await tradeGrain.AcceptAsync(charB);
 
         // Verify it's completed
         var session = await tradeGrain.GetSessionAsync();
@@ -81,15 +91,15 @@ public class TradeExpirationTests : IAsyncLifetime
     public async Task ExpiredTrade_ShouldNotBeModifiable()
     {
         // Arrange - Create and expire a trade
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
         var tradeId = Guid.NewGuid();
 
-        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(userA);
+        var inventoryA = _cluster.GrainFactory.GetGrain<IInventoryGrain>(charA, TestSeasonId);
         var itemA = await inventoryA.AddItemAsync("ExpiredTradeItem", 1);
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
 
         // Wait for expiration
         await Task.Delay(TimeSpan.FromSeconds(7));
@@ -100,25 +110,25 @@ public class TradeExpirationTests : IAsyncLifetime
 
         // Act & Assert - Should throw when trying to modify
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => tradeGrain.AddItemAsync(userA, itemA.Id));
+            () => tradeGrain.AddItemAsync(charA, itemA.Id));
     }
 
     [Fact]
     public async Task ExpiredTrade_AcceptShouldReturnExpiredStatus()
     {
         // Arrange - Create and expire a trade
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
         var tradeId = Guid.NewGuid();
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
 
         // Wait for expiration
         await Task.Delay(TimeSpan.FromSeconds(7));
 
         // Act - Try to accept
-        var status = await tradeGrain.AcceptAsync(userA);
+        var status = await tradeGrain.AcceptAsync(charA);
 
         // Assert - Should return Expired status
         Assert.Equal(TradeStatus.Expired, status);
@@ -128,13 +138,13 @@ public class TradeExpirationTests : IAsyncLifetime
     public async Task CancelledTrade_ShouldNotExpire()
     {
         // Arrange - Cancel a trade
-        var userA = Guid.NewGuid();
-        var userB = Guid.NewGuid();
+        var charA = await CreateTestCharacterAsync();
+        var charB = await CreateTestCharacterAsync();
         var tradeId = Guid.NewGuid();
 
         var tradeGrain = _cluster.GrainFactory.GetGrain<ITradeGrain>(tradeId);
-        await tradeGrain.InitiateAsync(userA, userB);
-        await tradeGrain.CancelAsync(userA);
+        await tradeGrain.InitiateAsync(charA, charB, TestSeasonId);
+        await tradeGrain.CancelAsync(charA);
 
         // Verify it's cancelled
         var session = await tradeGrain.GetSessionAsync();

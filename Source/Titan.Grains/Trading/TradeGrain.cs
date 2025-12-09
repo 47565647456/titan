@@ -63,7 +63,7 @@ public class TradeGrain : Grain, ITradeGrain
     /// <summary>
     /// Publishes a trade event to the stream.
     /// </summary>
-    private async Task PublishEventAsync(string eventType, Guid? userId = null, Guid? itemId = null)
+    private async Task PublishEventAsync(string eventType, Guid? characterId = null, Guid? itemId = null)
     {
         if (_tradeStream == null)
             return;
@@ -74,7 +74,7 @@ public class TradeGrain : Grain, ITradeGrain
             EventType = eventType,
             Timestamp = DateTimeOffset.UtcNow,
             Session = _state.State.Session,
-            UserId = userId,
+            UserId = characterId,
             ItemId = itemId
         });
     }
@@ -95,7 +95,6 @@ public class TradeGrain : Grain, ITradeGrain
 
     /// <summary>
     /// Checks if the trade has expired and updates status if needed.
-    /// Called before any operation that requires a pending trade.
     /// </summary>
     private async Task EnsureNotExpiredAsync()
     {
@@ -122,31 +121,49 @@ public class TradeGrain : Grain, ITradeGrain
         return _state.State.Session;
     }
 
-    public async Task<TradeSession> InitiateAsync(Guid initiatorUserId, Guid targetUserId)
+    public async Task<TradeSession> InitiateAsync(Guid initiatorCharacterId, Guid targetCharacterId, string seasonId)
     {
         if (_state.State.Session != null)
             throw new InvalidOperationException("Trade session already exists.");
 
+        // Validate SSF restrictions on both characters
+        var initiatorChar = _grainFactory.GetGrain<ICharacterGrain>(initiatorCharacterId, seasonId);
+        var targetChar = _grainFactory.GetGrain<ICharacterGrain>(targetCharacterId, seasonId);
+
+        var initiator = await initiatorChar.GetCharacterAsync();
+        var target = await targetChar.GetCharacterAsync();
+
+        if (initiator.Restrictions.HasFlag(CharacterRestrictions.SoloSelfFound))
+            throw new InvalidOperationException("Trading is disabled for Solo Self-Found characters.");
+
+        if (target.Restrictions.HasFlag(CharacterRestrictions.SoloSelfFound))
+            throw new InvalidOperationException("Cannot trade with a Solo Self-Found character.");
+
+        // Ensure same season
+        if (initiator.SeasonId != target.SeasonId)
+            throw new InvalidOperationException("Cannot trade across seasons.");
+
         _state.State.Session = new TradeSession
         {
             TradeId = this.GetPrimaryKey(),
-            InitiatorUserId = initiatorUserId,
-            TargetUserId = targetUserId,
+            InitiatorCharacterId = initiatorCharacterId,
+            TargetCharacterId = targetCharacterId,
+            SeasonId = seasonId,
             Status = TradeStatus.Pending,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
         await _state.WriteStateAsync();
-        await PublishEventAsync("TradeStarted", initiatorUserId);
+        await PublishEventAsync("TradeStarted", initiatorCharacterId);
         return _state.State.Session;
     }
 
-    public async Task AddItemAsync(Guid userId, Guid itemId)
+    public async Task AddItemAsync(Guid characterId, Guid itemId)
     {
-        await AddItemsAsync(userId, new[] { itemId });
+        await AddItemsAsync(characterId, new[] { itemId });
     }
 
-    public async Task AddItemsAsync(Guid userId, IEnumerable<Guid> itemIds)
+    public async Task AddItemsAsync(Guid characterId, IEnumerable<Guid> itemIds)
     {
         await EnsureNotExpiredAsync();
 
@@ -154,7 +171,7 @@ public class TradeGrain : Grain, ITradeGrain
         if (session.Status != TradeStatus.Pending)
             throw new InvalidOperationException($"Cannot modify a trade with status: {session.Status}");
 
-        var inventory = _grainFactory.GetGrain<IInventoryGrain>(userId);
+        var inventory = _grainFactory.GetGrain<IInventoryGrain>(characterId, session.SeasonId);
         var registry = _grainFactory.GetGrain<IItemTypeRegistryGrain>("default");
 
         var itemIdList = itemIds.ToList();
@@ -162,10 +179,10 @@ public class TradeGrain : Grain, ITradeGrain
         // Validate all items
         foreach (var itemId in itemIdList)
         {
-            // Verify user owns the item
+            // Verify character owns the item
             var item = await inventory.GetItemAsync(itemId);
             if (item == null)
-                throw new InvalidOperationException($"User does not own item {itemId}.");
+                throw new InvalidOperationException($"Character does not own item {itemId}.");
 
             // Check if item type is tradeable
             if (!await registry.IsTradeableAsync(item.ItemTypeId))
@@ -174,14 +191,14 @@ public class TradeGrain : Grain, ITradeGrain
 
         // Determine which list to update
         List<Guid> currentItems;
-        bool isInitiator = userId == session.InitiatorUserId;
+        bool isInitiator = characterId == session.InitiatorCharacterId;
         
         if (isInitiator)
             currentItems = session.InitiatorItemIds.ToList();
-        else if (userId == session.TargetUserId)
+        else if (characterId == session.TargetCharacterId)
             currentItems = session.TargetItemIds.ToList();
         else
-            throw new InvalidOperationException("User is not part of this trade.");
+            throw new InvalidOperationException("Character is not part of this trade.");
 
         // Add items (distinct)
         foreach (var itemId in itemIdList)
@@ -212,16 +229,16 @@ public class TradeGrain : Grain, ITradeGrain
         // Publish events for each item
         foreach (var itemId in itemIdList)
         {
-            await PublishEventAsync("ItemAdded", userId, itemId);
+            await PublishEventAsync("ItemAdded", characterId, itemId);
         }
     }
 
-    public async Task RemoveItemAsync(Guid userId, Guid itemId)
+    public async Task RemoveItemAsync(Guid characterId, Guid itemId)
     {
-        await RemoveItemsAsync(userId, new[] { itemId });
+        await RemoveItemsAsync(characterId, new[] { itemId });
     }
 
-    public async Task RemoveItemsAsync(Guid userId, IEnumerable<Guid> itemIds)
+    public async Task RemoveItemsAsync(Guid characterId, IEnumerable<Guid> itemIds)
     {
         await EnsureNotExpiredAsync();
 
@@ -231,14 +248,14 @@ public class TradeGrain : Grain, ITradeGrain
 
         var itemIdList = itemIds.ToList();
 
-        if (userId == session.InitiatorUserId)
+        if (characterId == session.InitiatorCharacterId)
         {
             _state.State.Session = session with
             {
                 InitiatorItemIds = session.InitiatorItemIds.Where(id => !itemIdList.Contains(id)).ToList()
             };
         }
-        else if (userId == session.TargetUserId)
+        else if (characterId == session.TargetCharacterId)
         {
             _state.State.Session = session with
             {
@@ -247,7 +264,7 @@ public class TradeGrain : Grain, ITradeGrain
         }
         else
         {
-            throw new InvalidOperationException("User is not part of this trade.");
+            throw new InvalidOperationException("Character is not part of this trade.");
         }
 
         // Reset acceptance
@@ -262,11 +279,11 @@ public class TradeGrain : Grain, ITradeGrain
         // Publish events for each item
         foreach (var itemId in itemIdList)
         {
-            await PublishEventAsync("ItemRemoved", userId, itemId);
+            await PublishEventAsync("ItemRemoved", characterId, itemId);
         }
     }
 
-    public async Task<TradeStatus> AcceptAsync(Guid userId)
+    public async Task<TradeStatus> AcceptAsync(Guid characterId)
     {
         await EnsureNotExpiredAsync();
 
@@ -274,12 +291,12 @@ public class TradeGrain : Grain, ITradeGrain
         if (session.Status != TradeStatus.Pending)
             return session.Status;
 
-        if (userId == session.InitiatorUserId)
+        if (characterId == session.InitiatorCharacterId)
             session = session with { InitiatorAccepted = true };
-        else if (userId == session.TargetUserId)
+        else if (characterId == session.TargetCharacterId)
             session = session with { TargetAccepted = true };
         else
-            throw new InvalidOperationException("User is not part of this trade.");
+            throw new InvalidOperationException("Character is not part of this trade.");
 
         _state.State.Session = session;
 
@@ -288,18 +305,18 @@ public class TradeGrain : Grain, ITradeGrain
         {
             await ExecuteTradeAsync();
             await _state.WriteStateAsync();
-            await PublishEventAsync("TradeCompleted", userId);
+            await PublishEventAsync("TradeCompleted", characterId);
         }
         else
         {
             await _state.WriteStateAsync();
-            await PublishEventAsync("TradeAccepted", userId);
+            await PublishEventAsync("TradeAccepted", characterId);
         }
 
         return _state.State.Session!.Status;
     }
 
-    public async Task CancelAsync(Guid userId)
+    public async Task CancelAsync(Guid characterId)
     {
         var session = await GetSessionAsync();
         if (session.Status != TradeStatus.Pending)
@@ -307,7 +324,7 @@ public class TradeGrain : Grain, ITradeGrain
 
         _state.State.Session = session with { Status = TradeStatus.Cancelled };
         await _state.WriteStateAsync();
-        await PublishEventAsync("TradeCancelled", userId);
+        await PublishEventAsync("TradeCancelled", characterId);
     }
 
     private async Task ExecuteTradeAsync()
@@ -316,8 +333,8 @@ public class TradeGrain : Grain, ITradeGrain
 
         try
         {
-            var initiatorInv = _grainFactory.GetGrain<IInventoryGrain>(session.InitiatorUserId);
-            var targetInv = _grainFactory.GetGrain<IInventoryGrain>(session.TargetUserId);
+            var initiatorInv = _grainFactory.GetGrain<IInventoryGrain>(session.InitiatorCharacterId, session.SeasonId);
+            var targetInv = _grainFactory.GetGrain<IInventoryGrain>(session.TargetCharacterId, session.SeasonId);
 
             // Phase 1: Validate all items still exist
             foreach (var itemId in session.InitiatorItemIds)
@@ -340,7 +357,7 @@ public class TradeGrain : Grain, ITradeGrain
                 if (item != null) await targetInv.ReceiveItemAsync(item);
 
                 var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
-                await historyGrain.AddEntryAsync("Traded", session.InitiatorUserId, session.TargetUserId);
+                await historyGrain.AddEntryAsync("Traded", session.InitiatorCharacterId, session.TargetCharacterId);
             }
 
             foreach (var itemId in session.TargetItemIds)
@@ -351,7 +368,7 @@ public class TradeGrain : Grain, ITradeGrain
                 if (item != null) await initiatorInv.ReceiveItemAsync(item);
 
                 var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
-                await historyGrain.AddEntryAsync("Traded", session.TargetUserId, session.InitiatorUserId);
+                await historyGrain.AddEntryAsync("Traded", session.TargetCharacterId, session.InitiatorCharacterId);
             }
 
             _state.State.Session = session with
