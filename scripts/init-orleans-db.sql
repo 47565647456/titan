@@ -1,44 +1,45 @@
--- Orleans Grain Storage Schema for CockroachDB (PostgreSQL-compatible)
--- Based on Orleans PostgreSQL persistence scripts
+-- Orleans Schema for CockroachDB (PostgreSQL-compatible)
 
--- Create the OrleansStorage table for grain state persistence
-CREATE TABLE IF NOT EXISTS OrleansStorage (
-    GrainIdHash INT NOT NULL,
+-- =========================================================================================
+-- OrleansQuery Table (Required for ADO.NET Providers)
+-- =========================================================================================
+CREATE TABLE IF NOT EXISTS OrleansQuery
+(
+    QueryKey VARCHAR(64) NOT NULL,
+    QueryText VARCHAR(8000) NOT NULL,
+
+    CONSTRAINT PK_OrleansQuery PRIMARY KEY(QueryKey)
+);
+
+-- =========================================================================================
+-- OrleansStorage Table (Persistence)
+-- =========================================================================================
+DROP TABLE IF EXISTS OrleansStorage;
+
+CREATE TABLE OrleansStorage
+(
+    GrainIdHash INTEGER NOT NULL,
     GrainIdN0 BIGINT NOT NULL,
     GrainIdN1 BIGINT NOT NULL,
-    GrainTypeHash INT NOT NULL,
+    GrainTypeHash INTEGER NOT NULL,
     GrainTypeString VARCHAR(512) NOT NULL,
-    GrainIdExtensionString VARCHAR(512),
+    GrainIdExtensionString VARCHAR(512) NOT NULL DEFAULT '',
     ServiceId VARCHAR(150) NOT NULL,
     PayloadBinary BYTEA,
-    ModifiedOn TIMESTAMP NOT NULL DEFAULT NOW(),
-    Version INT NOT NULL DEFAULT 0,
+    ModifiedOn TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    Version INTEGER,
 
-    CONSTRAINT PK_OrleansStorage PRIMARY KEY (GrainIdHash, GrainTypeHash, GrainIdN0, GrainIdN1, GrainIdExtensionString, ServiceId)
+    CONSTRAINT PK_OrleansStorage PRIMARY KEY(GrainIdHash, GrainTypeHash, GrainIdN0, GrainIdN1, GrainIdExtensionString, ServiceId)
 );
 
--- Create indexes for efficient grain lookups
-CREATE INDEX IF NOT EXISTS IX_OrleansStorage_GrainType 
-ON OrleansStorage (GrainTypeHash, GrainIdHash);
+CREATE INDEX IF NOT EXISTS IX_OrleansStorage
+    ON OrleansStorage(GrainIdHash, GrainTypeHash);
 
-CREATE INDEX IF NOT EXISTS IX_OrleansStorage_ServiceId 
-ON OrleansStorage (ServiceId);
-
--- Orleans Reminders table (if using reminders)
-CREATE TABLE IF NOT EXISTS OrleansRemindersTable (
-    ServiceId VARCHAR(150) NOT NULL,
-    GrainId VARCHAR(150) NOT NULL,
-    ReminderName VARCHAR(150) NOT NULL,
-    StartTime TIMESTAMP NOT NULL,
-    Period BIGINT NOT NULL,
-    GrainHash INT NOT NULL,
-    Version INT NOT NULL,
-
-    CONSTRAINT PK_OrleansRemindersTable PRIMARY KEY (ServiceId, GrainId, ReminderName)
-);
-
--- Orleans Clustering table for membership
-CREATE TABLE IF NOT EXISTS OrleansMembershipTable (
+-- =========================================================================================
+-- OrleansMembership Table (Clustering - if needed)
+-- =========================================================================================
+CREATE TABLE IF NOT EXISTS OrleansMembershipTable
+(
     DeploymentId VARCHAR(150) NOT NULL,
     Address VARCHAR(45) NOT NULL,
     Port INT NOT NULL,
@@ -48,17 +49,76 @@ CREATE TABLE IF NOT EXISTS OrleansMembershipTable (
     Status INT NOT NULL,
     ProxyPort INT,
     SuspectTimes VARCHAR(8000),
-    StartTime TIMESTAMP NOT NULL,
-    IAmAliveTime TIMESTAMP NOT NULL,
+    StartTime TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    IAmAliveTime TIMESTAMP WITHOUT TIME ZONE NOT NULL,
 
     CONSTRAINT PK_OrleansMembershipTable PRIMARY KEY (DeploymentId, Address, Port, Generation)
 );
 
-CREATE TABLE IF NOT EXISTS OrleansMembershipVersionTable (
-    DeploymentId VARCHAR(150) NOT NULL PRIMARY KEY,
-    Timestamp TIMESTAMP NOT NULL DEFAULT NOW(),
-    Version INT NOT NULL DEFAULT 0
+CREATE TABLE IF NOT EXISTS OrleansMembershipVersionTable
+(
+    DeploymentId VARCHAR(150) NOT NULL,
+    Timestamp TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+    Version INT NOT NULL DEFAULT 0,
+
+    CONSTRAINT PK_OrleansMembershipVersionTable PRIMARY KEY (DeploymentId)
 );
 
--- Grant message for verification
+-- =========================================================================================
+-- INSERT Default Queries (Optimized for CockroachDB & Strict Schema)
+-- =========================================================================================
+
+INSERT INTO OrleansQuery(QueryKey, QueryText)
+VALUES
+(
+    'WriteToStorageKey',
+    'INSERT INTO OrleansStorage
+    (
+        GrainIdHash,
+        GrainIdN0,
+        GrainIdN1,
+        GrainTypeHash,
+        GrainTypeString,
+        GrainIdExtensionString,
+        ServiceId,
+        PayloadBinary,
+        ModifiedOn,
+        Version
+    )
+    VALUES
+    (
+        @GrainIdHash,
+        @GrainIdN0,
+        @GrainIdN1,
+        @GrainTypeHash,
+        @GrainTypeString,
+        COALESCE(@GrainIdExtensionString, ''''),
+        @ServiceId,
+        @PayloadBinary,
+        now(),
+        CASE WHEN @GrainStateVersion IS NOT NULL THEN @GrainStateVersion + 1 ELSE 1 END
+    )
+    ON CONFLICT (GrainIdHash, GrainTypeHash, GrainIdN0, GrainIdN1, GrainIdExtensionString, ServiceId)
+    DO UPDATE SET
+        PayloadBinary = EXCLUDED.PayloadBinary,
+        ModifiedOn = EXCLUDED.ModifiedOn,
+        Version = EXCLUDED.Version
+    WHERE
+        OrleansStorage.Version = @GrainStateVersion OR (@GrainStateVersion IS NULL AND OrleansStorage.Version IS NULL)
+    RETURNING Version as newGrainStateVersion;'
+),
+(
+    'ReadFromStorageKey',
+    'SELECT PayloadBinary, ModifiedOn, Version 
+     FROM OrleansStorage 
+     WHERE GrainIdHash = @GrainIdHash AND GrainTypeHash = @GrainTypeHash AND GrainIdN0 = @GrainIdN0 AND GrainIdN1 = @GrainIdN1 AND GrainTypeString = @GrainTypeString AND GrainIdExtensionString = COALESCE(@GrainIdExtensionString, '''') AND ServiceId = @ServiceId'
+),
+(
+    'ClearStorageKey',
+    'DELETE FROM OrleansStorage 
+     WHERE GrainIdHash = @GrainIdHash AND GrainTypeHash = @GrainTypeHash AND GrainIdN0 = @GrainIdN0 AND GrainIdN1 = @GrainIdN1 AND GrainTypeString = @GrainTypeString AND GrainIdExtensionString = COALESCE(@GrainIdExtensionString, '''') AND ServiceId = @ServiceId AND Version IS NOT NULL AND Version = @GrainStateVersion'
+)
+ON CONFLICT (QueryKey) 
+DO UPDATE SET QueryText = EXCLUDED.QueryText;
+
 SELECT 'Orleans schema initialized successfully' AS message;
