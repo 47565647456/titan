@@ -11,7 +11,9 @@ public class TestSiloConfigurator : ISiloConfigurator
 {
     public void Configure(ISiloBuilder siloBuilder)
     {
-        // Configure Trading Options for tests (shorter timeout for faster testing)
+        var useDatabase = Environment.GetEnvironmentVariable("USE_DATABASE") == "true";
+        
+        // Configure Trading Options for tests (5-second timeout for expiration tests)
         siloBuilder.Services.Configure<TradingOptions>(options =>
         {
             options.TradeTimeout = TimeSpan.FromSeconds(5);
@@ -30,16 +32,14 @@ public class TestSiloConfigurator : ISiloConfigurator
 
         // Use environment variable to determine storage type
         // CI sets USE_DATABASE=true, local dev defaults to memory
-        var useDatabase = Environment.GetEnvironmentVariable("USE_DATABASE") == "true";
-        
         if (useDatabase)
         {
-            // Use real CockroachDB for integration tests
+            // Use real YugabyteDB for integration tests
             siloBuilder.AddAdoNetGrainStorage("OrleansStorage", options =>
             {
                 options.Invariant = "Npgsql";
-                options.ConnectionString = Environment.GetEnvironmentVariable("COCKROACH_CONNECTION") 
-                    ?? "Host=localhost;Port=26257;Database=titan;Username=root;SSL Mode=Disable";
+                options.ConnectionString = Environment.GetEnvironmentVariable("YUGABYTE_CONNECTION") 
+                    ?? "Host=localhost;Port=5433;Database=titan;Username=yugabyte;Password=yugabyte";
             });
         }
         else

@@ -21,15 +21,18 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     
-    # CockroachDB service container for integration tests
+    # YugabyteDB service container for integration tests
     services:
-      cockroachdb:
-        image: cockroachdb/cockroach:latest
+      yugabytedb:
+        image: yugabytedb/yugabyte:2024.2.0.0-b145
         ports:
-          - 26257:26257
-          - 8080:8080
-        env:
-          COCKROACH_ARGS: "start-single-node --insecure"
+          - 5433:5433
+          - 15433:15433
+        options: >-
+          --health-cmd "bin/ysqlsh -h yugabytedb -U yugabyte -c 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     
     steps:
     - uses: actions/checkout@v4
@@ -59,18 +62,18 @@ jobs:
       run: dotnet build --no-restore
       working-directory: Source
     
-    # Initialize CockroachDB with Orleans schema
+    # Initialize YugabyteDB with Orleans schema
     - name: Init Database
       run: |
-        # Wait for CockroachDB to be ready
-        sleep 5
+        # Wait for YugabyteDB to be ready
+        sleep 10
         # Create database and init schema
-        docker exec $(docker ps -q -f ancestor=cockroachdb/cockroach:latest) ./cockroach sql --insecure -e "CREATE DATABASE IF NOT EXISTS titan;"
-        docker exec -i $(docker ps -q -f ancestor=cockroachdb/cockroach:latest) ./cockroach sql --insecure --database=titan < scripts/init-orleans-db.sql
+        docker exec $(docker ps -q -f ancestor=yugabytedb/yugabyte:2024.2.0.0-b145) bin/ysqlsh -h localhost -U yugabyte -c "CREATE DATABASE titan;"
+        docker exec -i $(docker ps -q -f ancestor=yugabytedb/yugabyte:2024.2.0.0-b145) bin/ysqlsh -h localhost -U yugabyte -d titan < scripts/init-orleans-db.sql
     
     - name: Test
       run: dotnet test --no-build --verbosity normal
       working-directory: Source
       env:
         USE_DATABASE: "true"
-        COCKROACH_CONNECTION: "Host=localhost;Port=26257;Database=titan;Username=root;SSL Mode=Disable"
+        YUGABYTE_CONNECTION: "Host=localhost;Port=5433;Database=titan;Username=yugabyte;Password=yugabyte"

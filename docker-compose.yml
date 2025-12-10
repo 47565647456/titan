@@ -1,40 +1,18 @@
 version: '3.9'
 
 services:
-  roach1:
-    image: cockroachdb/cockroach:latest-v23.1
-    container_name: roach1
-    hostname: roach1
-    command: start --insecure --join=roach1,roach2,roach3
+  yugabyte:
+    image: yugabytedb/yugabyte:2024.2.0.0-b145
+    container_name: yugabyte
+    hostname: yugabyte
+    command: bin/yugabyted start --background=false --base_dir=/home/yugabyte/yb_data
     ports:
-      - "26257:26257"
-      - "8080:8080"
+      - "5433:5433"      # PostgreSQL-compatible YSQL
+      - "15433:15433"    # YugabyteDB Admin UI
+      - "9042:9042"      # Cassandra-compatible YCQL (optional)
     volumes:
-      - roach1-data:/cockroach/cockroach-data
-
-  roach2:
-    image: cockroachdb/cockroach:latest-v23.1
-    container_name: roach2
-    hostname: roach2
-    command: start --insecure --join=roach1,roach2,roach3
-    volumes:
-      - roach2-data:/cockroach/cockroach-data
-
-  roach3:
-    image: cockroachdb/cockroach:latest-v23.1
-    container_name: roach3
-    hostname: roach3
-    command: start --insecure --join=roach1,roach2,roach3
-    volumes:
-      - roach3-data:/cockroach/cockroach-data
-
-  init-roach:
-    image: cockroachdb/cockroach:latest-v23.1
-    command: init --insecure --host=roach1
-    depends_on:
-      - roach1
+      - yugabyte-data:/home/yugabyte/yb_data
 
 volumes:
-  roach1-data:
-  roach2-data:
-  roach3-data:
+  yugabyte-data:
+

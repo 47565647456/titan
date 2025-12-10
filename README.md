@@ -10,7 +10,7 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 - **Inventory System**: Transactional item management.
 - **Trading**: Secure peer-to-peer item trading.
 - **Identity**: User profiles and social provider linking.
-- **[CockroachDB](https://www.cockroachlabs.com/) Persistence**: Scalable, consistent SQL storage.
+- **[YugabyteDB](https://www.yugabyte.com/) Persistence**: Scalable, PostgreSQL-compatible distributed SQL storage.
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 Use our automation scripts to start the database and initialize the schema automatically:
 
 ```powershell
-# Start CockroachDB and Init Schema
+# Start YugabyteDB and Init Schema
 .\scripts\docker-up.ps1
 ```
 
@@ -83,7 +83,7 @@ See the [Testing Guide](https://titan-docs.nexusbound.xyz/testing) for more deta
 - [ ] **Rate Limiting** - API throttling, abuse prevention
 
 ### Persistence & Operations
-- [x] **CockroachDB Persistence** - Scalable SQL storage with Orleans integration
+- [x] **YugabyteDB Persistence** - Scalable SQL storage with Orleans integration
 - [x] **Integration Tests** - Comprehensive test suite with database and clustering tests
 - [ ] **Metrics/Observability** - Prometheus, Grafana dashboards, grain activation metrics
 - [ ] **Admin Dashboard** - Web UI for managing players, banning, economy monitoring
