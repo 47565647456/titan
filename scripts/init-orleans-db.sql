@@ -4,6 +4,12 @@
 -- Includes: Main, Clustering, Persistence, and Reminders
 
 -- ============================================================
+-- Create titan database for Orleans grain storage
+-- ============================================================
+CREATE DATABASE titan;
+\connect titan
+
+-- ============================================================
 -- PostgreSQL-Main.sql - Base Orleans Query Table
 -- ============================================================
 

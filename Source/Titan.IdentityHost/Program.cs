@@ -1,61 +1,64 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using Titan.Abstractions;
 using Titan.Grains.Registry;
 
-var builder = Host.CreateDefaultBuilder(args);
+var builder = Host.CreateApplicationBuilder(args);
 
-builder.UseSerilog((context, config) => 
+// Add Aspire ServiceDefaults (OpenTelemetry, Health Checks, Service Discovery)
+builder.AddServiceDefaults();
+
+// Add Redis client for Orleans clustering (keyed service registration)
+// Key must match Redis resource name from AppHost's AddRedis()
+builder.AddKeyedRedisClient("orleans-clustering");
+
+// Configure Serilog
+builder.Services.AddSerilog(config => 
 {
     config.WriteTo.Console();
     config.WriteTo.File("logs/titan-identity-.txt", rollingInterval: RollingInterval.Day);
 });
 
 // Configure Item Registry Options
-builder.ConfigureServices((context, services) =>
+builder.Services.Configure<ItemRegistryOptions>(options =>
 {
-    services.Configure<ItemRegistryOptions>(options =>
-    {
-        options.SeedFilePath = "data/item-types.json";
-    });
-    
-    // Bind from configuration if available
-    var registrySection = context.Configuration.GetSection(ItemRegistryOptions.SectionName);
-    if (registrySection.Exists())
-    {
-        services.Configure<ItemRegistryOptions>(registrySection);
-    }
-    
-    // Register the seeding hosted service
-    services.AddHostedService<ItemTypeSeedHostedService>();
+    options.SeedFilePath = "data/item-types.json";
 });
 
+// Bind from configuration if available
+var registrySection = builder.Configuration.GetSection(ItemRegistryOptions.SectionName);
+if (registrySection.Exists())
+{
+    builder.Services.Configure<ItemRegistryOptions>(registrySection);
+}
+
+// Register the seeding hosted service
+builder.Services.AddHostedService<ItemTypeSeedHostedService>();
+
+// Configure Orleans Silo
+// Clustering is auto-configured by Aspire via Redis
 builder.UseOrleans(silo =>
 {
-    // IdentityHost is the Primary for Local Development
-    silo.UseLocalhostClustering(
-        siloPort: 11111, 
-        gatewayPort: 30001,
-        primarySiloEndpoint: new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 11111));
-
-    silo.ConfigureLogging(logging => logging.AddConsole());
-    
-    // Dashboard for monitoring
-    silo.UseDashboard(options => {
-        options.Port = 8081;
-    });
-
     // Memory Streams for trade events (cross-silo pub/sub)
     silo.AddMemoryGrainStorage("PubSubStore");
     silo.AddMemoryStreams(TradeStreamConstants.ProviderName);
 
-    silo.AddAdoNetGrainStorage("OrleansStorage", options =>
+    // Grain persistence using PostgreSQL (connection string injected by Aspire)
+    var connectionString = builder.Configuration.GetConnectionString("titan");
+    if (!string.IsNullOrEmpty(connectionString))
     {
-        options.Invariant = "Npgsql";
-        options.ConnectionString = "Host=localhost;Port=26257;Database=titan;Username=root;SSL Mode=Disable";
-    });
+        silo.AddAdoNetGrainStorage("OrleansStorage", options =>
+        {
+            options.Invariant = "Npgsql";
+            options.ConnectionString = connectionString;
+        });
+    }
+    else
+    {
+        // Fallback to memory storage for local dev without Aspire
+        silo.AddMemoryGrainStorage("OrleansStorage");
+    }
 });
 
 var host = builder.Build();

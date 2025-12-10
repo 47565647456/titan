@@ -8,15 +8,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.StackExchange.Redis" Version="13.0.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Orleans.Clustering.Redis" Version="9.2.2-nightly.20251124.2" />
     <PackageReference Include="Microsoft.Orleans.Persistence.AdoNet" Version="9.2.2-nightly.20251124.2" />
     <PackageReference Include="Microsoft.Orleans.Server" Version="9.2.2-nightly.20251124.2" />
     <PackageReference Include="Npgsql" Version="10.0.0" />
-    <PackageReference Include="OrleansDashboard" Version="8.2.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Titan.Grains\Titan.Grains.csproj" />
+    <ProjectReference Include="..\Titan.ServiceDefaults\Titan.ServiceDefaults.csproj" />
   </ItemGroup>
 </Project>

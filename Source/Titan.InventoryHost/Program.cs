@@ -1,53 +1,61 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Serilog;
 using Titan.Abstractions;
 
-var builder = Host.CreateDefaultBuilder(args);
+var builder = Host.CreateApplicationBuilder(args);
 
-builder.UseSerilog((context, config) => 
+// Add Aspire ServiceDefaults (OpenTelemetry, Health Checks, Service Discovery)
+builder.AddServiceDefaults();
+
+// Add Redis client for Orleans clustering (keyed service registration)
+// Key must match Redis resource name from AppHost's AddRedis()
+builder.AddKeyedRedisClient("orleans-clustering");
+
+// Configure Serilog
+builder.Services.AddSerilog(config => 
 {
     config.WriteTo.Console();
     config.WriteTo.File("logs/titan-inventory-.txt", rollingInterval: RollingInterval.Day);
 });
 
 // Configure Item Registry Options
-builder.ConfigureServices((context, services) =>
+builder.Services.Configure<ItemRegistryOptions>(options =>
 {
-    services.Configure<ItemRegistryOptions>(options =>
-    {
-        // Default: allow unknown item types for development
-        options.AllowUnknownItemTypes = true;
-    });
-    
-    // Bind from configuration if available
-    var registrySection = context.Configuration.GetSection(ItemRegistryOptions.SectionName);
-    if (registrySection.Exists())
-    {
-        services.Configure<ItemRegistryOptions>(registrySection);
-    }
+    // Default: allow unknown item types for development
+    options.AllowUnknownItemTypes = true;
 });
 
+// Bind from configuration if available
+var registrySection = builder.Configuration.GetSection(ItemRegistryOptions.SectionName);
+if (registrySection.Exists())
+{
+    builder.Services.Configure<ItemRegistryOptions>(registrySection);
+}
+
+// Configure Orleans Silo
+// Clustering is auto-configured by Aspire via Redis
 builder.UseOrleans(silo =>
 {
-    // InventoryHost connects to the cluster via Primary (IdentityHost)
-    silo.UseLocalhostClustering(
-        siloPort: 11112, 
-        gatewayPort: 30002,
-        primarySiloEndpoint: new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 11111));
-
-    silo.ConfigureLogging(logging => logging.AddConsole());
-
     // Memory Streams for trade events (cross-silo pub/sub)
     silo.AddMemoryGrainStorage("PubSubStore");
     silo.AddMemoryStreams(TradeStreamConstants.ProviderName);
 
-    silo.AddAdoNetGrainStorage("OrleansStorage", options =>
+    // Grain persistence using PostgreSQL (connection string injected by Aspire)
+    var connectionString = builder.Configuration.GetConnectionString("titan");
+    if (!string.IsNullOrEmpty(connectionString))
     {
-        options.Invariant = "Npgsql";
-        options.ConnectionString = "Host=localhost;Port=26257;Database=titan;Username=root;SSL Mode=Disable";
-    });
+        silo.AddAdoNetGrainStorage("OrleansStorage", options =>
+        {
+            options.Invariant = "Npgsql";
+            options.ConnectionString = connectionString;
+        });
+    }
+    else
+    {
+        // Fallback to memory storage for local dev without Aspire
+        silo.AddMemoryGrainStorage("OrleansStorage");
+    }
 });
 
 var host = builder.Build();

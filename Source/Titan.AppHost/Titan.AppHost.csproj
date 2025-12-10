@@ -1,0 +1,25 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.0.2">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>f33c6044-fdd8-4df5-930c-034183c79606</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Titan.API\Titan.API.csproj" />
+    <ProjectReference Include="..\Titan.IdentityHost\Titan.IdentityHost.csproj" />
+    <ProjectReference Include="..\Titan.InventoryHost\Titan.InventoryHost.csproj" />
+    <ProjectReference Include="..\Titan.TradingHost\Titan.TradingHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Aspire.Hosting.AppHost is automatically included by the SDK in 13.0 -->
+    <PackageReference Include="Aspire.Hosting.Orleans" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.Redis" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.0.2" />
+  </ItemGroup>
+
+</Project>

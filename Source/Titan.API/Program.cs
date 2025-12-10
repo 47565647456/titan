@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using Serilog;
@@ -13,6 +12,13 @@ using Titan.Grains.Trading.Rules;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add Aspire ServiceDefaults (OpenTelemetry, Health Checks, Service Discovery)
+builder.AddServiceDefaults();
+
+// Add Redis client for Orleans clustering (keyed service registration)
+// Key must match Redis resource name from AppHost's AddRedis()
+builder.AddKeyedRedisClient("orleans-clustering");
+
 // Configure Serilog
 builder.Host.UseSerilog((context, config) => 
 {
@@ -21,11 +27,9 @@ builder.Host.UseSerilog((context, config) =>
 });
 
 // Configure Orleans Client
-builder.Host.UseOrleansClient(client =>
+// Clustering is auto-configured by Aspire via Redis
+builder.UseOrleansClient(client =>
 {
-    // Connect to the Localhost Cluster via Gateways (Identity, Inventory, Trading)
-    client.UseLocalhostClustering(new[] { 30001, 30002, 30003 });
-    
     // Add stream support for receiving trade events
     client.AddMemoryStreams(TradeStreamConstants.ProviderName);
 });
@@ -81,6 +85,9 @@ builder.Services.AddSingleton<IRule<TradeRequestContext>, SoloSelfFoundRule>();
 
 var app = builder.Build();
 
+// Map Aspire default health check endpoints
+app.MapDefaultEndpoints();
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -100,8 +107,5 @@ app.MapHub<InventoryHub>("/inventoryHub");
 app.MapHub<ItemTypeHub>("/itemTypeHub");
 app.MapHub<SeasonHub>("/seasonHub");
 app.MapHub<TradeHub>("/tradeHub");
-
-// Health check endpoint for ops
-app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTimeOffset.UtcNow }));
 
 app.Run();
