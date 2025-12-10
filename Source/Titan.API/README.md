@@ -13,6 +13,17 @@ In the Titan architecture, the API layer sits between the client applications (e
 - **Event Streaming**: Subscribes to Orleans streams (e.g., Trade events) to push real-time updates to relevant connected clients.
 - **Mock Services**: Provides mock implementations for specialized services (like `IAuthService`) to facilitate development and testing.
 
+## Configuration
+The API is configured via `appsettings.json` and Environment Variables.
+
+### Key Settings
+| Section | Setting | Description | Environment Variable Override |
+|---------|---------|-------------|------------------------------|
+| `Jwt` | `Key` | **Critical** Secret key for signing tokens. Must be 32+ bytes. | `Jwt__Key` |
+| `Jwt` | `Issuer` | Token issuer (default: Titan). | `Jwt__Issuer` |
+| `Cors` | `AllowedOrigins` | List of allowed CORS origins. | `Cors__AllowedOrigins__0`, `Cors__AllowedOrigins__1`... |
+| `RateLimiting` | `PermitLimit` | Requests allowed per window. | `RateLimiting__PermitLimit` |
+
 ## Technologies
 - **ASP.NET Core 9**: Web framework.
 - **SignalR**: Real-time communication library.

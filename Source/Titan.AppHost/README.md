@@ -13,6 +13,18 @@ This project is the "glue" that holds the local development environment together
 - **Configuration Injection**: Automatically passes connection strings and service discovery endpoints to the running services.
 - **Observability**: Hosts the Aspire Dashboard, providing a unified view of logs, metrics, and distributed traces across all projects.
 
+## Configuration
+The AppHost orchestrates configuration for child projects but also requires its own secrets for valid injection.
+
+### Required Secrets
+| Variable | Description |
+|----------|-------------|
+| `Jwt__Key` | **Critical**: The secret key injected into `Titan.API` for token validation. In Development, a default key is used. For production simulation, set this environment variable before running. |
+
+### Environment Variables
+You can control the orchestration behavior:
+- `PostgresVolume`: Name of the docker volume for persistent data (default: `titan-postgres-data`). Set to `ephemeral` or `none` for a clean DB on start.
+
 ## Usage
 To run the full Titan backend solution locally:
 1. Ensure Docker Desktop is running.

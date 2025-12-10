@@ -1,12 +1,25 @@
 # Titan.Tests
 
 ## Overview
-**Titan.Tests** contains the integration and end-to-end tests for the Titan backend.
+**Titan.Tests** contains the **Orleans Integration Tests** for the Titan backend. Unlike `Titan.AppHost.Tests` which runs the full external stack via Aspire, these tests run against an **In-Memory Orleans Test Cluster**.
 
 ## Role in Global Solution
-This project is crucial for ensuring the reliability of the system. It uses `Aspire.Hosting.Testing` to spin up the entire distributed application (in-memory or using containers) and perform verification against the actual running services.
+This project provides fast feedback for grain logic and interactions. It uses `Microsoft.Orleans.TestingHost` to spin up a lightweight, in-process cluster. This allows for testing grain logic, state machines, and streams without the overhead of Docker containers or a full HTTP API layer.
 
 ## Key Responsibilities
-- **Integration Testing**: Verifies that the API, Silos, Database, and Cache all work together correctly.
-- **Scenario Verification**: Tests complex user flows like "Login -> Trade -> Logout" in a realistic environment.
-- **CI/CD Integration**: These tests are designed to run in the CI pipeline to prevent regressions.
+- **Grain Logic Verification**: Tests specific grain behaviors (e.g., `TradeGrain` state machine transitions, `InventoryGrain` stacking rules).
+- **Cluster Simulation**: Uses `TestCluster` to simulate distributed grain interactions in memory.
+- **Fast Execution**: Designed to run quickly during development.
+
+## Comparison with Titan.AppHost.Tests
+| Feature | Titan.Tests | Titan.AppHost.Tests |
+|---------|-------------|---------------------|
+| **Scope** | Grain & Logic | Full System (API + Silos + DB) |
+| **Runtime** | In-Process TestCluster | Docker / Aspire AppHost |
+| **Speed** | Fast | Slow (Container startup) |
+| **Use Case** | TDD, Logic Verification | End-to-End flows, Configuration checks |
+
+## Usage
+```bash
+dotnet test Titan.Tests
+```
