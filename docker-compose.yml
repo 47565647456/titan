@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   yugabyte:
-    image: yugabytedb/yugabyte:2024.2.0.0-b145
+    image: yugabytedb/yugabyte:latest
     container_name: yugabyte
     hostname: yugabyte
     command: bin/yugabyted start --background=false --base_dir=/home/yugabyte/yb_data
