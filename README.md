@@ -1,89 +1,109 @@
 # Titan
 
-A distributed game backend built with **Microsoft Orleans** and **.NET 10** for player trading, inventory management, and identity services.
+> Distributed Game Backend built with **[Microsoft Orleans](https://learn.microsoft.com/dotnet/orleans/)** and **[.NET 10](https://dotnet.microsoft.com/)**.
+
+Titan is a high-performance, scalable backend solution designed for modern multiplayer games. It creates a "Global Server" architecture where game state (Players, Inventories, Guilds) lives in a distributed mesh of **[Grains](https://learn.microsoft.com/dotnet/orleans/grains/)**.
 
 ## Features
 
-- 🎮 **Federated Identity** - Steam/Epic Games SSO with account linking
-- 📦 **Inventory Management** - Stack-aware item registry with validation
-- 🔄 **Real-time Trading** - 2-phase commit trades with timeout handling
-- 🏆 **Seasonal Rulesets** - SSF/trade restrictions per season
-- 📡 **SignalR Hubs** - Real-time WebSocket notifications
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|------------|
-| Runtime | .NET 10 |
-| Framework | Microsoft Orleans 9.x (Virtual Actors) |
-| Orchestration | Microsoft Aspire 13 |
-| Database | PostgreSQL / YugabyteDB |
-| Clustering | Redis |
-| Real-time | SignalR |
+- **Distributed State**: Persistent player data using Orleans Grains.
+- **Real-Time Communication**: Full duplex communication via **SignalR** Hubs.
+- **Inventory System**: Transactional item management.
+- **Trading**: Secure peer-to-peer item trading.
+- **Identity**: User profiles and social provider linking.
+- **[YugabyteDB](https://www.yugabyte.com/) Persistence**: Scalable, PostgreSQL-compatible distributed SQL storage.
 
 ## Quick Start
 
 ### Prerequisites
-
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
-- [Docker](https://www.docker.com/)
+- [Docker](https://www.docker.com/) (Desktop or Engine)
 
-### Run with Aspire
-
-```powershell
-cd Source/Titan.AppHost
-dotnet run
-```
-
-This starts the entire stack:
-- **Redis** - Orleans silo clustering
-- **PostgreSQL** - Grain persistence (with `titan` database)
-- **IdentityHost** (×2) - User accounts & authentication
-- **InventoryHost** (×2) - Item management
-- **TradingHost** (×2) - Trade sessions
-- **API** - Gateway with SignalR hubs
-
-Access the **Aspire Dashboard** at the URL shown in the console.
-
-### Run Tests
+### 1-Click Environment Setup
+Use our automation scripts to start the database and initialize the schema automatically:
 
 ```powershell
-cd Source
-dotnet test
+# Start YugabyteDB and Init Schema
+.\scripts\docker-up.ps1
 ```
 
-## Architecture
+### Build & Run
 
+```powershell
+# Restore & Build
+.\scripts\build.ps1
+
+# Start all services
+.\scripts\run-all.ps1
 ```
-┌─────────────────┐
-│   Game Client   │
-└────────┬────────┘
-         │ SignalR WebSocket
-         ▼
-┌─────────────────┐
-│    Titan.API    │ ◄── Orleans Client
-└────────┬────────┘
-         │ Orleans RPC
-         ▼
-┌────────────────────────────────────────┐
-│           Orleans Cluster              │
-│  ┌────────────┐ ┌────────────┐         │
-│  │IdentityHost│ │InventoryHost│       │
-│  │ TradingHost│ │   (×2 each) │        │
-│  └────────────┘ └────────────┘         │
-└────────────────────────────────────────┘
-         │
-    ┌────┴────┐
-    ▼         ▼
-┌───────┐ ┌────────────┐
-│ Redis │ │ PostgreSQL │
-└───────┘ └────────────┘
+
+## Testing
+
+Titan includes a full integration test suite.
+
+```powershell
+# Run In-Memory Tests
+.\scripts\test.ps1
+
+# Run Database Persistence Tests
+.\scripts\test.ps1 -WithDatabase
 ```
+
+See the [Testing Guide](https://titan-docs.nexusbound.xyz/testing) for more details.
+
+## Roadmap
+
+### Core Game Backend
+- [x] **Inventory System** - Transactional item management with stack validation
+- [x] **Item Registry** - Admin management for item type definitions
+- [x] **Item History** - Full audit trail and provenance tracking
+- [x] **Trading System** - Peer-to-peer trades with expiration, batch ops, real-time updates
+- [x] **Seasons System** - PoE-style leagues with character migration and player-chosen restrictions
+- [x] **Account/Character Split** - Global accounts with per-season characters (compound keys)
+- [x] **Player Restrictions** - Hardcore (permadeath) and Solo Self-Found (via Rule Engine)
+- [ ] **Guilds/Clans** - Player organizations with roles, permissions, shared banks
+- [ ] **Currency System** - Virtual currencies, transactions, wallets
+- [ ] **Economy Controls** - Price floors/ceilings, taxes, anti-inflation mechanics
+- [ ] **Achievements** - Player progression tracking, unlocks, rewards
+- [ ] **Quests/Missions** - Task tracking, objectives, rewards distribution
+- [ ] **Leaderboards** - Global/regional rankings, seasonal resets
+
+### Identity & Social
+- [x] **Identity & Profiles** - User profiles with social provider linking
+- [x] **Social Graph** - Friends, blocks, and relationship management
+- [ ] **Chat System** - Global, guild, party, whisper channels
+- [ ] **Notifications** - Push notifications, in-game alerts, friend online status
+
+### Multiplayer Infrastructure
+- [ ] **Matchmaking** - Queue management, skill-based matching, lobby systems
+- [ ] **Session/Lobby System** - Game session lifecycle, player slots, ready checks
+
+### API & Real-time
+- [x] **WebSocket API** - SignalR hubs with JWT authentication for all game operations
+- [x] **Real-time Events** - Bidirectional communication via SignalR
+- [ ] **Rate Limiting** - API throttling, abuse prevention
+
+### Persistence & Operations
+- [x] **YugabyteDB Persistence** - Scalable SQL storage with Orleans integration
+- [x] **Integration Tests** - Comprehensive test suite with database and clustering tests
+- [ ] **Metrics/Observability** - Prometheus, Grafana dashboards, grain activation metrics
+- [ ] **Admin Dashboard** - Web UI for managing players, banning, economy monitoring
+
+### Security & Anti-Cheat
+- [ ] **Input Validation** - Server-side verification of game actions
+- [ ] **Cheat Detection** - Anomaly detection, stat validation
+
+### Client Integration
+- [ ] **Client SDK** - C++, C#, and Blueprint support
 
 ## Documentation
 
-See the [docs](./docs) folder for detailed documentation.
+Full documentation is available at [titan.nexusbound.xyz](https://titan.nexusbound.xyz).
+To run the documentation locally:
 
-## License
+```bash
+cd docs
+npm install
+npm start
+```
 
-MIT
