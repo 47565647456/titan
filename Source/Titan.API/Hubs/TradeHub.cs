@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
@@ -7,8 +8,9 @@ namespace Titan.API.Hubs;
 
 /// <summary>
 /// WebSocket hub for trade operations.
-/// Provides both trade lifecycle operations and real-time notifications.
+/// All operations verify that the caller owns the character they're acting as.
 /// </summary>
+[Authorize]
 public class TradeHub : Hub
 {
     private readonly IClusterClient _clusterClient;
@@ -20,14 +22,61 @@ public class TradeHub : Hub
         _streamSubscriber = streamSubscriber;
     }
 
+    #region Security Helpers
+
+    /// <summary>
+    /// Gets the authenticated user's ID from the JWT token.
+    /// </summary>
+    private Guid GetUserId() => Guid.Parse(Context.UserIdentifier!);
+
+    /// <summary>
+    /// Verifies that the specified character belongs to the authenticated user.
+    /// </summary>
+    private async Task VerifyCharacterOwnershipAsync(Guid characterId)
+    {
+        var accountGrain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var characters = await accountGrain.GetCharactersAsync();
+        
+        if (!characters.Any(c => c.CharacterId == characterId))
+        {
+            throw new HubException("Character does not belong to this account.");
+        }
+    }
+
+    /// <summary>
+    /// Gets the caller's owned character that is a participant in the specified trade.
+    /// Throws if the caller is not a participant.
+    /// </summary>
+    private async Task<Guid> GetOwnedCharacterInTradeAsync(Guid tradeId)
+    {
+        var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
+        var session = await grain.GetSessionAsync();
+        
+        var accountGrain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var characters = await accountGrain.GetCharactersAsync();
+        var characterIds = characters.Select(c => c.CharacterId).ToHashSet();
+
+        if (characterIds.Contains(session.InitiatorCharacterId))
+            return session.InitiatorCharacterId;
+        
+        if (characterIds.Contains(session.TargetCharacterId))
+            return session.TargetCharacterId;
+        
+        throw new HubException("You are not a participant in this trade.");
+    }
+
+    #endregion
+
     #region Subscriptions
 
     /// <summary>
-    /// Join a trade session group to receive updates.
-    /// This also subscribes to the Orleans stream for this trade.
+    /// Join a trade session group to receive updates (verifies caller is a participant).
     /// </summary>
     public async Task JoinTradeSession(Guid tradeId)
     {
+        // Verify caller is a participant before allowing subscription
+        await GetOwnedCharacterInTradeAsync(tradeId);
+        
         await Groups.AddToGroupAsync(Context.ConnectionId, $"trade-{tradeId}");
         await _streamSubscriber.SubscribeToTradeAsync(tradeId);
     }
@@ -45,14 +94,20 @@ public class TradeHub : Hub
     #region Trade Lifecycle Operations
 
     /// <summary>
-    /// Start a new trade session between two characters.
+    /// Start a new trade session between your character and another character.
     /// </summary>
-    public async Task<TradeSession> StartTrade(Guid initiatorCharacterId, Guid targetCharacterId, string seasonId)
+    /// <param name="myCharacterId">Your character (must belong to your account).</param>
+    /// <param name="targetCharacterId">The character you want to trade with.</param>
+    /// <param name="seasonId">The season for the trade.</param>
+    public async Task<TradeSession> StartTrade(Guid myCharacterId, Guid targetCharacterId, string seasonId)
     {
+        // Verify the caller owns the initiating character
+        await VerifyCharacterOwnershipAsync(myCharacterId);
+        
         var tradeId = Guid.NewGuid();
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
 
-        var session = await grain.InitiateAsync(initiatorCharacterId, targetCharacterId, seasonId);
+        var session = await grain.InitiateAsync(myCharacterId, targetCharacterId, seasonId);
         
         await NotifyTradeUpdate(tradeId, "TradeStarted", session);
         
@@ -60,65 +115,76 @@ public class TradeHub : Hub
     }
 
     /// <summary>
-    /// Get trade session details.
+    /// Get trade session details (verifies caller is a participant).
     /// </summary>
     public async Task<TradeSession> GetTrade(Guid tradeId)
     {
+        // Verify caller is a participant
+        await GetOwnedCharacterInTradeAsync(tradeId);
+        
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
         return await grain.GetSessionAsync();
     }
 
     /// <summary>
-    /// Add an item to the trade.
+    /// Add an item to the trade. Automatically uses your character in the trade.
     /// </summary>
-    public async Task<TradeSession> AddItem(Guid tradeId, Guid characterId, Guid itemId)
+    public async Task<TradeSession> AddItem(Guid tradeId, Guid itemId)
     {
+        var myCharacterId = await GetOwnedCharacterInTradeAsync(tradeId);
+        
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        await grain.AddItemAsync(characterId, itemId);
+        await grain.AddItemAsync(myCharacterId, itemId);
         var session = await grain.GetSessionAsync();
 
-        await NotifyTradeUpdate(tradeId, "ItemAdded", new { CharacterId = characterId, ItemId = itemId });
+        await NotifyTradeUpdate(tradeId, "ItemAdded", new { CharacterId = myCharacterId, ItemId = itemId });
 
         return session;
     }
 
     /// <summary>
-    /// Remove an item from the trade.
+    /// Remove an item from the trade. Automatically uses your character in the trade.
     /// </summary>
-    public async Task<TradeSession> RemoveItem(Guid tradeId, Guid characterId, Guid itemId)
+    public async Task<TradeSession> RemoveItem(Guid tradeId, Guid itemId)
     {
+        var myCharacterId = await GetOwnedCharacterInTradeAsync(tradeId);
+        
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        await grain.RemoveItemAsync(characterId, itemId);
+        await grain.RemoveItemAsync(myCharacterId, itemId);
         var session = await grain.GetSessionAsync();
 
-        await NotifyTradeUpdate(tradeId, "ItemRemoved", new { CharacterId = characterId, ItemId = itemId });
+        await NotifyTradeUpdate(tradeId, "ItemRemoved", new { CharacterId = myCharacterId, ItemId = itemId });
 
         return session;
     }
 
     /// <summary>
-    /// Accept the trade offer.
+    /// Accept the trade offer. Automatically uses your character in the trade.
     /// </summary>
-    public async Task<AcceptTradeResult> AcceptTrade(Guid tradeId, Guid characterId)
+    public async Task<AcceptTradeResult> AcceptTrade(Guid tradeId)
     {
+        var myCharacterId = await GetOwnedCharacterInTradeAsync(tradeId);
+        
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        var status = await grain.AcceptAsync(characterId);
+        var status = await grain.AcceptAsync(myCharacterId);
 
         var eventType = status == TradeStatus.Completed ? "TradeCompleted" : "TradeAccepted";
-        await NotifyTradeUpdate(tradeId, eventType, new { CharacterId = characterId, Status = status.ToString() });
+        await NotifyTradeUpdate(tradeId, eventType, new { CharacterId = myCharacterId, Status = status.ToString() });
 
         return new AcceptTradeResult(status, status == TradeStatus.Completed);
     }
 
     /// <summary>
-    /// Cancel the trade.
+    /// Cancel the trade. Automatically uses your character in the trade.
     /// </summary>
-    public async Task CancelTrade(Guid tradeId, Guid characterId)
+    public async Task CancelTrade(Guid tradeId)
     {
+        var myCharacterId = await GetOwnedCharacterInTradeAsync(tradeId);
+        
         var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
-        await grain.CancelAsync(characterId);
+        await grain.CancelAsync(myCharacterId);
 
-        await NotifyTradeUpdate(tradeId, "TradeCancelled", new { CharacterId = characterId });
+        await NotifyTradeUpdate(tradeId, "TradeCancelled", new { CharacterId = myCharacterId });
     }
 
     #endregion
@@ -154,3 +220,4 @@ public class TradeHub : Hub
 }
 
 public record AcceptTradeResult(TradeStatus Status, bool Completed);
+

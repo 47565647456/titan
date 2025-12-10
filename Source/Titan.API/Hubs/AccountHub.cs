@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
@@ -6,8 +7,9 @@ namespace Titan.API.Hubs;
 
 /// <summary>
 /// WebSocket hub for account operations.
-/// Replaces AccountController with bidirectional communication.
+/// All operations are scoped to the authenticated user's account.
 /// </summary>
+[Authorize]
 public class AccountHub : Hub
 {
     private readonly IClusterClient _clusterClient;
@@ -18,65 +20,71 @@ public class AccountHub : Hub
     }
 
     /// <summary>
-    /// Get account info including unlocked cosmetics and achievements.
+    /// Gets the authenticated user's ID from the JWT token.
     /// </summary>
-    public async Task<Account> GetAccount(Guid accountId)
+    private Guid GetUserId() => Guid.Parse(Context.UserIdentifier!);
+
+    /// <summary>
+    /// Get the authenticated user's account info including unlocked cosmetics and achievements.
+    /// </summary>
+    public async Task<Account> GetAccount()
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(accountId);
+        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.GetAccountAsync();
     }
 
     /// <summary>
-    /// Get all characters for an account across all seasons.
+    /// Get all characters for the authenticated user's account across all seasons.
     /// </summary>
-    public async Task<IReadOnlyList<CharacterSummary>> GetCharacters(Guid accountId)
+    public async Task<IReadOnlyList<CharacterSummary>> GetCharacters()
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(accountId);
+        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.GetCharactersAsync();
     }
 
     /// <summary>
-    /// Create a new character in a specific season with chosen restrictions.
+    /// Create a new character for the authenticated user in a specific season with chosen restrictions.
     /// </summary>
-    public async Task<CharacterSummary> CreateCharacter(Guid accountId, string seasonId, string name, CharacterRestrictions restrictions = CharacterRestrictions.None)
+    public async Task<CharacterSummary> CreateCharacter(string seasonId, string name, CharacterRestrictions restrictions = CharacterRestrictions.None)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(accountId);
+        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.CreateCharacterAsync(seasonId, name, restrictions);
     }
 
     /// <summary>
-    /// Check if a cosmetic is unlocked.
+    /// Check if a cosmetic is unlocked for the authenticated user.
     /// </summary>
-    public async Task<bool> HasCosmetic(Guid accountId, string cosmeticId)
+    public async Task<bool> HasCosmetic(string cosmeticId)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(accountId);
+        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.HasCosmeticAsync(cosmeticId);
     }
 
     /// <summary>
-    /// Unlock a cosmetic for an account.
+    /// Unlock a cosmetic for the authenticated user's account.
     /// </summary>
-    public async Task UnlockCosmetic(Guid accountId, string cosmeticId)
+    public async Task UnlockCosmetic(string cosmeticId)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(accountId);
+        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
         await grain.UnlockCosmeticAsync(cosmeticId);
     }
 
     /// <summary>
-    /// Check if an achievement is unlocked.
+    /// Check if an achievement is unlocked for the authenticated user.
     /// </summary>
-    public async Task<bool> HasAchievement(Guid accountId, string achievementId)
+    public async Task<bool> HasAchievement(string achievementId)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(accountId);
+        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.HasAchievementAsync(achievementId);
     }
 
     /// <summary>
-    /// Unlock an achievement for an account.
+    /// Unlock an achievement for the authenticated user's account.
     /// </summary>
-    public async Task UnlockAchievement(Guid accountId, string achievementId)
+    public async Task UnlockAchievement(string achievementId)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(accountId);
+        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
         await grain.UnlockAchievementAsync(achievementId);
     }
 }
+

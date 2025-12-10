@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Events;
 using Titan.Abstractions.Grains;
@@ -7,8 +8,10 @@ namespace Titan.API.Hubs;
 
 /// <summary>
 /// WebSocket hub for season operations.
-/// Provides both CRUD/management operations and real-time notifications.
+/// Read operations available to all authenticated users.
+/// Management operations require Admin role.
 /// </summary>
+[Authorize]
 public class SeasonHub : Hub
 {
     private readonly IClusterClient _clusterClient;
@@ -85,7 +88,9 @@ public class SeasonHub : Hub
 
     /// <summary>
     /// Create a new season. Broadcasts to all season subscribers.
+    /// Requires Admin role.
     /// </summary>
+    [Authorize(Roles = "Admin")]
     public async Task<Season> CreateSeason(
         string seasonId,
         string name,
@@ -119,7 +124,9 @@ public class SeasonHub : Hub
 
     /// <summary>
     /// End a season and trigger migration.
+    /// Requires Admin role.
     /// </summary>
+    [Authorize(Roles = "Admin")]
     public async Task<Season> EndSeason(string seasonId)
     {
         var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
@@ -132,7 +139,9 @@ public class SeasonHub : Hub
 
     /// <summary>
     /// Update a season's status.
+    /// Requires Admin role.
     /// </summary>
+    [Authorize(Roles = "Admin")]
     public async Task<Season> UpdateSeasonStatus(string seasonId, SeasonStatus status)
     {
         var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
@@ -158,7 +167,9 @@ public class SeasonHub : Hub
 
     /// <summary>
     /// Start migration for a season.
+    /// Requires Admin role.
     /// </summary>
+    [Authorize(Roles = "Admin")]
     public async Task<MigrationStatus> StartMigration(string seasonId, string? targetSeasonId = null)
     {
         var grain = _clusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
@@ -176,7 +187,9 @@ public class SeasonHub : Hub
 
     /// <summary>
     /// Cancel an in-progress migration.
+    /// Requires Admin role.
     /// </summary>
+    [Authorize(Roles = "Admin")]
     public async Task<MigrationStatus> CancelMigration(string seasonId)
     {
         var grain = _clusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);

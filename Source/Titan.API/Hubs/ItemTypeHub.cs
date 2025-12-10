@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
@@ -6,8 +7,10 @@ namespace Titan.API.Hubs;
 
 /// <summary>
 /// WebSocket hub for item type registry operations.
-/// Provides both CRUD operations and real-time notifications.
+/// Read operations available to all authenticated users.
+/// Write operations (Create/Update/Delete) require Admin role.
 /// </summary>
+[Authorize]
 public class ItemTypeHub : Hub
 {
     private readonly IClusterClient _clusterClient;
@@ -70,7 +73,9 @@ public class ItemTypeHub : Hub
 
     /// <summary>
     /// Create a new item type. Broadcasts to all subscribed clients.
+    /// Requires Admin role.
     /// </summary>
+    [Authorize(Roles = "Admin")]
     public async Task<ItemTypeDefinition> Create(ItemTypeDefinition definition)
     {
         if (string.IsNullOrWhiteSpace(definition.ItemTypeId))
@@ -95,7 +100,9 @@ public class ItemTypeHub : Hub
 
     /// <summary>
     /// Update an existing item type. Broadcasts to all subscribed clients.
+    /// Requires Admin role.
     /// </summary>
+    [Authorize(Roles = "Admin")]
     public async Task<ItemTypeDefinition> Update(string itemTypeId, ItemTypeDefinition definition)
     {
         if (definition.ItemTypeId != itemTypeId)
@@ -117,7 +124,9 @@ public class ItemTypeHub : Hub
 
     /// <summary>
     /// Delete an item type. Broadcasts to all subscribed clients.
+    /// Requires Admin role.
     /// </summary>
+    [Authorize(Roles = "Admin")]
     public async Task Delete(string itemTypeId)
     {
         var registry = _clusterClient.GetGrain<IItemTypeRegistryGrain>("default");

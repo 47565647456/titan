@@ -37,6 +37,9 @@ if (registrySection.Exists())
 // Clustering is auto-configured by Aspire via Redis
 builder.UseOrleans(silo =>
 {
+    // Enable Orleans transactions for atomic multi-grain operations
+    silo.UseTransactions();
+
     // Memory Streams for trade events (cross-silo pub/sub)
     silo.AddMemoryGrainStorage("PubSubStore");
     silo.AddMemoryStreams(TradeStreamConstants.ProviderName);
@@ -50,11 +53,19 @@ builder.UseOrleans(silo =>
             options.Invariant = "Npgsql";
             options.ConnectionString = connectionString;
         });
+        
+        // Transaction store using ADO.NET
+        silo.AddAdoNetGrainStorage("TransactionStore", options =>
+        {
+            options.Invariant = "Npgsql";
+            options.ConnectionString = connectionString;
+        });
     }
     else
     {
         // Fallback to memory storage for local dev without Aspire
         silo.AddMemoryGrainStorage("OrleansStorage");
+        silo.AddMemoryGrainStorage("TransactionStore");
     }
 });
 

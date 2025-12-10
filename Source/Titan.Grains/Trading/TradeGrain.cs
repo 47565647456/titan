@@ -340,37 +340,30 @@ public class TradeGrain : Grain, ITradeGrain
             var initiatorInv = _grainFactory.GetGrain<IInventoryGrain>(session.InitiatorCharacterId, session.SeasonId);
             var targetInv = _grainFactory.GetGrain<IInventoryGrain>(session.TargetCharacterId, session.SeasonId);
 
-            // Phase 1: Validate all items still exist
+            // Transfer initiator items to target (within transaction)
             foreach (var itemId in session.InitiatorItemIds)
             {
-                if (!await initiatorInv.HasItemAsync(itemId))
+                var item = await initiatorInv.TransferItemOutAsync(itemId);
+                if (item == null)
                     throw new InvalidOperationException($"Initiator item {itemId} no longer available.");
-            }
-            foreach (var itemId in session.TargetItemIds)
-            {
-                if (!await targetInv.HasItemAsync(itemId))
-                    throw new InvalidOperationException($"Target item {itemId} no longer available.");
-            }
+                
+                await targetInv.TransferItemInAsync(item);
 
-            // Phase 2: Execute transfers
-            foreach (var itemId in session.InitiatorItemIds)
-            {
-                var item = await initiatorInv.GetItemAsync(itemId);
-                await initiatorInv.RemoveItemAsync(itemId);
-
-                if (item != null) await targetInv.ReceiveItemAsync(item);
-
+                // Record history (outside transaction, after success)
                 var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
                 await historyGrain.AddEntryAsync("Traded", session.InitiatorCharacterId, session.TargetCharacterId);
             }
 
+            // Transfer target items to initiator (within transaction)
             foreach (var itemId in session.TargetItemIds)
             {
-                var item = await targetInv.GetItemAsync(itemId);
-                await targetInv.RemoveItemAsync(itemId);
+                var item = await targetInv.TransferItemOutAsync(itemId);
+                if (item == null)
+                    throw new InvalidOperationException($"Target item {itemId} no longer available.");
+                
+                await initiatorInv.TransferItemInAsync(item);
 
-                if (item != null) await initiatorInv.ReceiveItemAsync(item);
-
+                // Record history
                 var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
                 await historyGrain.AddEntryAsync("Traded", session.TargetCharacterId, session.InitiatorCharacterId);
             }
@@ -383,6 +376,7 @@ public class TradeGrain : Grain, ITradeGrain
         }
         catch (Exception)
         {
+            // Transaction will automatically rollback all inventory changes
             _state.State.Session = session with { Status = TradeStatus.Failed };
             await PublishEventAsync("TradeFailed");
             throw;

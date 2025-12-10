@@ -1,4 +1,5 @@
 using Orleans;
+using Orleans.Transactions.Abstractions;
 using Titan.Abstractions.Models;
 
 namespace Titan.Abstractions.Grains;
@@ -6,6 +7,7 @@ namespace Titan.Abstractions.Grains;
 /// <summary>
 /// Grain for managing a trade session between two characters.
 /// Key: TradeId (Guid)
+/// Trade execution uses Orleans transactions for atomicity.
 /// </summary>
 public interface ITradeGrain : IGrainWithGuidKey
 {
@@ -38,8 +40,10 @@ public interface ITradeGrain : IGrainWithGuidKey
     Task RemoveItemsAsync(Guid characterId, IEnumerable<Guid> itemIds);
 
     /// <summary>
-    /// Accepts the trade (from one party). When both accept, trade executes.
+    /// Accepts the trade (from one party). When both accept, trade executes atomically.
+    /// Uses Orleans transactions for atomic multi-grain item transfers.
     /// </summary>
+    [Transaction(TransactionOption.Create)]
     Task<TradeStatus> AcceptAsync(Guid characterId);
 
     /// <summary>
@@ -47,3 +51,4 @@ public interface ITradeGrain : IGrainWithGuidKey
     /// </summary>
     Task CancelAsync(Guid characterId);
 }
+

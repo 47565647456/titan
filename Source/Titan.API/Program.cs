@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using Serilog;
 using System.Text;
+using System.Threading.RateLimiting;
 using Titan.Abstractions;
 using Titan.API.Hubs;
 using Titan.API.Services;
@@ -39,16 +41,26 @@ builder.Services.AddSignalR();
 builder.Services.AddOpenApi();
 
 // JWT Authentication for secured hub methods
+// Fail fast in production if key not configured
+if (!builder.Environment.IsDevelopment() && builder.Configuration["Jwt:Key"] == null)
+{
+    throw new InvalidOperationException("Jwt:Key must be configured in production. Set via environment variable or secrets.");
+}
+
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "DevelopmentSecretKeyThatIsAtLeast32BytesLong!";
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Titan";
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = false,
-            ValidateAudience = false,
+            ValidateIssuer = true,
+            ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtIssuer,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
         
@@ -60,8 +72,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
                 
-                // If the request is for a hub, extract the token from query string
-                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hub", StringComparison.OrdinalIgnoreCase))
+                // Match all SignalR hub endpoints
+                var hubPaths = new[] 
+                { 
+                    "/accountHub", "/authHub", "/characterHub", 
+                    "/inventoryHub", "/itemTypeHub", "/seasonHub", "/tradeHub" 
+                };
+                
+                if (!string.IsNullOrEmpty(accessToken) && 
+                    hubPaths.Any(p => path.StartsWithSegments(p, StringComparison.OrdinalIgnoreCase)))
                 {
                     context.Token = accessToken;
                 }
@@ -72,6 +91,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 // Register Auth Services
+builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddSingleton<IAuthService, MockAuthService>(); // Use Mock by default for dev
 builder.Services.AddHttpClient(); // For EOS auth if needed
 
@@ -82,6 +102,38 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<TradeStreamSubscri
 // Register Trade Rules
 builder.Services.AddSingleton<IRule<TradeRequestContext>, SameSeasonRule>();
 builder.Services.AddSingleton<IRule<TradeRequestContext>, SoloSelfFoundRule>();
+
+// CORS configuration for SignalR WebSocket connections
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+            ?? (builder.Environment.IsDevelopment() 
+                ? new[] { "https://localhost:5001", "http://localhost:5000" }
+                : Array.Empty<string>());
+        
+        policy.WithOrigins(allowedOrigins)
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials(); // Required for SignalR
+    });
+});
+
+// Rate limiting to prevent abuse
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.User?.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue("RateLimiting:PermitLimit", 100),
+                Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:WindowMinutes", 1))
+            }));
+});
 
 var app = builder.Build();
 
@@ -96,6 +148,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

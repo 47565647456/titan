@@ -13,6 +13,9 @@ public class TestSiloConfigurator : ISiloConfigurator
     {
         var useDatabase = Environment.GetEnvironmentVariable("USE_DATABASE") == "true";
         
+        // Enable Orleans transactions for atomic multi-grain operations
+        siloBuilder.UseTransactions();
+
         // Configure Trading Options for tests (5-second timeout for expiration tests)
         siloBuilder.Services.Configure<TradingOptions>(options =>
         {
@@ -41,11 +44,18 @@ public class TestSiloConfigurator : ISiloConfigurator
                 options.ConnectionString = Environment.GetEnvironmentVariable("YUGABYTE_CONNECTION") 
                     ?? "Host=localhost;Port=5433;Database=titan;Username=yugabyte;Password=yugabyte";
             });
+            siloBuilder.AddAdoNetGrainStorage("TransactionStore", options =>
+            {
+                options.Invariant = "Npgsql";
+                options.ConnectionString = Environment.GetEnvironmentVariable("YUGABYTE_CONNECTION") 
+                    ?? "Host=localhost;Port=5433;Database=titan;Username=yugabyte;Password=yugabyte";
+            });
         }
         else
         {
             // Use in-memory storage for fast local development
             siloBuilder.AddMemoryGrainStorage("OrleansStorage");
+            siloBuilder.AddMemoryGrainStorage("TransactionStore");
         }
 
         // Register Trade Rules for Testing
