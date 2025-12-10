@@ -30,12 +30,11 @@ builder.Host.UseOrleansClient(client =>
     client.AddMemoryStreams(TradeStreamConstants.ProviderName);
 });
 
-// Add services to the container.
-builder.Services.AddControllers();
+// Add SignalR for WebSocket hubs
 builder.Services.AddSignalR();
 builder.Services.AddOpenApi();
 
-// JWT Authentication for Admin API
+// JWT Authentication for secured hub methods
 var jwtKey = builder.Configuration["Jwt:Key"] ?? "DevelopmentSecretKeyThatIsAtLeast32BytesLong!";
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -47,6 +46,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+        };
+        
+        // Configure JWT for SignalR WebSocket connections
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                
+                // If the request is for a hub, extract the token from query string
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hub", StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 builder.Services.AddAuthorization();
@@ -75,9 +91,17 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
-app.MapControllers();
-app.MapHub<TradeHub>("/tradeHub");
+
+// Map WebSocket Hubs (replacing HTTP controllers)
+app.MapHub<AccountHub>("/accountHub");
+app.MapHub<AuthHub>("/authHub");
+app.MapHub<CharacterHub>("/characterHub");
+app.MapHub<InventoryHub>("/inventoryHub");
 app.MapHub<ItemTypeHub>("/itemTypeHub");
 app.MapHub<SeasonHub>("/seasonHub");
+app.MapHub<TradeHub>("/tradeHub");
+
+// Health check endpoint for ops
+app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Timestamp = DateTimeOffset.UtcNow }));
 
 app.Run();

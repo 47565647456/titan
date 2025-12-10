@@ -78,8 +78,8 @@ See the [Testing Guide](https://titan-docs.nexusbound.xyz/testing) for more deta
 - [ ] **Session/Lobby System** - Game session lifecycle, player slots, ready checks
 
 ### API & Real-time
-- [x] **REST API** - Controllers with JWT authentication
-- [x] **Real-time Events** - SignalR hubs for trades and item type changes
+- [x] **WebSocket API** - SignalR hubs with JWT authentication for all game operations
+- [x] **Real-time Events** - Bidirectional communication via SignalR
 - [ ] **Rate Limiting** - API throttling, abuse prevention
 
 ### Persistence & Operations
