@@ -37,7 +37,14 @@ builder.UseOrleansClient(client =>
 });
 
 // Add SignalR for WebSocket hubs
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    // Enable detailed errors in development/testing for debugging
+    if (builder.Environment.IsDevelopment())
+    {
+        options.EnableDetailedErrors = true;
+    }
+});
 builder.Services.AddOpenApi();
 
 // JWT Authentication for secured hub methods
