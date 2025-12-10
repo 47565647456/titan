@@ -12,8 +12,24 @@ var redis = builder.AddRedis("orleans-clustering")
 // WithInitFiles runs init-orleans-db.sql to create the schema
 var postgres = builder.AddPostgres("postgres")
     .WithPgAdmin()
-    .WithDataVolume("titan-postgres-data")
     .WithInitFiles("../../scripts");
+
+var postgresVolume = builder.Configuration["PostgresVolume"];
+if (string.IsNullOrEmpty(postgresVolume))
+{
+    // Default to persistent volume for local dev
+    postgres.WithDataVolume("titan-postgres-data");
+}
+else if (postgresVolume.Equals("ephemeral", StringComparison.OrdinalIgnoreCase) || 
+         postgresVolume.Equals("none", StringComparison.OrdinalIgnoreCase))
+{
+    // No volume - ephemeral (clean db every time)
+}
+else
+{
+    // Use specified volume name
+    postgres.WithDataVolume(postgresVolume);
+}
 
 var titanDb = postgres.AddDatabase("titan");
 
@@ -54,6 +70,8 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithReference(orleans.AsClient())
     .WithReference(titanDb)
     .WaitFor(identityHost)  // Wait for at least one silo to be running
-    .WithExternalHttpEndpoints();
+    .WithExternalHttpEndpoints()
+    .WithEnvironment("Jwt__Key", "AspireTestingSecretKeyThatIsAtLeast32BytesLong!")
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development");  // Enable detailed errors
 
 builder.Build().Run();

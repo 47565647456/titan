@@ -1,15 +1,28 @@
 # Titan.AppHost.Tests
 
 ## Overview
-**Titan.AppHost.Tests** contains tests specifically for the AppHost orchestration logic.
+Integration tests for the full Aspire-orchestrated environment using `DistributedApplicationTestingBuilder`.
 
-## Role in Global Solution
-**Current Status: Pending Implementation**
-This project is scaffolded to verify that the AppHost is correctly serving dependencies and defining resources, but it currently contains no active tests.
-Porting Distributed Tests to Aspire
-The goal is to move the tests from Titan.Tests (In-Process TestCluster) to Titan.AppHost.Tests (Full Aspire Environment). This ensures our tests run against the actual orchestrated environment used in production.
+## Test Categories
 
-Future tests will include:
-- **Manifest Verification**: Ensuring the distributed application manifest is generated correctly.
-- **Resource Configuration**: Verifying that connection strings and environment variables are being passed as expected.
+| File | Tests | Description |
+|------|-------|-------------|
+| AuthenticationTests | 4 | JWT generation, role claims, connection authorization |
+| AccountTests | 4 | Account CRUD, character creation, IDOR prevention, onboarding flow |
+| AdminTests | 4 | Admin role enforcement for ItemType and Season operations |
+| TradingTests | 3 | Trade flow, atomic transfers, ownership verification |
+| ResourceTests | 2 | API health checks, Orleans cluster health |
+
+## Running Tests
+
+```bash
+# Requires Docker (for PostgreSQL, Redis)
+dotnet test Titan.AppHost.Tests
+```
+
+## Notes
+- Tests start the full AppHost with all Orleans silos, Redis, and PostgreSQL
+- Each test class inherits from `IntegrationTestBase` which handles startup/teardown
+- Use `LoginAsUserAsync()` and `LoginAsAdminAsync()` helpers for authentication
+
 
