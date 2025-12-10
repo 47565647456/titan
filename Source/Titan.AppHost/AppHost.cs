@@ -71,7 +71,7 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithReference(titanDb)
     .WaitFor(identityHost)  // Wait for at least one silo to be running
     .WithExternalHttpEndpoints()
-    .WithEnvironment("Jwt__Key", "AspireTestingSecretKeyThatIsAtLeast32BytesLong!")
+    .WithEnvironment("Jwt__Key", builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is missing in AppHost configuration"))
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development");  // Enable detailed errors
 
 builder.Build().Run();

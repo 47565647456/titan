@@ -17,7 +17,8 @@ builder.AddKeyedRedisClient("orleans-clustering");
 builder.Services.AddSerilog(config => 
 {
     config.WriteTo.Console();
-    config.WriteTo.File("logs/titan-identity-.txt", rollingInterval: RollingInterval.Day);
+    var logPath = builder.Configuration["Logging:FilePath"] ?? "logs/titan-identity-.txt";
+    config.WriteTo.File(logPath, rollingInterval: RollingInterval.Day);
 });
 
 // Configure Item Registry Options

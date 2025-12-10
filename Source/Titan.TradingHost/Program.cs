@@ -16,7 +16,8 @@ builder.AddKeyedRedisClient("orleans-clustering");
 builder.Services.AddSerilog(config => 
 {
     config.WriteTo.Console();
-    config.WriteTo.File("logs/titan-trading-.txt", rollingInterval: RollingInterval.Day);
+    var logPath = builder.Configuration["Logging:FilePath"] ?? "logs/titan-trading-.txt";
+    config.WriteTo.File(logPath, rollingInterval: RollingInterval.Day);
 });
 
 // Configure Trading Options

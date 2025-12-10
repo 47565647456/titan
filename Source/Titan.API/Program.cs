@@ -11,6 +11,8 @@ using Titan.API.Services;
 using Titan.API.Services.Auth;
 using Titan.Abstractions.Rules;
 using Titan.Grains.Trading.Rules;
+using Titan.API.Config;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,7 +27,8 @@ builder.AddKeyedRedisClient("orleans-clustering");
 builder.Host.UseSerilog((context, config) => 
 {
     config.WriteTo.Console();
-    config.WriteTo.File("logs/titan-api-.txt", rollingInterval: RollingInterval.Day);
+    var logPath = context.Configuration["Logging:FilePath"] ?? "logs/titan-api-.txt";
+    config.WriteTo.File(logPath, rollingInterval: RollingInterval.Day);
 });
 
 // Configure Orleans Client
@@ -47,15 +50,29 @@ builder.Services.AddSignalR(options =>
 });
 builder.Services.AddOpenApi();
 
+// Register and Bind Options
+builder.Services.AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<CorsOptions>()
+    .Bind(builder.Configuration.GetSection(CorsOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
+builder.Services.AddOptions<RateLimitingOptions>()
+    .Bind(builder.Configuration.GetSection(RateLimitingOptions.SectionName))
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+
 // JWT Authentication for secured hub methods
 // Fail fast in production if key not configured
-if (!builder.Environment.IsDevelopment() && builder.Configuration["Jwt:Key"] == null)
+var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>();
+if (jwtOptions == null || string.IsNullOrEmpty(jwtOptions.Key))
 {
-    throw new InvalidOperationException("Jwt:Key must be configured in production. Set via environment variable or secrets.");
+    throw new InvalidOperationException("Jwt:Key must be configured.");
 }
-
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "DevelopmentSecretKeyThatIsAtLeast32BytesLong!";
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "Titan";
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -66,9 +83,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtIssuer,
-            ValidAudience = jwtIssuer,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = jwtOptions.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key))
         };
         
         // Configure JWT for SignalR WebSocket connections
@@ -115,12 +132,9 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
-            ?? (builder.Environment.IsDevelopment() 
-                ? new[] { "https://localhost:5001", "http://localhost:5000" }
-                : Array.Empty<string>());
+        var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>() ?? new CorsOptions();
         
-        policy.WithOrigins(allowedOrigins)
+        policy.WithOrigins(corsOptions.AllowedOrigins)
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials(); // Required for SignalR
@@ -135,10 +149,14 @@ builder.Services.AddRateLimiter(options =>
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.User?.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            factory: _ => new FixedWindowRateLimiterOptions
+            factory: _ => 
             {
-                PermitLimit = builder.Configuration.GetValue("RateLimiting:PermitLimit", 100),
-                Window = TimeSpan.FromMinutes(builder.Configuration.GetValue("RateLimiting:WindowMinutes", 1))
+                var rateLimitOptions = builder.Configuration.GetSection(RateLimitingOptions.SectionName).Get<RateLimitingOptions>() ?? new RateLimitingOptions();
+                return new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = rateLimitOptions.PermitLimit,
+                    Window = TimeSpan.FromMinutes(rateLimitOptions.WindowMinutes)
+                };
             }));
 });
 
