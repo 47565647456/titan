@@ -21,21 +21,27 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     
-    # YugabyteDB service container for integration tests
-    services:
-      yugabytedb:
-        image: yugabytedb/yugabyte:2024.2.0.0-b145
-        ports:
-          - 5433:5433
-          - 15433:15433
-        options: >-
-          --health-cmd "bin/ysqlsh -h yugabytedb -U yugabyte -c 'SELECT 1'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-    
     steps:
     - uses: actions/checkout@v4
+    
+    - name: Start YugabyteDB
+      run: |
+        docker run -d --name yugabyte \
+          -p 5433:5433 \
+          -p 15433:15433 \
+          yugabytedb/yugabyte:2024.2.0.0-b145 \
+          bin/yugabyted start --background=false
+        
+        # Wait for YugabyteDB to be ready
+        echo "Waiting for YugabyteDB to start..."
+        for i in {1..30}; do
+          if docker exec yugabyte bin/ysqlsh -h localhost -U yugabyte -c "SELECT 1" 2>/dev/null; then
+            echo "YugabyteDB is ready!"
+            break
+          fi
+          echo "Attempt $i/30..."
+          sleep 2
+        done
     
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
@@ -65,11 +71,8 @@ jobs:
     # Initialize YugabyteDB with Orleans schema
     - name: Init Database
       run: |
-        # Wait for YugabyteDB to be ready
-        sleep 10
-        # Create database and init schema
-        docker exec $(docker ps -q -f ancestor=yugabytedb/yugabyte:2024.2.0.0-b145) bin/ysqlsh -h localhost -U yugabyte -c "CREATE DATABASE titan;"
-        docker exec -i $(docker ps -q -f ancestor=yugabytedb/yugabyte:2024.2.0.0-b145) bin/ysqlsh -h localhost -U yugabyte -d titan < scripts/init-orleans-db.sql
+        docker exec yugabyte bin/ysqlsh -h localhost -U yugabyte -c "CREATE DATABASE titan;"
+        docker exec -i yugabyte bin/ysqlsh -h localhost -U yugabyte -d titan < scripts/init-orleans-db.sql
     
     - name: Test
       run: dotnet test --no-build --verbosity normal
@@ -77,3 +80,7 @@ jobs:
       env:
         USE_DATABASE: "true"
         YUGABYTE_CONNECTION: "Host=localhost;Port=5433;Database=titan;Username=yugabyte;Password=yugabyte"
+    
+    - name: Stop YugabyteDB
+      if: always()
+      run: docker stop yugabyte && docker rm yugabyte
