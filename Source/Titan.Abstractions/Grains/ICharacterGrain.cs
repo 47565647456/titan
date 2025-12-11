@@ -50,4 +50,16 @@ public interface ICharacterGrain : IGrainWithGuidCompoundKey
     /// Creates a copy in the target season and marks this one as migrated.
     /// </summary>
     Task<Character> MigrateToSeasonAsync(string targetSeasonId);
+
+    /// <summary>
+    /// Gets the character's event history (created, died, migrated, etc.).
+    /// Events are returned in chronological order.
+    /// </summary>
+    Task<IReadOnlyList<CharacterHistoryEntry>> GetHistoryAsync();
+
+    /// <summary>
+    /// Adds a custom event to the character's history.
+    /// Use CharacterEventTypes for standard events, or any custom string.
+    /// </summary>
+    Task AddHistoryEntryAsync(string eventType, string description, Dictionary<string, object>? data = null);
 }

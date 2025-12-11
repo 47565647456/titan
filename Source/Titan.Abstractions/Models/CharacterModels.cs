@@ -109,3 +109,60 @@ public record ChallengeProgress
     [Id(2)] public bool IsCompleted { get; init; }
     [Id(3)] public DateTimeOffset? CompletedAt { get; init; }
 }
+
+/// <summary>
+/// Common event types for character history.
+/// These are string constants (not enum) to allow extension without breaking serialization.
+/// </summary>
+public static class CharacterEventTypes
+{
+    /// <summary>Character was created.</summary>
+    public const string Created = "Created";
+    
+    /// <summary>Hardcore character died.</summary>
+    public const string Died = "Died";
+    
+    /// <summary>Character migrated to another season.</summary>
+    public const string Migrated = "Migrated";
+    
+    /// <summary>Character restrictions changed (e.g., HC removed on death).</summary>
+    public const string RestrictionsChanged = "RestrictionsChanged";
+    
+    /// <summary>The character's season ended.</summary>
+    public const string SeasonEnded = "SeasonEnded";
+    
+    /// <summary>Character leveled up.</summary>
+    public const string LevelUp = "LevelUp";
+    
+    /// <summary>Character unlocked an achievement.</summary>
+    public const string AchievementUnlocked = "AchievementUnlocked";
+}
+
+/// <summary>
+/// An immutable record of a significant event in a character's life.
+/// Provides an audit trail of character progression and major events.
+/// </summary>
+[GenerateSerializer]
+public record CharacterHistoryEntry
+{
+    /// <summary>
+    /// When the event occurred.
+    /// </summary>
+    [Id(0)] public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// Type of event (see CharacterEventTypes for common types).
+    /// Any string is valid, allowing for extensibility.
+    /// </summary>
+    [Id(1)] public required string EventType { get; init; }
+
+    /// <summary>
+    /// Human-readable description of the event.
+    /// </summary>
+    [Id(2)] public required string Description { get; init; }
+
+    /// <summary>
+    /// Optional structured data about the event (e.g., source season, previous restrictions).
+    /// </summary>
+    [Id(3)] public Dictionary<string, object>? Data { get; init; }
+}

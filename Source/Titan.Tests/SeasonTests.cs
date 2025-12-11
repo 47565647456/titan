@@ -175,4 +175,175 @@ public class SeasonTests : IAsyncLifetime
         Assert.True(character.Restrictions.HasFlag(CharacterRestrictions.Hardcore));
         Assert.True(character.Restrictions.HasFlag(CharacterRestrictions.SoloSelfFound));
     }
+
+    #region Season Migration Tests
+
+    [Fact]
+    public async Task TemporarySeason_EndSeason_ShouldUpdateStatus()
+    {
+        // Arrange
+        var registry = _cluster.GrainFactory.GetGrain<ISeasonRegistryGrain>("default");
+        var tempSeasonId = $"test-end-{Guid.NewGuid():N}";
+        await registry.CreateSeasonAsync(new Season
+        {
+            SeasonId = tempSeasonId,
+            Name = "Test End Season",
+            Type = SeasonType.Temporary,
+            Status = SeasonStatus.Active,
+            StartDate = DateTimeOffset.UtcNow,
+            MigrationTargetId = "standard"
+        });
+
+        // Act
+        var endedSeason = await registry.EndSeasonAsync(tempSeasonId);
+
+        // Assert
+        Assert.Equal(SeasonStatus.Ended, endedSeason.Status);
+        Assert.NotNull(endedSeason.EndDate);
+    }
+
+    [Fact]
+    public async Task PermanentSeason_EndSeason_ShouldThrow()
+    {
+        // Arrange
+        var registry = _cluster.GrainFactory.GetGrain<ISeasonRegistryGrain>("default");
+
+        // Act & Assert - Cannot end permanent season
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            registry.EndSeasonAsync("standard"));
+
+        Assert.Contains("permanent", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TemporarySeason_Migration_CharacterAppearsInStandard()
+    {
+        // Arrange - Create a temporary season
+        var registry = _cluster.GrainFactory.GetGrain<ISeasonRegistryGrain>("default");
+        var tempSeasonId = $"test-migrate-{Guid.NewGuid():N}";
+        await registry.CreateSeasonAsync(new Season
+        {
+            SeasonId = tempSeasonId,
+            Name = "Test Migration Season",
+            Type = SeasonType.Temporary,
+            Status = SeasonStatus.Active,
+            StartDate = DateTimeOffset.UtcNow,
+            MigrationTargetId = "standard"
+        });
+
+        var charId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+
+        var charGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, tempSeasonId);
+        await charGrain.InitializeAsync(accountId, "MigrateMe", CharacterRestrictions.None);
+
+        // Act - Migrate character to standard
+        await charGrain.MigrateToSeasonAsync("standard");
+
+        // Assert - Character exists in standard season
+        var standardCharGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, "standard");
+        var standardChar = await standardCharGrain.GetCharacterAsync();
+        
+        Assert.Equal("MigrateMe", standardChar.Name);
+        Assert.Equal("standard", standardChar.SeasonId);
+    }
+
+    [Fact]
+    public async Task TemporarySeason_Migration_ShouldCopyStats()
+    {
+        // Arrange
+        var registry = _cluster.GrainFactory.GetGrain<ISeasonRegistryGrain>("default");
+        var tempSeasonId = $"test-stats-{Guid.NewGuid():N}";
+        await registry.CreateSeasonAsync(new Season
+        {
+            SeasonId = tempSeasonId,
+            Name = "Test Stats Season",
+            Type = SeasonType.Temporary,
+            Status = SeasonStatus.Active,
+            StartDate = DateTimeOffset.UtcNow,
+            MigrationTargetId = "standard"
+        });
+
+        var charId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+
+        var charGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, tempSeasonId);
+        await charGrain.InitializeAsync(accountId, "StatsPlayer", CharacterRestrictions.None);
+        await charGrain.SetStatAsync("strength", 50);
+        await charGrain.SetStatAsync("dexterity", 30);
+
+        // Act - Migrate character
+        await charGrain.MigrateToSeasonAsync("standard");
+
+        // Assert - Stats are preserved in standard
+        var standardCharGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, "standard");
+        var standardChar = await standardCharGrain.GetCharacterAsync();
+        
+        Assert.Equal(50, standardChar.Stats["strength"]);
+        Assert.Equal(30, standardChar.Stats["dexterity"]);
+    }
+
+    [Fact]
+    public async Task HardcoreDeath_RemovesHardcoreFlag()
+    {
+        // Arrange - Create HC character in temp season
+        var registry = _cluster.GrainFactory.GetGrain<ISeasonRegistryGrain>("default");
+        var tempSeasonId = $"test-hc-flag-{Guid.NewGuid():N}";
+        await registry.CreateSeasonAsync(new Season
+        {
+            SeasonId = tempSeasonId,
+            Name = "Test HC Flag Season",
+            Type = SeasonType.Temporary,
+            Status = SeasonStatus.Active,
+            StartDate = DateTimeOffset.UtcNow,
+            MigrationTargetId = "standard"
+        });
+
+        var charId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+
+        var charGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, tempSeasonId);
+        await charGrain.InitializeAsync(accountId, "HCFlagTest", CharacterRestrictions.Hardcore);
+
+        // Act - HC character dies (triggers migration)
+        await charGrain.DieAsync();
+
+        // Assert - Character in standard no longer has HC flag
+        var standardCharGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, "standard");
+        var standardChar = await standardCharGrain.GetCharacterAsync();
+        
+        Assert.False(standardChar.Restrictions.HasFlag(CharacterRestrictions.Hardcore));
+    }
+
+    [Fact]
+    public async Task Migration_CannotMigrateAlreadyMigrated()
+    {
+        // Arrange - Create and migrate a character
+        var registry = _cluster.GrainFactory.GetGrain<ISeasonRegistryGrain>("default");
+        var tempSeasonId = $"test-double-migrate-{Guid.NewGuid():N}";
+        await registry.CreateSeasonAsync(new Season
+        {
+            SeasonId = tempSeasonId,
+            Name = "Test Double Migrate",
+            Type = SeasonType.Temporary,
+            Status = SeasonStatus.Active,
+            StartDate = DateTimeOffset.UtcNow,
+            MigrationTargetId = "standard"
+        });
+
+        var charId = Guid.NewGuid();
+        var accountId = Guid.NewGuid();
+
+        var charGrain = _cluster.GrainFactory.GetGrain<ICharacterGrain>(charId, tempSeasonId);
+        await charGrain.InitializeAsync(accountId, "DoubleMigrateTest", CharacterRestrictions.None);
+        await charGrain.MigrateToSeasonAsync("standard");
+
+        // Act & Assert - Second migration should throw
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            charGrain.MigrateToSeasonAsync("standard"));
+        
+        Assert.Contains("already been migrated", ex.Message);
+    }
+
+    #endregion
 }

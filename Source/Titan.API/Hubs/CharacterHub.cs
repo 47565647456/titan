@@ -104,6 +104,18 @@ public class CharacterHub : Hub
         var character = await grain.DieAsync();
         return new DieResult(character, character.IsMigrated);
     }
+
+    /// <summary>
+    /// Get character history (verifies ownership).
+    /// Returns chronological list of significant events (created, died, migrated, etc.).
+    /// </summary>
+    public async Task<IReadOnlyList<CharacterHistoryEntry>> GetHistory(Guid characterId, string seasonId)
+    {
+        await VerifyCharacterOwnershipAsync(characterId);
+        
+        var grain = _clusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
+        return await grain.GetHistoryAsync();
+    }
 }
 
 public record DieResult(Character Character, bool Migrated);

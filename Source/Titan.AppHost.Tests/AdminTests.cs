@@ -58,7 +58,8 @@ public class AdminTests : IntegrationTestBase
             DateTimeOffset.UtcNow.AddDays(7),
             SeasonStatus.Active,
             "standard",
-            (Dictionary<string, object>?)null);
+            (Dictionary<string, object>?)null,
+            false); // isVoid
 
         // Assert
         Assert.NotNull(created);
@@ -108,7 +109,8 @@ public class AdminTests : IntegrationTestBase
                 DateTimeOffset.UtcNow.AddDays(1),
                 SeasonStatus.Upcoming,
                 "standard",
-                (Dictionary<string, object>?)null));
+                (Dictionary<string, object>?)null,
+                false)); // isVoid
         
         await hub.DisposeAsync();
     }

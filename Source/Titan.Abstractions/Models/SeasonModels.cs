@@ -70,6 +70,12 @@ public record Season
     /// Optional season-specific modifiers (e.g., increased difficulty, special rules).
     /// </summary>
     [Id(7)] public Dictionary<string, object>? Modifiers { get; init; }
+
+    /// <summary>
+    /// Whether this is a Void League. Void league characters and items do NOT migrate
+    /// to Standard when the season ends or on Hardcore death.
+    /// </summary>
+    [Id(8)] public bool IsVoid { get; init; }
 }
 
 /// <summary>

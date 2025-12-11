@@ -65,6 +65,10 @@ public class SeasonMigrationGrain : Grain, ISeasonMigrationGrain
         if (season.Status != SeasonStatus.Ended && season.Status != SeasonStatus.Migrating)
             throw new InvalidOperationException($"Season '{SeasonId}' must be ended before migration. Current status: {season.Status}");
 
+        // Void leagues do not migrate - characters and items are not preserved
+        if (season.IsVoid)
+            throw new InvalidOperationException($"Cannot migrate Void League '{SeasonId}'. Void league characters and items are not preserved.");
+
         // Update season status to migrating
         await registry.UpdateSeasonStatusAsync(SeasonId, SeasonStatus.Migrating);
 

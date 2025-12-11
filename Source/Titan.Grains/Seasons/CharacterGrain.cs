@@ -8,6 +8,7 @@ public class CharacterGrainState
 {
     public Character? Character { get; set; }
     public List<ChallengeProgress> ChallengeProgress { get; set; } = new();
+    public List<CharacterHistoryEntry> History { get; set; } = new();
 }
 
 /// <summary>
@@ -57,6 +58,19 @@ public class CharacterGrain : Grain, ICharacterGrain
         };
 
         _state.State.Character = character;
+        
+        // Record creation in history
+        _state.State.History.Add(new CharacterHistoryEntry
+        {
+            EventType = CharacterEventTypes.Created,
+            Description = $"Character '{name}' created in season '{GetSeasonId()}'",
+            Data = new Dictionary<string, object>
+            {
+                ["seasonId"] = GetSeasonId(),
+                ["restrictions"] = restrictions.ToString()
+            }
+        });
+        
         await _state.WriteStateAsync();
 
         return character;
@@ -149,6 +163,19 @@ public class CharacterGrain : Grain, ICharacterGrain
 
         // Mark as dead
         _state.State.Character = character with { IsDead = true };
+        
+        // Record death in history
+        _state.State.History.Add(new CharacterHistoryEntry
+        {
+            EventType = CharacterEventTypes.Died,
+            Description = $"Hardcore character '{character.Name}' died in season '{character.SeasonId}'",
+            Data = new Dictionary<string, object>
+            {
+                ["seasonId"] = character.SeasonId,
+                ["level"] = character.Level
+            }
+        });
+        
         await _state.WriteStateAsync();
 
         // Update account summary
@@ -160,6 +187,12 @@ public class CharacterGrain : Grain, ICharacterGrain
 
         if (season != null && season.Type == SeasonType.Temporary)
         {
+            // Void leagues do not migrate on death - character stays dead in the void season
+            if (season.IsVoid)
+            {
+                return _state.State.Character;
+            }
+
             // Migrate to permanent standard season
             await MigrateToSeasonAsync("standard");
         }
@@ -200,6 +233,35 @@ public class CharacterGrain : Grain, ICharacterGrain
             IsMigrated = true,
             OriginalSeasonId = character.SeasonId
         };
+        
+        // Record migration in history
+        _state.State.History.Add(new CharacterHistoryEntry
+        {
+            EventType = CharacterEventTypes.Migrated,
+            Description = $"Character migrated from '{character.SeasonId}' to '{targetSeasonId}'",
+            Data = new Dictionary<string, object>
+            {
+                ["sourceSeasonId"] = character.SeasonId,
+                ["targetSeasonId"] = targetSeasonId
+            }
+        });
+        
+        // Record restriction change if applicable
+        if (newRestrictions != character.Restrictions)
+        {
+            _state.State.History.Add(new CharacterHistoryEntry
+            {
+                EventType = CharacterEventTypes.RestrictionsChanged,
+                Description = $"Restrictions changed from '{character.Restrictions}' to '{newRestrictions}'",
+                Data = new Dictionary<string, object>
+                {
+                    ["previousRestrictions"] = character.Restrictions.ToString(),
+                    ["newRestrictions"] = newRestrictions.ToString(),
+                    ["reason"] = "Migration after death"
+                }
+            });
+        }
+        
         await _state.WriteStateAsync();
 
         // Update account with new character in target season
@@ -233,4 +295,29 @@ public class CharacterGrain : Grain, ICharacterGrain
             CreatedAt = character.CreatedAt
         });
     }
+
+    #region History
+
+    public Task<IReadOnlyList<CharacterHistoryEntry>> GetHistoryAsync()
+    {
+        return Task.FromResult<IReadOnlyList<CharacterHistoryEntry>>(
+            _state.State.History.OrderBy(h => h.Timestamp).ToList());
+    }
+
+    public async Task AddHistoryEntryAsync(string eventType, string description, Dictionary<string, object>? data = null)
+    {
+        if (_state.State.Character == null)
+            throw new InvalidOperationException("Character not initialized.");
+
+        _state.State.History.Add(new CharacterHistoryEntry
+        {
+            EventType = eventType,
+            Description = description,
+            Data = data
+        });
+
+        await _state.WriteStateAsync();
+    }
+
+    #endregion
 }
