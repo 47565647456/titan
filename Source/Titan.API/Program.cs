@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
-using Serilog;
 using System.Text;
 using System.Threading.RateLimiting;
 using Titan.Abstractions;
@@ -16,6 +15,9 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Validate configuration early (fails fast if critical config is missing)
+builder.ValidateTitanConfiguration(requireJwtKey: true, requireEosInProduction: true);
+
 // Add Aspire ServiceDefaults (OpenTelemetry, Health Checks, Service Discovery)
 builder.AddServiceDefaults();
 
@@ -23,13 +25,23 @@ builder.AddServiceDefaults();
 // Key must match Redis resource name from AppHost's AddRedis()
 builder.AddKeyedRedisClient("orleans-clustering");
 
-// Configure Serilog
-builder.Host.UseSerilog((context, config) => 
+// Configure Sentry SDK for ASP.NET Core (only if DSN is configured)
+var sentryDsn = builder.Configuration["Sentry:Dsn"];
+if (!string.IsNullOrEmpty(sentryDsn))
 {
-    config.WriteTo.Console();
-    var logPath = context.Configuration["Logging:FilePath"] ?? "logs/titan-api-.txt";
-    config.WriteTo.File(logPath, rollingInterval: RollingInterval.Day);
-});
+    builder.WebHost.UseSentry(options =>
+    {
+        options.Dsn = sentryDsn;
+        options.Environment = builder.Configuration["Sentry:Environment"] 
+            ?? builder.Environment.EnvironmentName;
+        options.TracesSampleRate = builder.Configuration.GetValue("Sentry:TracesSampleRate", 0.1);
+        options.Debug = builder.Configuration.GetValue("Sentry:Debug", false);
+        options.SendDefaultPii = false;
+    });
+}
+
+// Configure Serilog with file logging (dev) and Sentry sink (production)
+builder.AddTitanLogging("api");
 
 // Configure Orleans Client
 // Clustering is auto-configured by Aspire via Redis
@@ -65,6 +77,16 @@ builder.Services.AddOptions<RateLimitingOptions>()
     .Bind(builder.Configuration.GetSection(RateLimitingOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
+
+// EOS Options (only validate in production or when EOS is configured)
+var eosSection = builder.Configuration.GetSection(EosOptions.SectionName);
+if (eosSection.Exists() && !string.IsNullOrEmpty(eosSection["ClientId"]))
+{
+    builder.Services.AddOptions<EosOptions>()
+        .Bind(eosSection)
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
+}
 
 // JWT Authentication for secured hub methods
 // Fail fast in production if key not configured
@@ -116,8 +138,20 @@ builder.Services.AddAuthorization();
 
 // Register Auth Services
 builder.Services.AddSingleton<ITokenService, TokenService>();
-builder.Services.AddSingleton<IAuthService, MockAuthService>(); // Use Mock by default for dev
-builder.Services.AddHttpClient(); // For EOS auth if needed
+builder.Services.AddHttpClient<EosConnectService>();
+
+// Register auth providers as keyed services
+// EOS is always registered (will fail at runtime if options missing in production)
+builder.Services.AddKeyedSingleton<IAuthService, EosConnectService>("EOS");
+
+// Mock auth only in development
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddKeyedSingleton<IAuthService, MockAuthService>("Mock");
+}
+
+// Auth service factory for provider selection
+builder.Services.AddSingleton<IAuthServiceFactory, AuthServiceFactory>();
 
 // Register Trade Stream Subscriber (singleton so it's shared across hubs)
 builder.Services.AddSingleton<TradeStreamSubscriber>();

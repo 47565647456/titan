@@ -1,32 +1,32 @@
 # Titan.AppHost
 
-## Overview
-**Titan.AppHost** is the orchestration entry point for the Titan solution, built using **.NET Aspire**. It is responsible for defining the distributed application model, configuring infrastructure resources, and managing the startup lifecycle of all services.
+The **Aspire** Orchestrator for the Titan Backend. This project is the entry point for running the entire distributed system locally.
 
-## Role in Global Solution
-This project is the "glue" that holds the local development environment together. Instead of manually running docker containers and multiple IDE instances, running this project launches the entire stack. It automatically handles service discovery, connection string injection, and environment configuration.
+## Responsibilities
+- **Orchestration**: Starts and manages all services (API, IdentityHost, InventoryHost, TradingHost).
+- **Service Discovery**: Injects connection strings and endpoints into child projects.
+- **Infrastructure**: Provisions Docker containers for Redis and PostgreSQL.
 
-## Key Responsibilities
-- **Resource Orchestration**: Defines and runs dependencies like Redis (for Orleans clustering/pub-sub) and PostgreSQL (for data persistence).
-- **Service Management**: Launches the `Titan.API` and the various Orleans Silo projects (`Titan.IdentityHost`, `Titan.InventoryHost`, etc.).
-- **Distributed Simulation**: Configures **2 Replicas** for each Silo by default to simulate a real-world distributed cluster on your local machine, allowing you to catch concurrency/clustering issues early.
-- **Configuration Injection**: Automatically passes connection strings and service discovery endpoints to the running services.
-- **Observability**: Hosts the Aspire Dashboard, providing a unified view of logs, metrics, and distributed traces across all projects.
+## Resources
 
-## Configuration
-The AppHost orchestrates configuration for child projects but also requires its own secrets for valid injection.
+### Databases
+- **PostgreSQL (`titan-db`)**: 
+  - Persists generic Orleans Grain state.
+  - Initialized with `init-orleans-db.sql`.
+  - **Password**: Controlled via `postgres-password` parameter.
+  - **Persistence**: Uses a Docker volume `titan-postgres-dev` by default.
 
-### Required Secrets
-| Variable | Description |
-|----------|-------------|
-| `Jwt__Key` | **Critical**: The secret key injected into `Titan.API` for token validation. In Development, a default key is used. For production simulation, set this environment variable before running. |
+### Caching / Clustering
+- **Redis (`orleans-clustering`)**: 
+  - Used by Orleans for Silo membership (Clustering).
+  - Includes RedisInsight for inspection.
 
-### Environment Variables
-You can control the orchestration behavior:
-- `PostgresVolume`: Name of the docker volume for persistent data (default: `titan-postgres-data`). Set to `ephemeral` or `none` for a clean DB on start.
+## Configuration Parameters
 
-## Usage
-To run the full Titan backend solution locally:
-1. Ensure Docker Desktop is running.
-2. Set `Titan.AppHost` as the startup project in Visual Studio or Rider.
-3. Run the project.
+| Parameter | Description | Default (Dev) |
+|-----------|-------------|---------------|
+| `postgres-password` | Password for the Postgres container | `TitanDevelopmentPassword123!` |
+| `PostgresVolume` | Docker volume name. Set to `ephemeral` to wipe DB on restart. | `titan-postgres-dev` |
+
+## Running the Project
+Set this project as the **Startup Project** in Visual Studio or run `dotnet run` to launch the Aspire Dashboard.

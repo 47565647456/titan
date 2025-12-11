@@ -1,17 +1,34 @@
 # Titan.Abstractions
 
-## Overview
-**Titan.Abstractions** is the core shared library for the Titan solution. It defines the contracts, data structures, and common types used across both the API gateway and the backend Orleans Silos.
-
-## Role in Global Solution
-This project decouples the interface/contract from the implementation. Both `Titan.API` (the client) and `Titan.Grains` (the implementation) reference this project. This allows the API to call methods on Grains without needing a reference to the actual logic, facilitating a clean separation of concerns and enabling the distributed actor model.
+This project contains the shared contracts, interfaces, and models used throughout the Titan solution. It serves as the common language between the API, Grains, and Client applications.
 
 ## Key Components
-- **Grain Interfaces**: Defines the `IGrain` interfaces (e.g., `IInventoryGrain`, `ITradeGrain`) that specify the methods available for remote invocation.
-- **Models & DTOs**: Contains data transfer objects and models used for passing data between the client, API, and grains.
-- **Configuration Models**: Defines strongly-typed options like `ItemRegistryOptions` (Section: "ItemRegistry") and `TradingOptions` (Section: "Trading") used to configure behavior via `appsettings.json`.
-- **Constants**: Shared constants for stream providers, configuration keys, and other system-wide values.
-- **Rules**: Defines rule engine interfaces (e.g., `IRule<T>`) used for validation logic shared across layers.
 
-## Dependencies
-This project is designed to have minimal dependencies to ensure it remains lightweight and portable across different parts of the stack.
+### Grain Interfaces
+Defines the public API for all Orleans Grains.
+- `IUserIdentityGrain`: User authentication and identity management.
+- `IInventoryGrain`: Item storage and management.
+- `ITradeGrain`: Trade session logic.
+- `ISocialGrain`: Friend lists and social graph.
+- `IItemTypeRegistryGrain`: Metadata for game items.
+
+### Models
+Shared data transfer objects (records) used in Grain method signatures.
+- `inventory/*`: Item items, stacks, and transfer models.
+- `trading/*`: Trade status, offers, and session models.
+
+### Configuration Options
+Configuration classes mapped to `appsettings.json` sections.
+
+#### ItemRegistryOptions
+Configuration for the Item Type Registry.
+- **SectionName**: `"ItemRegistry"`
+- `SeedFilePath`: Path to JSON file for seeding item types.
+- `AllowUnknownItemTypes`: (Boolean) If true, allows items with unknown Types to be created (useful for dev).
+
+#### TradingOptions
+Configuration for the Trading System.
+- **SectionName**: `"Trading"`
+- `TradeTimeout`: Duration before a pending trade expires (default: 15m).
+- `ExpirationCheckInterval`: How often to check for expired trades.
+- `MaxItemsPerUser`: Cap on items per trade.

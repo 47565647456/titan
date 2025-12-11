@@ -1,28 +1,16 @@
 # Titan.AppHost.Tests
 
-## Overview
-Integration tests for the full Aspire-orchestrated environment using `DistributedApplicationTestingBuilder`.
+End-to-End Integration tests for the full Titan System.
 
-## Test Categories
+## Test Strategy
+These tests use `Aspire.Hosting.Testing` to launch the **entire application stack** (AppHost, API, Silos, Redis, Postgres) as a real running environment.
 
-| File | Tests | Description |
-|------|-------|-------------|
-| AuthenticationTests | 4 | JWT generation, role claims, connection authorization |
-| AccountTests | 4 | Account CRUD, character creation, IDOR prevention, onboarding flow |
-| AdminTests | 4 | Admin role enforcement for ItemType and Season operations |
-| TradingTests | 3 | Trade flow, atomic transfers, ownership verification |
-| ResourceTests | 2 | API health checks, Orleans cluster health |
+### Features Tested
+- **Authentication**: Verifies JWT generation, Admin roles, and SignalR connection security (`AuthenticationTests.cs`).
+- **End-to-End Flows**: Tests that require the full HTTP/Socket API and coordination between multiple services.
+- **Infrastructure**: Verifies that containers spin up and connect correctly.
 
 ## Running Tests
-
-```bash
-# Requires Docker (for PostgreSQL, Redis)
-dotnet test Titan.AppHost.Tests
-```
-
-## Notes
-- Tests start the full AppHost with all Orleans silos, Redis, and PostgreSQL
-- Each test class inherits from `IntegrationTestBase` which handles startup/teardown
-- Use `LoginAsUserAsync()` and `LoginAsAdminAsync()` helpers for authentication
-
-
+These tests are slower than unit tests as they require spinning up Docker containers and multiple .NET processes.
+- Ensure Docker Desktop is running.
+- Run via `dotnet test`.

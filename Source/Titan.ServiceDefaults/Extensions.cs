@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
@@ -7,6 +8,8 @@ using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using Serilog;
+using Sentry.Serilog;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -40,6 +43,138 @@ public static class Extensions
         // {
         //     options.AllowedSchemes = ["https"];
         // });
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Configures Serilog with console output, optional file logging (development only),
+    /// and optional Sentry integration (when DSN is configured).
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="hostName">Name of the host for log file naming (e.g., "api", "identity-host").</param>
+    public static TBuilder AddTitanLogging<TBuilder>(this TBuilder builder, string hostName) where TBuilder : IHostApplicationBuilder
+    {
+        builder.Services.AddSerilog(config =>
+        {
+            config.WriteTo.Console();
+
+            // File logging for development only
+            if (builder.Environment.IsDevelopment())
+            {
+                var logPath = builder.Configuration["Logging:FilePath"] ?? $"logs/titan-{hostName}-.txt";
+                config.WriteTo.File(logPath, rollingInterval: Serilog.RollingInterval.Day);
+            }
+
+            // Sentry sink for error-level events (when configured)
+            var sentryDsn = builder.Configuration["Sentry:Dsn"];
+            if (!string.IsNullOrEmpty(sentryDsn))
+            {
+                config.WriteTo.Sentry(o =>
+                {
+                    o.Dsn = sentryDsn;
+                    o.Environment = builder.Configuration["Sentry:Environment"] ?? builder.Environment.EnvironmentName;
+                    
+                    if (double.TryParse(builder.Configuration["Sentry:TracesSampleRate"], out var rate))
+                    {
+                        o.TracesSampleRate = rate;
+                    }
+                    
+                    o.Debug = builder.Configuration.GetValue<bool>("Sentry:Debug");
+                    o.MinimumBreadcrumbLevel = Serilog.Events.LogEventLevel.Information;
+                    o.MinimumEventLevel = Serilog.Events.LogEventLevel.Error;
+                });
+            }
+        });
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Validates critical configuration at startup. Throws if required config is missing,
+    /// logs warnings for recommended config. Captures validation errors to Sentry if configured.
+    /// </summary>
+    /// <param name="builder">The host application builder.</param>
+    /// <param name="requireJwtKey">If true, requires Jwt:Key to be configured.</param>
+    /// <param name="requireEosInProduction">If true, requires Eos:ClientId in non-development.</param>
+    public static TBuilder ValidateTitanConfiguration<TBuilder>(
+        this TBuilder builder,
+        bool requireJwtKey = false,
+        bool requireEosInProduction = false) where TBuilder : IHostApplicationBuilder
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+        var config = builder.Configuration;
+        
+        // Get environment from env var (Aspire sets this) or fallback to IHostEnvironment
+        // We check env var directly because IHostEnvironment is resolved at CreateBuilder() time,
+        // before Aspire injects environment variables via launch profiles
+        var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") 
+            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
+            ?? builder.Environment.EnvironmentName;
+        var isDevelopment = string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase);
+
+        // JWT Key validation (for API only)
+        if (requireJwtKey && string.IsNullOrEmpty(config["Jwt:Key"]))
+        {
+            errors.Add("Jwt:Key is not configured. Set via environment variable: Jwt__Key");
+        }
+
+        // Production-only validations
+        if (!isDevelopment)
+        {
+            // EOS ClientId (for API only)
+            if (requireEosInProduction && string.IsNullOrEmpty(config["Eos:ClientId"]))
+            {
+                errors.Add("Eos:ClientId is required in production. Set via environment variable: Eos__ClientId");
+            }
+
+            // Sentry DSN recommended for all hosts
+            if (string.IsNullOrEmpty(config["Sentry:Dsn"]))
+            {
+                warnings.Add("Sentry:Dsn is not configured. Errors won't be tracked. Set via: Sentry__Dsn");
+            }
+        }
+
+        // Log warnings first
+        foreach (var warning in warnings)
+        {
+            Console.WriteLine($"⚠️  WARNING: {warning}");
+        }
+
+        // Throw if there are errors
+        if (errors.Count > 0)
+        {
+            var message = "Configuration validation failed:\n" +
+                string.Join("\n", errors.Select(e => $"  ❌ {e}"));
+            var exception = new InvalidOperationException(message);
+            
+            // Capture to Sentry if DSN is configured (so we're alerted in production)
+            var sentryDsn = config["Sentry:Dsn"];
+            if (!string.IsNullOrEmpty(sentryDsn))
+            {
+                try
+                {
+                    // Initialize Sentry temporarily just to capture this error
+                    using (SentrySdk.Init(o =>
+                    {
+                        o.Dsn = sentryDsn;
+                        o.Environment = config["Sentry:Environment"] ?? environmentName;
+                    }))
+                    {
+                        SentrySdk.CaptureException(exception);
+                        // Flush to ensure the event is sent before the app crashes
+                        SentrySdk.FlushAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+                    }
+                }
+                catch
+                {
+                    // Don't let Sentry errors mask the config error
+                }
+            }
+            
+            throw exception;
+        }
 
         return builder;
     }

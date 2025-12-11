@@ -12,27 +12,50 @@ namespace Titan.API.Hubs;
 /// </summary>
 public class AuthHub : Hub
 {
-    private readonly IAuthService _authService;
+    private readonly IAuthServiceFactory _authServiceFactory;
     private readonly IClusterClient _clusterClient;
     private readonly ITokenService _tokenService;
+    private readonly ILogger<AuthHub> _logger;
 
-    public AuthHub(IAuthService authService, IClusterClient clusterClient, ITokenService tokenService)
+    public AuthHub(
+        IAuthServiceFactory authServiceFactory, 
+        IClusterClient clusterClient, 
+        ITokenService tokenService,
+        ILogger<AuthHub> logger)
     {
-        _authService = authService;
+        _authServiceFactory = authServiceFactory;
         _clusterClient = clusterClient;
         _tokenService = tokenService;
+        _logger = logger;
     }
 
     /// <summary>
     /// Authenticate with a provider token. Returns user info and JWT if valid.
-    /// For Mock auth, use format: "mock:{guid}" for regular user, "mock:admin:{guid}" for admin.
+    /// 
+    /// For EOS: Send the ID Token received from EOS Connect SDK.
+    /// For Mock (dev only): Use format "mock:{guid}" or "mock:admin:{guid}".
     /// </summary>
-    public async Task<LoginResult> Login(string token)
+    /// <param name="token">The authentication token from the provider.</param>
+    /// <param name="provider">The provider name. Default: "EOS". Use "Mock" for development.</param>
+    public async Task<LoginResult> Login(string token, string provider = "EOS")
     {
-        var result = await _authService.ValidateTokenAsync(token);
+        _logger.LogInformation("Login attempt via provider: {Provider}", provider);
+
+        // Validate provider exists
+        if (!_authServiceFactory.HasProvider(provider))
+        {
+            var available = string.Join(", ", _authServiceFactory.GetProviderNames());
+            return new LoginResult(false, null, null, null, null, 
+                $"Unknown provider '{provider}'. Available: {available}");
+        }
+
+        var authService = _authServiceFactory.GetService(provider);
+        var result = await authService.ValidateTokenAsync(token);
         
         if (!result.Success)
         {
+            _logger.LogWarning("Login failed for provider {Provider}: {Error}", 
+                provider, result.ErrorMessage);
             return new LoginResult(false, null, null, null, null, result.ErrorMessage);
         }
 
@@ -45,7 +68,8 @@ public class AuthHub : Hub
         var roles = new List<string> { "User" };
         
         // Admin backdoor for development: "mock:admin:{guid}"
-        if (token.StartsWith("mock:admin:", StringComparison.OrdinalIgnoreCase))
+        if (provider.Equals("Mock", StringComparison.OrdinalIgnoreCase) &&
+            token.StartsWith("mock:admin:", StringComparison.OrdinalIgnoreCase))
         {
             roles.Add("Admin");
         }
@@ -53,7 +77,19 @@ public class AuthHub : Hub
         // Generate JWT for subsequent authenticated requests
         var jwt = _tokenService.GenerateToken(result.UserId!.Value, result.ProviderName!, roles);
 
+        _logger.LogInformation(
+            "Login successful. UserId: {UserId}, Provider: {Provider}, ExternalId: {ExternalId}",
+            result.UserId, result.ProviderName, result.ExternalId);
+
         return new LoginResult(true, result.UserId, result.ProviderName, identity, jwt, null);
+    }
+
+    /// <summary>
+    /// Get available authentication providers.
+    /// </summary>
+    public Task<IEnumerable<string>> GetProviders()
+    {
+        return Task.FromResult(_authServiceFactory.GetProviderNames());
     }
 
     /// <summary>
@@ -79,4 +115,3 @@ public record LoginResult(
     string? Token,
     string? ErrorMessage
 );
-

@@ -1,26 +1,16 @@
 # Titan.InventoryHost
 
-## Overview
-**Titan.InventoryHost** is an Orleans Silo executable dedicated to hosting inventory-related grains and logic.
+A dedicated Orleans Silo responsible for hosting Inventory and Item-related grains.
 
-## Role in Global Solution
-This service handles the heavy lifting of item management. By isolating inventory logic into its own host, the system can scale to handle the high volume of item creation, movement, and updates independent of the login or trading subsystems.
-
-## Key Responsibilities
-- **Primary Inventory Hosting**: While `Titan.IdentityHost` also supports inventory grains (via shared configuration), this host is dedicated to handling the bulk of item management traffic.
-- **High Throughput**: Optimized for the frequent state changes associated with player inventories.
-- **Cluster Participation**: Joins the distributed Orleans cluster.
+## Roles
+1. **Grain Host**: Hosts `InventoryGrain` and `ItemGrain`.
+2. **Validation**: Configured to validate items against the registry.
 
 ## Configuration
-The host uses `appsettings.json` for configuration.
+- **Item Registry**: Configured via `ItemRegistryOptions`.
+  - `AllowUnknownItemTypes`: Defaults to `true` in Development to allow easy item creation. Should be `false` in Production to enforce strict item definitions.
 
-### Key Settings
-| Section | Setting | Description | Environment Variable Override |
-|---------|---------|-------------|------------------------------|
-| `Logging` | `FilePath` | Path to the log file. | `Logging__FilePath` |
-| `ItemRegistry` | `AllowUnknownItemTypes` | If true, inventory validation skips type checking against the registry. Useful for development or testing stack limits without full type data. | `ItemRegistry__AllowUnknownItemTypes` |
-
-## Technologies
-- **Microsoft.Orleans.Server**: Application runtime.
-- **PostgreSQL**: Grain state persistence.
-- **Redis**: Cluster membership.
+## Infrastructure
+- **Clustering**: Redis.
+- **Persistence**: PostgreSQL (ADO.NET).
+- **Transactions**: Enable Orleans Transactions for atomic operations.

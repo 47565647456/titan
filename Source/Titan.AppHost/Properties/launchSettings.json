@@ -1,7 +1,21 @@
 {
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "https": {
+    "Production": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "https://localhost:17154;http://localhost:15106",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "DOTNET_ENVIRONMENT": "Production",
+        "PostgresVolume": "titan-postgres-prod",
+        "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21235",
+        "ASPIRE_DASHBOARD_MCP_ENDPOINT_URL": "https://localhost:23255",
+        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22227"
+      }
+    },
+    "Development": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": true,
@@ -9,22 +23,10 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "DOTNET_ENVIRONMENT": "Development",
+        "PostgresVolume": "titan-postgres-dev",
         "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "https://localhost:21235",
         "ASPIRE_DASHBOARD_MCP_ENDPOINT_URL": "https://localhost:23255",
         "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "https://localhost:22227"
-      }
-    },
-    "http": {
-      "commandName": "Project",
-      "dotnetRunMessages": true,
-      "launchBrowser": true,
-      "applicationUrl": "http://localhost:15106",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development",
-        "DOTNET_ENVIRONMENT": "Development",
-        "ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL": "http://localhost:19268",
-        "ASPIRE_DASHBOARD_MCP_ENDPOINT_URL": "http://localhost:18024",
-        "ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL": "http://localhost:20141"
       }
     }
   }

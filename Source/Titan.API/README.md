@@ -1,32 +1,30 @@
 # Titan.API
 
-## Overview
-**Titan.API** serves as the public-facing gateway for the Titan backend infrastructure. It is an ASP.NET Core application responsible for handling real-time client communication via SignalR (WebSockets) and acting as the entry point into the Orleans distributed grain cluster.
+The API Gateway for the Titan backend. It exposes a real-time WebSocket interface for clients (Game Client, Unreal Engine, Web App) to interact with the Orleans cluster.
 
-## Role in Global Solution
-In the Titan architecture, the API layer sits between the client applications (e.g., Unreal Engine game client) and the backend logic (Orleans Silos). It doesn't execute complex domain logic itself but instead forwards requests to the appropriate Grains and streams updates back to connected clients.
+## Architecture
+This project acts as an **Orleans Client**, forwarding requests from SignalR Hubs to the backend Grains. It does not host any Grains itself.
 
-## Key Responsibilities
-- **SignalR Gateway**: Exposes WebSocket Hubs (`AuthHub`, `CharacterHub`, `InventoryHub`, `TradeHub`, `ItemTypeHub`, `SeasonHub`) for real-time bidirectional communication.
-- **Orleans Client**: Connects to the Orleans cluster to invoke grains and query state.
-- **Authentication & Authorization**: Validates JWT tokens and enforces access control on Hub methods.
-- **Event Streaming**: Subscribes to Orleans streams (e.g., Trade events) to push real-time updates to relevant connected clients.
-- **Mock Services**: Provides mock implementations for specialized services (like `IAuthService`) to facilitate development and testing.
+### SignalR Hubs
+The API has migrated from HTTP Controllers to SignalR Hubs for full duplex communication.
 
-## Configuration
-The API is configured via `appsettings.json` and Environment Variables.
+| Hub | Route | Purpose |
+|-----|-------|---------|
+| `AuthHub` | `/authHub` | Login (Mock/EOS) and Token generation. |
+| `AccountHub` | `/accountHub` | User profile management. |
+| `InventoryHub` | `/inventoryHub` | Remote inventory view. |
+| `TradeHub` | `/tradeHub` | Real-time trading updates and negotiation. |
+| `CharacterHub` | `/characterHub` | Character creation and selection. |
+| `ItemTypeHub` | `/itemTypeHub` | Item metadata registry queries. |
 
-### Key Settings
-| Section | Setting | Description | Environment Variable Override |
-|---------|---------|-------------|------------------------------|
-| `Jwt` | `Key` | **Critical** Secret key for signing tokens. Must be 32+ bytes. | `Jwt__Key` |
-| `Jwt` | `Issuer` | Token issuer (default: Titan). | `Jwt__Issuer` |
-| `Cors` | `AllowedOrigins` | List of allowed CORS origins. | `Cors__AllowedOrigins__0`, `Cors__AllowedOrigins__1`... |
-| `RateLimiting` | `PermitLimit` | Requests allowed per window. | `RateLimiting__PermitLimit` |
+### Authentication
+The API supports JWT Authentication tailored for game clients.
+- **Provider**: `Titan.API.Services.Auth.TokenService`
+- **Development**: Supports Mock authentication giving 'Admin' or 'User' roles.
+- **Production**: Integrates with Epic Online Services (EOS) Connect. (Configured via `Eos:ClientId`).
 
-## Technologies
-- **ASP.NET Core 9**: Web framework.
-- **SignalR**: Real-time communication library.
-- **Microsoft.Orleans.Client**: Client access to the Orleans cluster.
-- **Redis**: Used for clustering coordination (via Aspire).
-- **Serilog**: Structured logging.
+### Configuration
+Key configuration in `appsettings.json` or Environment Variables:
+- `Jwt:Key`: Check `Titan.ServiceDefaults` for validation logic.
+- `Cors`: Configurable `AllowedOrigins` for web clients.
+- `RateLimiting`: Global limits per IP/User to prevent abuse.

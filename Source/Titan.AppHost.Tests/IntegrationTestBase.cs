@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Hosting;
 using Titan.Abstractions.Models;
 
 namespace Titan.AppHost.Tests;
@@ -7,26 +8,46 @@ namespace Titan.AppHost.Tests;
 /// Shared fixture that starts ONE AppHost and shares it across all tests.
 /// This avoids port conflicts and speeds up test execution.
 /// </summary>
-public class AppHostFixture : IAsyncLifetime
+public class AppHostFixture : DistributedApplicationFactory, IAsyncLifetime
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(3);
     
+    // We only need the base constructor that takes the entry point type
+    public AppHostFixture() : base(typeof(Projects.Titan_AppHost)) { }
+
     public DistributedApplication App { get; private set; } = null!;
     public string ApiBaseUrl { get; private set; } = null!;
 
+    protected override void OnBuilderCreating(DistributedApplicationOptions applicationOptions, HostApplicationBuilderSettings hostOptions)
+    {
+        // Pass configuration via command line args to ensure it overrides local defaults
+        applicationOptions.Args = new[] { "PostgresVolume=ephemeral" };
+        
+        hostOptions.Configuration ??= new();
+        // Ensure we are in Development mode to avoid production validation failures
+        hostOptions.EnvironmentName = "Development";
+    }
+
+    protected override void OnBuilding(DistributedApplicationBuilder builder)
+    {
+        // Add resilience to HTTP clients
+        builder.Services.ConfigureHttpClientDefaults(http => 
+            http.AddStandardResilienceHandler());
+            
+        base.OnBuilding(builder);
+    }
+
+    protected override void OnBuilt(DistributedApplication app)
+    {
+        App = app;
+        base.OnBuilt(app);
+    }
+
     public async Task InitializeAsync()
     {
-        var appHost = await DistributedApplicationTestingBuilder
-            .CreateAsync<Projects.Titan_AppHost>(new[] { "PostgresVolume=ephemeral" });
-        
-        // Add resilience to HTTP clients
-        appHost.Services.ConfigureHttpClientDefaults(http => 
-            http.AddStandardResilienceHandler());
-        
-        App = await appHost.BuildAsync();
-        
-        await App.StartAsync();
-        
+        // Start the application using the factory
+        await StartAsync();
+            
         // Wait for ALL Orleans silo hosts to be healthy
         await Task.WhenAll(
             App.ResourceNotifications.WaitForResourceHealthyAsync("identity-host"),
@@ -43,11 +64,19 @@ public class AppHostFixture : IAsyncLifetime
         ApiBaseUrl = endpoint.ToString().TrimEnd('/');
     }
 
-    public async Task DisposeAsync()
+    // DistributedApplicationFactory handles disposal, but IAsyncLifetime requires DisposeAsync.
+    // We should call base.DisposeAsync if exposing the factory directly, or handle App disposal here.
+    // Since we manually built 'App', we should dispose it.
+    public new async Task DisposeAsync()
     {
-        await App.DisposeAsync();
+        if (App != null)
+        {
+            await App.DisposeAsync();
+        }
+        await base.DisposeAsync();
     }
 }
+
 
 /// <summary>
 /// Collection definition that uses the shared AppHost fixture.
@@ -78,7 +107,7 @@ public abstract class IntegrationTestBase
     /// <summary>
     /// Login via AuthHub and return the JWT token.
     /// </summary>
-    protected async Task<(string Token, Guid UserId)> LoginAsync(string mockToken)
+    protected async Task<(string Token, Guid UserId)> LoginAsync(string mockToken, string provider = "Mock")
     {
         var authHub = new HubConnectionBuilder()
             .WithUrl($"{ApiBaseUrl}/authHub")
@@ -87,7 +116,7 @@ public abstract class IntegrationTestBase
         try
         {
             await authHub.StartAsync();
-            var result = await authHub.InvokeAsync<LoginResult>("Login", mockToken);
+            var result = await authHub.InvokeAsync<LoginResult>("Login", mockToken, provider);
             
             if (!result.Success || string.IsNullOrEmpty(result.Token))
                 throw new InvalidOperationException($"Login failed: {result.ErrorMessage}");

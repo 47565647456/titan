@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Serilog;
 using Titan.Abstractions;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -12,13 +11,8 @@ builder.AddServiceDefaults();
 // Key must match Redis resource name from AppHost's AddRedis()
 builder.AddKeyedRedisClient("orleans-clustering");
 
-// Configure Serilog
-builder.Services.AddSerilog(config => 
-{
-    config.WriteTo.Console();
-    var logPath = builder.Configuration["Logging:FilePath"] ?? "logs/titan-inventory-.txt";
-    config.WriteTo.File(logPath, rollingInterval: RollingInterval.Day);
-});
+// Configure Serilog with file logging (dev) and Sentry sink (production)
+builder.AddTitanLogging("inventory-host");
 
 // Configure Item Registry Options
 builder.Services.Configure<ItemRegistryOptions>(options =>

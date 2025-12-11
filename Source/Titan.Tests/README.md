@@ -1,25 +1,26 @@
 # Titan.Tests
 
-## Overview
-**Titan.Tests** contains the **Orleans Integration Tests** for the Titan backend. Unlike `Titan.AppHost.Tests` which runs the full external stack via Aspire, these tests run against an **In-Memory Orleans Test Cluster**.
+Unit and Integration tests for the Titan backend logic.
 
-## Role in Global Solution
-This project provides fast feedback for grain logic and interactions. It uses `Microsoft.Orleans.TestingHost` to spin up a lightweight, in-process cluster. This allows for testing grain logic, state machines, and streams without the overhead of Docker containers or a full HTTP API layer.
+## Test Strategy
+These tests use the `Orleans.TestingHost` to spin up an in-memory **TestCluster**. This allows testing Grains in a realistic distributed environment without needing full external infrastructure (Docker).
 
-## Key Responsibilities
-- **Grain Logic Verification**: Tests specific grain behaviors (e.g., `TradeGrain` state machine transitions, `InventoryGrain` stacking rules).
-- **Cluster Simulation**: Uses `TestCluster` to simulate distributed grain interactions in memory.
-- **Fast Execution**: Designed to run quickly during development.
+## Key Test Areas
 
-## Comparison with Titan.AppHost.Tests
-| Feature | Titan.Tests | Titan.AppHost.Tests |
-|---------|-------------|---------------------|
-| **Scope** | Grain & Logic | Full System (API + Silos + DB) |
-| **Runtime** | In-Process TestCluster | Docker / Aspire AppHost |
-| **Speed** | Fast | Slow (Container startup) |
-| **Use Case** | TDD, Logic Verification | End-to-End flows, Configuration checks |
+### Distributed / Clustering
+- `DistributedClusterTests.cs`: Verifies behavior across multiple Silos.
+  - Sili failures & recovery.
+  - Cross-silo trading.
+  - Persistence reliability.
 
-## Usage
-```bash
-dotnet test Titan.Tests
-```
+### Trading
+- `TradeFlowTests.cs`: Happy path and edge cases for trading.
+- `TradeTransactionTests.cs`: Verifies ACID properties of item swaps.
+
+### Inventory & Items
+- `InventoryTests.cs`: Stacking logic, capacity limits.
+- `ItemTypeRegistryTests.cs`: Validation of item definitions.
+
+## Running Tests
+Run via `dotnet test` or the Visual Studio Test Explorer.
+> **Note**: Some tests marked `[Trait("Category", "Database")]` may require a local Postgres instance (controlled via environment variables).
