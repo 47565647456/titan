@@ -39,29 +39,8 @@ builder.UseOrleans(silo =>
     silo.AddMemoryGrainStorage("PubSubStore");
     silo.AddMemoryStreams(TradeStreamConstants.ProviderName);
 
-    // Grain persistence using PostgreSQL (connection string injected by Aspire)
-    var connectionString = builder.Configuration.GetConnectionString("titan");
-    if (!string.IsNullOrEmpty(connectionString))
-    {
-        silo.AddAdoNetGrainStorage("OrleansStorage", options =>
-        {
-            options.Invariant = "Npgsql";
-            options.ConnectionString = connectionString;
-        });
-        
-        // Transaction store using ADO.NET
-        silo.AddAdoNetGrainStorage("TransactionStore", options =>
-        {
-            options.Invariant = "Npgsql";
-            options.ConnectionString = connectionString;
-        });
-    }
-    else
-    {
-        // Fallback to memory storage for local dev without Aspire
-        silo.AddMemoryGrainStorage("OrleansStorage");
-        silo.AddMemoryGrainStorage("TransactionStore");
-    }
+    // Grain persistence - auto-configured based on Database:Type
+    silo.AddTitanGrainStorage(builder.Configuration);
 });
 
 var host = builder.Build();

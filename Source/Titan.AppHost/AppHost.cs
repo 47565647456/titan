@@ -47,6 +47,7 @@ var identityHost = builder.AddProject<Projects.Titan_IdentityHost>("identity-hos
     .WithReference(titanDb)
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
+    .WithEnvironment("Database__Type", databaseType)
     .WithReplicas(2);
 DatabaseResources.AddDbWait(identityHost, dbContainer);
 
@@ -55,6 +56,7 @@ var inventoryHost = builder.AddProject<Projects.Titan_InventoryHost>("inventory-
     .WithReference(titanDb)
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
+    .WithEnvironment("Database__Type", databaseType)
     .WithReplicas(2);
 DatabaseResources.AddDbWait(inventoryHost, dbContainer);
 
@@ -63,6 +65,7 @@ var tradingHost = builder.AddProject<Projects.Titan_TradingHost>("trading-host")
     .WithReference(titanDb)
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
+    .WithEnvironment("Database__Type", databaseType)
     .WithReplicas(2);
 DatabaseResources.AddDbWait(tradingHost, dbContainer);
 
