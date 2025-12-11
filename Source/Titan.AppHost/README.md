@@ -10,11 +10,12 @@ The **Aspire** Orchestrator for the Titan Backend. This project is the entry poi
 ## Resources
 
 ### Databases
-- **PostgreSQL (`titan-db`)**: 
+- **PostgreSQL (`titan-db`)** (Default):
   - Persists generic Orleans Grain state.
   - Initialized with `init-orleans-db.sql`.
+  - **Type**: Configured via `Database:Type` (Values: `postgres`, `yugabyte`).
   - **Password**: Controlled via `postgres-password` parameter.
-  - **Persistence**: Uses a Docker volume `titan-postgres-dev` by default.
+  - **Persistence**: Controlled via `Database:Volume` config (default: `titan-postgres-data-{env}`).
 
 ### Caching / Clustering
 - **Redis (`orleans-clustering`)**: 
@@ -26,7 +27,8 @@ The **Aspire** Orchestrator for the Titan Backend. This project is the entry poi
 | Parameter | Description | Default (Dev) |
 |-----------|-------------|---------------|
 | `postgres-password` | Password for the Postgres container | `TitanDevelopmentPassword123!` |
-| `PostgresVolume` | Docker volume name. Set to `ephemeral` to wipe DB on restart. | `titan-postgres-dev` |
+| `Database:Type` | Database backend (`postgres` or `yugabyte`) | `postgres` |
+| `Database:Volume` | Docker volume name. Set to `ephemeral` to wipe DB or `none` for no volume. | `(dynamic)` |
 
 ## Running the Project
 Set this project as the **Startup Project** in Visual Studio or run `dotnet run` to launch the Aspire Dashboard.
