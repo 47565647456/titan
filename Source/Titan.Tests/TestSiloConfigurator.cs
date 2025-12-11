@@ -37,18 +37,18 @@ public class TestSiloConfigurator : ISiloConfigurator
         // CI sets USE_DATABASE=true, local dev defaults to memory
         if (useDatabase)
         {
-            // Use real YugabyteDB for integration tests
+            // Use real PostgreSQL for integration tests
             siloBuilder.AddAdoNetGrainStorage("OrleansStorage", options =>
             {
                 options.Invariant = "Npgsql";
-                options.ConnectionString = Environment.GetEnvironmentVariable("YUGABYTE_CONNECTION") 
-                    ?? "Host=localhost;Port=5433;Database=titan;Username=yugabyte;Password=yugabyte";
+                options.ConnectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION") 
+                    ?? "Host=localhost;Port=5432;Database=titan;Username=postgres;Password=TitanDevelopmentPassword123!";
             });
             siloBuilder.AddAdoNetGrainStorage("TransactionStore", options =>
             {
                 options.Invariant = "Npgsql";
-                options.ConnectionString = Environment.GetEnvironmentVariable("YUGABYTE_CONNECTION") 
-                    ?? "Host=localhost;Port=5433;Database=titan;Username=yugabyte;Password=yugabyte";
+                options.ConnectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION") 
+                    ?? "Host=localhost;Port=5432;Database=titan;Username=postgres;Password=TitanDevelopmentPassword123!";
             });
         }
         else

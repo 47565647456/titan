@@ -10,10 +10,10 @@ The **Aspire** Orchestrator for the Titan Backend. This project is the entry poi
 ## Resources
 
 ### Databases
-- **PostgreSQL (`titan-db`)** (Default):
+- **PostgreSQL (`titan-db`)**:
   - Persists generic Orleans Grain state.
   - Initialized with `init-orleans-db.sql`.
-  - **Type**: Configured via `Database:Type` (Values: `postgres`, `yugabyte`).
+  - **Type**: Extensible via `Database:Type` config (currently only `postgres`).
   - **Password**: Controlled via `postgres-password` parameter.
   - **Persistence**: Controlled via `Database:Volume` config (default: `titan-postgres-data-{env}`).
 
@@ -27,7 +27,7 @@ The **Aspire** Orchestrator for the Titan Backend. This project is the entry poi
 | Parameter | Description | Default (Dev) |
 |-----------|-------------|---------------|
 | `postgres-password` | Password for the Postgres container | `TitanDevelopmentPassword123!` |
-| `Database:Type` | Database backend (`postgres` or `yugabyte`) | `postgres` |
+| `Database:Type` | Database backend type | `postgres` |
 | `Database:Volume` | Docker volume name. Set to `ephemeral` to wipe DB or `none` for no volume. | `(dynamic)` |
 
 ## Running the Project

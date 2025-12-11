@@ -34,7 +34,7 @@ Your browser will open the **Aspire Dashboard**, allowing you to view running se
 Alternatively, use our automation scripts to start the database and run services manually:
 
 ```powershell
-# Start PostgreSQL/YugabyteDB
+# Start PostgreSQL
 .\scripts\docker-up.ps1
 
 # Start all services
