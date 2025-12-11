@@ -121,7 +121,7 @@ static (IResourceBuilder<IResourceWithConnectionString> Db, IResourceBuilder<Con
         .WithHttpEndpoint(port: 9000, targetPort: 9000, name: "tserver-ui")
         .WithHttpEndpoint(port: 15433, targetPort: 15433, name: "yugabyte-ui")
         .WithBindMount(scriptsPath, "/docker-entrypoint-initdb.d", isReadOnly: true)
-        // Set a static hostname to avoid "Name or service not known" errors on restart
+        // Set a static hostname to avoid "Name or service not known" errors on restart, required for YugabyteDB
         .WithContainerRuntimeArgs("--hostname", "yugabyte")
         .WithArgs("bin/yugabyted", "start", "--background=false", "--initial_scripts_dir=/docker-entrypoint-initdb.d");
 
