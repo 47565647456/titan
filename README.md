@@ -10,8 +10,9 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 - **Real-Time Communication**: Full duplex communication via **SignalR** Hubs.
 - **Inventory System**: Transactional item management.
 - **Trading**: Secure peer-to-peer item trading.
-- **Identity**: User profiles and social provider linking.
-- **[YugabyteDB](https://www.yugabyte.com/) Persistence**: Scalable, PostgreSQL-compatible distributed SQL storage.
+- **Identity**: User profiles and social provider linking (Steam, EOS).
+- **Security**: JWT Authentication and Role-based Access Control (RBAC).
+- **PostgreSQL Persistence**: Scalable, PostgreSQL-compatible distributed SQL storage.
 - **.NET Aspire**: Cloud-native orchestration for local development and deployment.
 
 ## Quick Start
@@ -33,7 +34,7 @@ Your browser will open the **Aspire Dashboard**, allowing you to view running se
 Alternatively, use our automation scripts to start the database and run services manually:
 
 ```powershell
-# Start YugabyteDB and Init Schema
+# Start PostgreSQL/YugabyteDB
 .\scripts\docker-up.ps1
 
 # Start all services
@@ -70,7 +71,7 @@ dotnet test Source/Titan.AppHost.Tests
 - [ ] **Leaderboards** - Global/regional rankings, seasonal resets
 
 ### Identity & Social
-- [x] **Identity & Profiles** - User profiles with social provider linking
+- [x] **Identity & Profiles** - User profiles with social provider linking (Steam, EOS)
 - [x] **Social Graph** - Friends, blocks, and relationship management
 - [ ] **Chat System** - Global, guild, party, whisper channels
 - [ ] **Notifications** - Push notifications, in-game alerts, friend online status
@@ -81,17 +82,18 @@ dotnet test Source/Titan.AppHost.Tests
 
 ### API & Real-time
 - [x] **WebSocket API** - SignalR hubs with JWT authentication for all game operations
+- [x] **Security Hardening** - Role-based authorization, connection shielding, and secure token handling
 - [x] **Real-time Events** - Bidirectional communication via SignalR
-- [x] **Rate Limiting** - API throttling, abuse prevention
+- [x] **Rate Limiting** - API throttling, service shielding
 
 ### Persistence & Operations
-- [x] **YugabyteDB Persistence** - Scalable SQL storage with Orleans integration
+- [x] **PostgreSQL Persistence** - Scalable SQL storage with Orleans integration
 - [x] **Integration Tests** - Comprehensive test suite with database and clustering tests
 - [x] **Metrics/Observability** - OpenTelemetry + Aspire Dashboard
 - [ ] **Admin Dashboard** - Web UI for managing players, banning, economy monitoring
 
 ### Security & Anti-Cheat
-- [ ] **Input Validation** - Server-side verification of game actions
+- [x] **Input Validation** - Server-side verification of game actions (Registry/Rules)
 - [ ] **Cheat Detection** - Anomaly detection, stat validation
 
 ### Client Integration
