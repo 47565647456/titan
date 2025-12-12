@@ -48,9 +48,9 @@ public class InventoryGrain : Grain, IInventoryGrain
 
     public async Task<Item> AddItemAsync(string itemTypeId, int quantity = 1, Dictionary<string, object>? metadata = null)
     {
-        // Validate against registry (outside transaction for performance)
-        var registry = _grainFactory.GetGrain<IItemTypeRegistryGrain>("default");
-        var definition = await registry.GetAsync(itemTypeId);
+        // Validate against registry using stateless reader (outside transaction for performance)
+        var reader = _grainFactory.GetGrain<IItemTypeReaderGrain>("default");
+        var definition = await reader.GetAsync(itemTypeId);
 
         if (definition == null)
         {

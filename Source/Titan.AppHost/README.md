@@ -37,6 +37,7 @@ To trust the admin UI in your browser, import the CA cert from the Docker volume
 | `cockroachdb-username` | Database username | `titan` |
 | `Database:CockroachCluster` | `single` or `cluster` (3-node) | `single` |
 | `Database:Volume` | Docker volume name. Set to `ephemeral` to wipe DB. | `(dynamic)` |
+| `Database:FollowerReads` | Enable follower reads (~4.8s stale) for lower latency | `false` |
 | `Database:Pool:MaxPoolSize` | Max connections per silo | `50` |
 | `Database:Pool:MinPoolSize` | Min connections (fixed pool) | `50` |
 | `Database:Pool:ConnectionLifetimeSeconds` | Max connection age before recycle | `300` |

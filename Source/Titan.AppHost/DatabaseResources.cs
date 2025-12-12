@@ -1,5 +1,6 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
 namespace Titan.AppHost;
@@ -155,10 +156,18 @@ public static class DatabaseResources
         var connectionLifetime = poolConfig["ConnectionLifetimeSeconds"] ?? "300";
         var connectionIdleLifetime = poolConfig["ConnectionIdleLifetimeSeconds"] ?? "300";
         
+        // Follower reads: Add Options parameter to enable for read-heavy connections
+        // This sets 'default_transaction_use_follower_reads = on' at session level
+        // Trades ~4.8s staleness for reduced read latency in multi-region clusters
+        var followerReadsEnabled = builder.Configuration.GetValue("Database:FollowerReads", false);
+        var options = followerReadsEnabled 
+            ? ";Options=--default_transaction_use_follower_reads=on"
+            : "";
+        
         var connectionString = builder.AddConnectionString(
             "titan",
             ReferenceExpression.Create(
-                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan;Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;ApplicationName=Titan;MaxPoolSize={maxPoolSize};MinPoolSize={minPoolSize};ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime}"));
+                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan;Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;ApplicationName=Titan;MaxPoolSize={maxPoolSize};MinPoolSize={minPoolSize};ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime}{options}"));
 
         return (connectionString, orleansInit);
     }

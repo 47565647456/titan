@@ -177,7 +177,7 @@ public class TradeGrain : Grain, ITradeGrain
             throw new InvalidOperationException($"Cannot modify a trade with status: {session.Status}");
 
         var inventory = _grainFactory.GetGrain<IInventoryGrain>(characterId, session.SeasonId);
-        var registry = _grainFactory.GetGrain<IItemTypeRegistryGrain>("default");
+        var reader = _grainFactory.GetGrain<IItemTypeReaderGrain>("default");
 
         var itemIdList = itemIds.ToList();
         
@@ -190,7 +190,7 @@ public class TradeGrain : Grain, ITradeGrain
                 throw new InvalidOperationException($"Character does not own item {itemId}.");
 
             // Check if item type is tradeable
-            if (!await registry.IsTradeableAsync(item.ItemTypeId))
+            if (!await reader.IsTradeableAsync(item.ItemTypeId))
                 throw new InvalidOperationException($"Item type '{item.ItemTypeId}' is not tradeable.");
         }
 
