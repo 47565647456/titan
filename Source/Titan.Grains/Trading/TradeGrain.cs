@@ -1,3 +1,4 @@
+using MemoryPack;
 using Microsoft.Extensions.Options;
 using Orleans.Runtime;
 using Orleans.Streams;
@@ -12,9 +13,11 @@ using Titan.Grains.Trading.Rules;
 
 namespace Titan.Grains.Trading;
 
-public class TradeGrainState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class TradeGrainState
 {
-    public TradeSession? Session { get; set; }
+    [Id(0), MemoryPackOrder(0)] public TradeSession? Session { get; set; }
 }
 
 public class TradeGrain : Grain, ITradeGrain

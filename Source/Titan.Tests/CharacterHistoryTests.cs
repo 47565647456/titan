@@ -199,7 +199,7 @@ public class CharacterHistoryTests : IAsyncLifetime
         await charGrain.AddHistoryEntryAsync(
             "CustomEvent",
             "Something special happened",
-            new Dictionary<string, object> { ["customData"] = "test" });
+            new Dictionary<string, string> { ["customData"] = "test" });
 
         // Assert
         var history = await charGrain.GetHistoryAsync();

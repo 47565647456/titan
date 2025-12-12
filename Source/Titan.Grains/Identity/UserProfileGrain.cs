@@ -1,12 +1,15 @@
+using MemoryPack;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
 namespace Titan.Grains.Identity;
 
-public class UserProfileGrainState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class UserProfileGrainState
 {
-    public UserProfile Profile { get; set; } = new();
+    [Id(0), MemoryPackOrder(0)] public UserProfile Profile { get; set; } = new();
 }
 
 public class UserProfileGrain : Grain, IUserProfileGrain

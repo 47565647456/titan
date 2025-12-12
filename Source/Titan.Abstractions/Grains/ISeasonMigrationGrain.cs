@@ -1,3 +1,4 @@
+using MemoryPack;
 using Orleans;
 using Titan.Abstractions.Models;
 
@@ -36,17 +37,18 @@ public interface ISeasonMigrationGrain : IGrainWithStringKey
 /// Status of a season migration.
 /// </summary>
 [GenerateSerializer]
-public record MigrationStatus
+[MemoryPackable]
+public partial record MigrationStatus
 {
-    [Id(0)] public required string SourceSeasonId { get; init; }
-    [Id(1)] public string? TargetSeasonId { get; init; }
-    [Id(2)] public MigrationState State { get; init; } = MigrationState.NotStarted;
-    [Id(3)] public int TotalCharacters { get; init; }
-    [Id(4)] public int MigratedCharacters { get; init; }
-    [Id(5)] public int FailedCharacters { get; init; }
-    [Id(6)] public DateTimeOffset? StartedAt { get; init; }
-    [Id(7)] public DateTimeOffset? CompletedAt { get; init; }
-    [Id(8)] public List<string> Errors { get; init; } = [];
+    [Id(0), MemoryPackOrder(0)] public required string SourceSeasonId { get; init; }
+    [Id(1), MemoryPackOrder(1)] public string? TargetSeasonId { get; init; }
+    [Id(2), MemoryPackOrder(2)] public MigrationState State { get; init; } = MigrationState.NotStarted;
+    [Id(3), MemoryPackOrder(3)] public int TotalCharacters { get; init; }
+    [Id(4), MemoryPackOrder(4)] public int MigratedCharacters { get; init; }
+    [Id(5), MemoryPackOrder(5)] public int FailedCharacters { get; init; }
+    [Id(6), MemoryPackOrder(6)] public DateTimeOffset? StartedAt { get; init; }
+    [Id(7), MemoryPackOrder(7)] public DateTimeOffset? CompletedAt { get; init; }
+    [Id(8), MemoryPackOrder(8)] public List<string> Errors { get; init; } = [];
 }
 
 public enum MigrationState

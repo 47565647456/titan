@@ -1,14 +1,17 @@
+using MemoryPack;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
 namespace Titan.Grains.Seasons;
 
-public class CharacterGrainState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class CharacterGrainState
 {
-    public Character? Character { get; set; }
-    public List<ChallengeProgress> ChallengeProgress { get; set; } = new();
-    public List<CharacterHistoryEntry> History { get; set; } = new();
+    [Id(0), MemoryPackOrder(0)] public Character? Character { get; set; }
+    [Id(1), MemoryPackOrder(1)] public List<ChallengeProgress> ChallengeProgress { get; set; } = new();
+    [Id(2), MemoryPackOrder(2)] public List<CharacterHistoryEntry> History { get; set; } = new();
 }
 
 /// <summary>
@@ -64,7 +67,7 @@ public class CharacterGrain : Grain, ICharacterGrain
         {
             EventType = CharacterEventTypes.Created,
             Description = $"Character '{name}' created in season '{GetSeasonId()}'",
-            Data = new Dictionary<string, object>
+            Data = new Dictionary<string, string>
             {
                 ["seasonId"] = GetSeasonId(),
                 ["restrictions"] = restrictions.ToString()
@@ -169,10 +172,10 @@ public class CharacterGrain : Grain, ICharacterGrain
         {
             EventType = CharacterEventTypes.Died,
             Description = $"Hardcore character '{character.Name}' died in season '{character.SeasonId}'",
-            Data = new Dictionary<string, object>
+            Data = new Dictionary<string, string>
             {
                 ["seasonId"] = character.SeasonId,
-                ["level"] = character.Level
+                ["level"] = character.Level.ToString()
             }
         });
         
@@ -239,7 +242,7 @@ public class CharacterGrain : Grain, ICharacterGrain
         {
             EventType = CharacterEventTypes.Migrated,
             Description = $"Character migrated from '{character.SeasonId}' to '{targetSeasonId}'",
-            Data = new Dictionary<string, object>
+            Data = new Dictionary<string, string>
             {
                 ["sourceSeasonId"] = character.SeasonId,
                 ["targetSeasonId"] = targetSeasonId
@@ -253,7 +256,7 @@ public class CharacterGrain : Grain, ICharacterGrain
             {
                 EventType = CharacterEventTypes.RestrictionsChanged,
                 Description = $"Restrictions changed from '{character.Restrictions}' to '{newRestrictions}'",
-                Data = new Dictionary<string, object>
+                Data = new Dictionary<string, string>
                 {
                     ["previousRestrictions"] = character.Restrictions.ToString(),
                     ["newRestrictions"] = newRestrictions.ToString(),
@@ -304,7 +307,7 @@ public class CharacterGrain : Grain, ICharacterGrain
             _state.State.History.OrderBy(h => h.Timestamp).ToList());
     }
 
-    public async Task AddHistoryEntryAsync(string eventType, string description, Dictionary<string, object>? data = null)
+    public async Task AddHistoryEntryAsync(string eventType, string description, Dictionary<string, string>? data = null)
     {
         if (_state.State.Character == null)
             throw new InvalidOperationException("Character not initialized.");

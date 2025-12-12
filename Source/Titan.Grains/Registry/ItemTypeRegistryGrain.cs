@@ -1,3 +1,4 @@
+using MemoryPack;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
@@ -7,9 +8,11 @@ namespace Titan.Grains.Registry;
 /// <summary>
 /// State for the ItemTypeRegistry grain.
 /// </summary>
-public class ItemTypeRegistryState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class ItemTypeRegistryState
 {
-    public Dictionary<string, ItemTypeDefinition> Definitions { get; set; } = new();
+    [Id(0), MemoryPackOrder(0)] public Dictionary<string, ItemTypeDefinition> Definitions { get; set; } = new();
 }
 
 /// <summary>

@@ -1,3 +1,4 @@
+using MemoryPack;
 using Orleans;
 
 namespace Titan.Abstractions.Models;
@@ -28,54 +29,55 @@ public enum SeasonStatus
 /// Seasons are time-bounded periods where players can create characters.
 /// </summary>
 [GenerateSerializer]
-public record Season
+[MemoryPackable]
+public partial record Season
 {
     /// <summary>
     /// Unique identifier for the season (e.g., "standard", "s1", "s2").
     /// </summary>
-    [Id(0)] public required string SeasonId { get; init; }
+    [Id(0), MemoryPackOrder(0)] public required string SeasonId { get; init; }
 
     /// <summary>
     /// Display name for the season (e.g., "Season 1: The Awakening").
     /// </summary>
-    [Id(1)] public required string Name { get; init; }
+    [Id(1), MemoryPackOrder(1)] public required string Name { get; init; }
 
     /// <summary>
     /// Whether this is a permanent or temporary season.
     /// </summary>
-    [Id(2)] public SeasonType Type { get; init; }
+    [Id(2), MemoryPackOrder(2)] public SeasonType Type { get; init; }
 
     /// <summary>
     /// When the season starts.
     /// </summary>
-    [Id(3)] public DateTimeOffset StartDate { get; init; }
+    [Id(3), MemoryPackOrder(3)] public DateTimeOffset StartDate { get; init; }
 
     /// <summary>
     /// When the season ends (null for permanent seasons).
     /// </summary>
-    [Id(4)] public DateTimeOffset? EndDate { get; init; }
+    [Id(4), MemoryPackOrder(4)] public DateTimeOffset? EndDate { get; init; }
 
     /// <summary>
     /// Current status of the season.
     /// </summary>
-    [Id(5)] public SeasonStatus Status { get; init; }
+    [Id(5), MemoryPackOrder(5)] public SeasonStatus Status { get; init; }
 
     /// <summary>
     /// The season to migrate characters to when this season ends.
     /// Typically "standard" for all temporary seasons.
     /// </summary>
-    [Id(6)] public string MigrationTargetId { get; init; } = "standard";
+    [Id(6), MemoryPackOrder(6)] public string MigrationTargetId { get; init; } = "standard";
 
     /// <summary>
-    /// Optional season-specific modifiers (e.g., increased difficulty, special rules).
+    /// Optional season-specific modifiers as JSON-serialized key-value pairs.
     /// </summary>
-    [Id(7)] public Dictionary<string, object>? Modifiers { get; init; }
+    [Id(7), MemoryPackOrder(7)] public Dictionary<string, string>? Modifiers { get; init; }
 
     /// <summary>
     /// Whether this is a Void League. Void league characters and items do NOT migrate
     /// to Standard when the season ends or on Hardcore death.
     /// </summary>
-    [Id(8)] public bool IsVoid { get; init; }
+    [Id(8), MemoryPackOrder(8)] public bool IsVoid { get; init; }
 }
 
 /// <summary>
@@ -83,12 +85,13 @@ public record Season
 /// Completing challenges can unlock cosmetic rewards.
 /// </summary>
 [GenerateSerializer]
-public record SeasonChallenge
+[MemoryPackable]
+public partial record SeasonChallenge
 {
-    [Id(0)] public required string ChallengeId { get; init; }
-    [Id(1)] public required string SeasonId { get; init; }
-    [Id(2)] public required string Name { get; init; }
-    [Id(3)] public string? Description { get; init; }
-    [Id(4)] public int RequiredProgress { get; init; }
-    [Id(5)] public string? RewardCosmeticId { get; init; }
+    [Id(0), MemoryPackOrder(0)] public required string ChallengeId { get; init; }
+    [Id(1), MemoryPackOrder(1)] public required string SeasonId { get; init; }
+    [Id(2), MemoryPackOrder(2)] public required string Name { get; init; }
+    [Id(3), MemoryPackOrder(3)] public string? Description { get; init; }
+    [Id(4), MemoryPackOrder(4)] public int RequiredProgress { get; init; }
+    [Id(5), MemoryPackOrder(5)] public string? RewardCosmeticId { get; init; }
 }

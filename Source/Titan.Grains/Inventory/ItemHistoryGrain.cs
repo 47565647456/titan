@@ -1,12 +1,15 @@
+using MemoryPack;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
 namespace Titan.Grains.Inventory;
 
-public class ItemHistoryGrainState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class ItemHistoryGrainState
 {
-    public List<ItemHistoryEntry> History { get; set; } = new();
+    [Id(0), MemoryPackOrder(0)] public List<ItemHistoryEntry> History { get; set; } = new();
 }
 
 public class ItemHistoryGrain : Grain, IItemHistoryGrain

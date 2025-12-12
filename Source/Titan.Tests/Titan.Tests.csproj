@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="MemoryPack" Version="1.21.4" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageReference Include="Microsoft.Orleans.Persistence.AdoNet" Version="9.2.2-nightly.20251124.2" />
     <PackageReference Include="Microsoft.Orleans.Serialization" Version="9.2.2-nightly.20251124.2" />

@@ -1,12 +1,15 @@
+using MemoryPack;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
 namespace Titan.Grains.Identity;
 
-public class SocialGrainState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class SocialGrainState
 {
-    public List<SocialRelation> Relations { get; set; } = new();
+    [Id(0), MemoryPackOrder(0)] public List<SocialRelation> Relations { get; set; } = new();
 }
 
 public class SocialGrain : Grain, ISocialGrain

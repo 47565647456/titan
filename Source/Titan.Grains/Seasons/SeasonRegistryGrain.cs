@@ -1,12 +1,15 @@
+using MemoryPack;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
 namespace Titan.Grains.Seasons;
 
-public class SeasonRegistryGrainState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class SeasonRegistryGrainState
 {
-    public Dictionary<string, Season> Seasons { get; set; } = new();
+    [Id(0), MemoryPackOrder(0)] public Dictionary<string, Season> Seasons { get; set; } = new();
 }
 
 /// <summary>

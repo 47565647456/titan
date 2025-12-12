@@ -27,7 +27,7 @@ public interface IInventoryGrain : IGrainWithGuidCompoundKey
     /// Add a new item to the inventory.
     /// </summary>
     [Transaction(TransactionOption.CreateOrJoin)]
-    Task<Item> AddItemAsync(string itemTypeId, int quantity = 1, Dictionary<string, object>? metadata = null);
+    Task<Item> AddItemAsync(string itemTypeId, int quantity = 1, Dictionary<string, string>? metadata = null);
 
     /// <summary>
     /// Remove an item from the inventory.

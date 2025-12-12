@@ -61,5 +61,5 @@ public interface ICharacterGrain : IGrainWithGuidCompoundKey
     /// Adds a custom event to the character's history.
     /// Use CharacterEventTypes for standard events, or any custom string.
     /// </summary>
-    Task AddHistoryEntryAsync(string eventType, string description, Dictionary<string, object>? data = null);
+    Task AddHistoryEntryAsync(string eventType, string description, Dictionary<string, string>? data = null);
 }

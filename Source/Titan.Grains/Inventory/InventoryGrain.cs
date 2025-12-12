@@ -1,3 +1,4 @@
+using MemoryPack;
 using Microsoft.Extensions.Options;
 using Orleans.Transactions.Abstractions;
 using Titan.Abstractions;
@@ -8,9 +9,10 @@ namespace Titan.Grains.Inventory;
 
 [Serializable]
 [GenerateSerializer]
-public class InventoryGrainState
+[MemoryPackable]
+public partial class InventoryGrainState
 {
-    [Id(0)]
+    [Id(0), MemoryPackOrder(0)]
     public List<Item> Items { get; set; } = new();
 }
 
@@ -46,7 +48,7 @@ public class InventoryGrain : Grain, IInventoryGrain
         return _state.PerformRead(state => state.Items.FirstOrDefault(i => i.Id == itemId));
     }
 
-    public async Task<Item> AddItemAsync(string itemTypeId, int quantity = 1, Dictionary<string, object>? metadata = null)
+    public async Task<Item> AddItemAsync(string itemTypeId, int quantity = 1, Dictionary<string, string>? metadata = null)
     {
         // Validate against registry using stateless reader (outside transaction for performance)
         var reader = _grainFactory.GetGrain<IItemTypeReaderGrain>("default");

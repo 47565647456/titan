@@ -1,3 +1,4 @@
+using MemoryPack;
 using Orleans;
 
 namespace Titan.Abstractions.Events;
@@ -6,12 +7,16 @@ namespace Titan.Abstractions.Events;
 /// Event published when season state changes occur.
 /// </summary>
 [GenerateSerializer]
-public record SeasonEvent
+[MemoryPackable]
+public partial record SeasonEvent
 {
-    [Id(0)] public required string SeasonId { get; init; }
-    [Id(1)] public required string EventType { get; init; }
-    [Id(2)] public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
-    [Id(3)] public object? Data { get; init; }
+    [Id(0), MemoryPackOrder(0)] public required string SeasonId { get; init; }
+    [Id(1), MemoryPackOrder(1)] public required string EventType { get; init; }
+    [Id(2), MemoryPackOrder(2)] public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    /// <summary>
+    /// Optional event-specific data as a JSON-serialized string.
+    /// </summary>
+    [Id(3), MemoryPackOrder(3)] public string? Data { get; init; }
 }
 
 /// <summary>

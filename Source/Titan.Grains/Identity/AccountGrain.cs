@@ -1,13 +1,16 @@
+using MemoryPack;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
 namespace Titan.Grains.Identity;
 
-public class AccountGrainState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class AccountGrainState
 {
-    public Account? Account { get; set; }
-    public List<CharacterSummary> Characters { get; set; } = new();
+    [Id(0), MemoryPackOrder(0)] public Account? Account { get; set; }
+    [Id(1), MemoryPackOrder(1)] public List<CharacterSummary> Characters { get; set; } = new();
 }
 
 /// <summary>

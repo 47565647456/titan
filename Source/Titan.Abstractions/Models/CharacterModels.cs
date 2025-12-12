@@ -1,3 +1,4 @@
+using MemoryPack;
 using Orleans;
 
 namespace Titan.Abstractions.Models;
@@ -35,79 +36,81 @@ public enum CharacterRestrictions
 /// Characters are season-scoped and can have player-chosen restrictions.
 /// </summary>
 [GenerateSerializer]
-public record Character
+[MemoryPackable]
+public partial record Character
 {
     /// <summary>
     /// Unique character identifier.
     /// </summary>
-    [Id(0)] public required Guid CharacterId { get; init; }
+    [Id(0), MemoryPackOrder(0)] public required Guid CharacterId { get; init; }
 
     /// <summary>
     /// The account this character belongs to.
     /// </summary>
-    [Id(1)] public required Guid AccountId { get; init; }
+    [Id(1), MemoryPackOrder(1)] public required Guid AccountId { get; init; }
 
     /// <summary>
     /// The season this character exists in.
     /// </summary>
-    [Id(2)] public required string SeasonId { get; init; }
+    [Id(2), MemoryPackOrder(2)] public required string SeasonId { get; init; }
 
     /// <summary>
     /// Character display name.
     /// </summary>
-    [Id(3)] public required string Name { get; init; }
+    [Id(3), MemoryPackOrder(3)] public required string Name { get; init; }
 
     /// <summary>
     /// Player-chosen restrictions (Hardcore, SSF, etc.). Immutable after creation.
     /// </summary>
-    [Id(4)] public CharacterRestrictions Restrictions { get; init; }
+    [Id(4), MemoryPackOrder(4)] public CharacterRestrictions Restrictions { get; init; }
 
     /// <summary>
     /// Whether this Hardcore character has died (triggers migration).
     /// </summary>
-    [Id(5)] public bool IsDead { get; init; }
+    [Id(5), MemoryPackOrder(5)] public bool IsDead { get; init; }
 
     /// <summary>
     /// Character level.
     /// </summary>
-    [Id(6)] public int Level { get; init; } = 1;
+    [Id(6), MemoryPackOrder(6)] public int Level { get; init; } = 1;
 
     /// <summary>
     /// Total experience points.
     /// </summary>
-    [Id(7)] public long Experience { get; init; }
+    [Id(7), MemoryPackOrder(7)] public long Experience { get; init; }
 
     /// <summary>
     /// Character stats (strength, dexterity, etc.).
     /// </summary>
-    [Id(8)] public Dictionary<string, int> Stats { get; init; } = new();
+    [Id(8), MemoryPackOrder(8)] public Dictionary<string, int> Stats { get; init; } = new();
 
     /// <summary>
     /// When the character was created.
     /// </summary>
-    [Id(9)] public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    [Id(9), MemoryPackOrder(9)] public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 
     /// <summary>
     /// Whether this character has been migrated from another season.
     /// </summary>
-    [Id(10)] public bool IsMigrated { get; init; }
+    [Id(10), MemoryPackOrder(10)] public bool IsMigrated { get; init; }
 
     /// <summary>
     /// The original season if this character was migrated.
     /// </summary>
-    [Id(11)] public string? OriginalSeasonId { get; init; }
+    [Id(11), MemoryPackOrder(11)] public string? OriginalSeasonId { get; init; }
 }
 
 /// <summary>
 /// Tracks a character's progress on a season challenge.
 /// </summary>
 [GenerateSerializer]
-public record ChallengeProgress
+[MemoryPackable]
+public partial record ChallengeProgress
 {
-    [Id(0)] public required string ChallengeId { get; init; }
-    [Id(1)] public int CurrentProgress { get; init; }
-    [Id(2)] public bool IsCompleted { get; init; }
-    [Id(3)] public DateTimeOffset? CompletedAt { get; init; }
+    [Id(0), MemoryPackOrder(0)] public required string ChallengeId { get; init; }
+    [Id(1), MemoryPackOrder(1)] public int CurrentProgress { get; init; }
+    [Id(2), MemoryPackOrder(2)] public bool IsCompleted { get; init; }
+    [Id(3), MemoryPackOrder(3)] public DateTimeOffset? CompletedAt { get; init; }
 }
 
 /// <summary>
@@ -143,26 +146,27 @@ public static class CharacterEventTypes
 /// Provides an audit trail of character progression and major events.
 /// </summary>
 [GenerateSerializer]
-public record CharacterHistoryEntry
+[MemoryPackable]
+public partial record CharacterHistoryEntry
 {
     /// <summary>
     /// When the event occurred.
     /// </summary>
-    [Id(0)] public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+    [Id(0), MemoryPackOrder(0)] public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
     /// <summary>
     /// Type of event (see CharacterEventTypes for common types).
     /// Any string is valid, allowing for extensibility.
     /// </summary>
-    [Id(1)] public required string EventType { get; init; }
+    [Id(1), MemoryPackOrder(1)] public required string EventType { get; init; }
 
     /// <summary>
     /// Human-readable description of the event.
     /// </summary>
-    [Id(2)] public required string Description { get; init; }
+    [Id(2), MemoryPackOrder(2)] public required string Description { get; init; }
 
     /// <summary>
-    /// Optional structured data about the event (e.g., source season, previous restrictions).
+    /// Optional structured data about the event as JSON-serialized key-value pairs.
     /// </summary>
-    [Id(3)] public Dictionary<string, object>? Data { get; init; }
+    [Id(3), MemoryPackOrder(3)] public Dictionary<string, string>? Data { get; init; }
 }

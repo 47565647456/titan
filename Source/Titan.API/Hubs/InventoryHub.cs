@@ -52,7 +52,7 @@ public class InventoryHub : Hub
     /// <summary>
     /// Add a new item to a character's inventory (verifies ownership).
     /// </summary>
-    public async Task<Item> AddItem(Guid characterId, string seasonId, string itemTypeId, int quantity = 1, Dictionary<string, object>? metadata = null)
+    public async Task<Item> AddItem(Guid characterId, string seasonId, string itemTypeId, int quantity = 1, Dictionary<string, string>? metadata = null)
     {
         await VerifyCharacterOwnershipAsync(characterId);
         

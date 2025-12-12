@@ -99,7 +99,7 @@ public class SeasonHub : Hub
         DateTimeOffset? endDate = null,
         SeasonStatus status = SeasonStatus.Upcoming,
         string? migrationTargetId = null,
-        Dictionary<string, object>? modifiers = null,
+        Dictionary<string, string>? modifiers = null,
         bool isVoid = false)
     {
         var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");

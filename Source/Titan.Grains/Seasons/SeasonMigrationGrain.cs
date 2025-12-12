@@ -1,14 +1,17 @@
+using MemoryPack;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 
 namespace Titan.Grains.Seasons;
 
-public class SeasonMigrationGrainState
+[GenerateSerializer]
+[MemoryPackable]
+public partial class SeasonMigrationGrainState
 {
-    public MigrationStatus Status { get; set; } = null!;
-    public List<Guid> PendingCharacterIds { get; set; } = [];
-    public List<Guid> MigratedCharacterIds { get; set; } = [];
+    [Id(0), MemoryPackOrder(0)] public MigrationStatus Status { get; set; } = null!;
+    [Id(1), MemoryPackOrder(1)] public List<Guid> PendingCharacterIds { get; set; } = [];
+    [Id(2), MemoryPackOrder(2)] public List<Guid> MigratedCharacterIds { get; set; } = [];
 }
 
 /// <summary>
