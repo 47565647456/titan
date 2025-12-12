@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Titan.AppHost;
 
 var builder = DistributedApplication.CreateBuilder(args);
@@ -41,12 +42,15 @@ var orleans = builder.AddOrleans("titan-cluster")
 // Get the current environment to propagate to child projects
 var environment = builder.Environment.EnvironmentName;
 
+// Configurable replica count for Orleans silos (default: 2)
+var replicas = builder.Configuration.GetValue("Orleans:Replicas", 2);
+
 var identityHost = builder.AddProject<Projects.Titan_IdentityHost>("identity-host")
     .WithReference(orleans)
     .WithReference(titanDb)
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
-    .WithReplicas(2);
+    .WithReplicas(replicas);
 DatabaseResources.AddDbWait(identityHost, dbContainer);
 
 var inventoryHost = builder.AddProject<Projects.Titan_InventoryHost>("inventory-host")
@@ -54,7 +58,7 @@ var inventoryHost = builder.AddProject<Projects.Titan_InventoryHost>("inventory-
     .WithReference(titanDb)
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
-    .WithReplicas(2);
+    .WithReplicas(replicas);
 DatabaseResources.AddDbWait(inventoryHost, dbContainer);
 
 var tradingHost = builder.AddProject<Projects.Titan_TradingHost>("trading-host")
@@ -62,7 +66,7 @@ var tradingHost = builder.AddProject<Projects.Titan_TradingHost>("trading-host")
     .WithReference(titanDb)
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
-    .WithReplicas(2);
+    .WithReplicas(replicas);
 DatabaseResources.AddDbWait(tradingHost, dbContainer);
 
 // =============================================================================

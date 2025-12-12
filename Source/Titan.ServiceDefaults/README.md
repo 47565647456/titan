@@ -27,7 +27,19 @@ Automatically configures metrics and tracing.
   - **OrleansStorage**: Default grain storage for most grains.
   - **TransactionStore**: For Orleans transaction state.
   - **GlobalStorage**: Shared state (seasons, trades, migrations).
-- **RetryingGrainStorage**: A wrapper that adds exponential backoff retry logic to handle transient database failures.
+- **RetryingGrainStorage**: A wrapper that adds exponential backoff retry logic to handle transient CockroachDB errors (SQLSTATE 40001).
+
+#### Retry Configuration
+Configure via `Database:Retry` section in appsettings.json:
+```json
+"Database": {
+  "Retry": {
+    "MaxRetries": 5,
+    "InitialDelayMs": 50,
+    "OperationTimeoutSeconds": 30
+  }
+}
+```
 
 Silo hosts use this extension:
 ```csharp

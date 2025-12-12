@@ -37,6 +37,7 @@ To trust the admin UI in your browser, import the CA cert from the Docker volume
 | `cockroachdb-username` | Database username | `titan` |
 | `Database:CockroachCluster` | `single` or `cluster` (3-node) | `single` |
 | `Database:Volume` | Docker volume name. Set to `ephemeral` to wipe DB. | `(dynamic)` |
+| `Orleans:Replicas` | Number of instances per silo host | `2` |
 
 ## Running the Project
 Set this project as the **Startup Project** in Visual Studio or run `dotnet run` to launch the Aspire Dashboard.

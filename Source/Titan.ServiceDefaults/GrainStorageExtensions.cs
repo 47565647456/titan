@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Orleans.Storage;
 using Titan.ServiceDefaults.Storage;
 
@@ -23,15 +24,15 @@ public static class GrainStorageExtensions
 
         // Use the same storage configuration for all providers since we are moving to a single global DB
         // Always wrap with retry logic for CockroachDB serializable transaction conflicts
-        AddRetryingAdoNetStorage(silo, "OrleansStorage", connectionString);
-        AddRetryingAdoNetStorage(silo, "TransactionStore", connectionString);
-        AddRetryingAdoNetStorage(silo, "GlobalStorage", connectionString);
-        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString); // Persistent storage for streams
+        AddRetryingAdoNetStorage(silo, "OrleansStorage", connectionString, config);
+        AddRetryingAdoNetStorage(silo, "TransactionStore", connectionString, config);
+        AddRetryingAdoNetStorage(silo, "GlobalStorage", connectionString, config);
+        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString, config); // Persistent storage for streams
 
         return silo;
     }
 
-    private static void AddRetryingAdoNetStorage(ISiloBuilder silo, string name, string? connectionString)
+    private static void AddRetryingAdoNetStorage(ISiloBuilder silo, string name, string? connectionString, IConfiguration config)
     {
         if (string.IsNullOrEmpty(connectionString))
         {
@@ -54,7 +55,13 @@ public static class GrainStorageExtensions
         silo.Services.AddKeyedSingleton<IGrainStorage>(name, (sp, key) =>
         {
             var innerStorage = sp.GetRequiredKeyedService<IGrainStorage>(innerStorageName);
-            return new RetryingGrainStorage(innerStorage);
+            var logger = sp.GetRequiredService<ILogger<RetryingGrainStorage>>();
+            
+            // Bind retry options from configuration
+            var retryOptions = new RetryOptions();
+            config.GetSection("Database:Retry").Bind(retryOptions);
+            
+            return new RetryingGrainStorage(innerStorage, logger, retryOptions);
         });
     }
 }
