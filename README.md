@@ -95,7 +95,7 @@ dotnet test Source/Titan.AppHost.Tests
 - [ ] **Admin Dashboard** - Web UI for managing players, banning, economy monitoring
 
 ### Security & Anti-Cheat
-- [x] **Input Validation** - Server-side verification of game actions (Registry/Rules)
+- [ ] **Input Validation** - Server-side verification of game actions (Registry/Rules)
 - [ ] **Cheat Detection** - Anomaly detection, stat validation
 
 ### Client Integration
