@@ -18,45 +18,38 @@ public class VoidLeagueEndToEndTests : IntegrationTestBase
     public async Task VoidLeague_CanBeCreatedViaHub()
     {
         // Arrange
-        var (adminToken, _) = await LoginAsAdminAsync();
-        var seasonHub = await ConnectToHubAsync("/seasonHub", adminToken);
+        await using var admin = await CreateAdminSessionAsync();
+        var seasonHub = await admin.GetSeasonHubAsync();
         var voidSeasonId = $"void-e2e-{Guid.NewGuid():N}";
 
-        try
-        {
-            // Act - Create void league via hub
-            var season = await seasonHub.InvokeAsync<Season>(
-                "CreateSeason",
-                voidSeasonId,
-                "Void E2E League",
-                SeasonType.Temporary,
-                DateTimeOffset.UtcNow,
-                (DateTimeOffset?)null,
-                SeasonStatus.Active,
-                "standard",
-                (Dictionary<string, object>?)null,
-                true); // isVoid = true
+        // Act - Create void league via hub
+        var season = await seasonHub.InvokeAsync<Season>(
+            "CreateSeason",
+            voidSeasonId,
+            "Void E2E League",
+            SeasonType.Temporary,
+            DateTimeOffset.UtcNow,
+            (DateTimeOffset?)null,
+            SeasonStatus.Active,
+            "standard",
+            (Dictionary<string, object>?)null,
+            true); // isVoid = true
 
-            // Assert
-            Assert.NotNull(season);
-            Assert.Equal(voidSeasonId, season.SeasonId);
-            Assert.True(season.IsVoid);
-            Assert.Equal(SeasonType.Temporary, season.Type);
-        }
-        finally
-        {
-            await seasonHub.DisposeAsync();
-        }
+        // Assert
+        Assert.NotNull(season);
+        Assert.Equal(voidSeasonId, season.SeasonId);
+        Assert.True(season.IsVoid);
+        Assert.Equal(SeasonType.Temporary, season.Type);
     }
 
     [Fact]
     public async Task VoidLeague_HardcoreDeathDoesNotMigrate()
     {
         // Arrange - Create void league and character
-        var (adminToken, _) = await LoginAsAdminAsync();
-        var (userToken, userId) = await LoginAsUserAsync();
+        await using var admin = await CreateAdminSessionAsync();
+        await using var user = await CreateUserSessionAsync();
 
-        var seasonHub = await ConnectToHubAsync("/seasonHub", adminToken);
+        var seasonHub = await admin.GetSeasonHubAsync();
         var voidSeasonId = $"void-hc-e2e-{Guid.NewGuid():N}";
 
         // Create void season
@@ -72,32 +65,27 @@ public class VoidLeagueEndToEndTests : IntegrationTestBase
             (Dictionary<string, object>?)null,
             true); // isVoid = true
 
-        await seasonHub.DisposeAsync();
-
         // Create hardcore character in void league
-        var accountHub = await ConnectToHubAsync("/accountHub", userToken);
+        var accountHub = await user.GetAccountHubAsync();
         var charSummary = await accountHub.InvokeAsync<CharacterSummary>(
             "CreateCharacter", voidSeasonId, "VoidHCPlayer", CharacterRestrictions.Hardcore);
-        await accountHub.DisposeAsync();
 
         // Act - Kill the character via CharacterHub
-        var characterHub = await ConnectToHubAsync("/characterHub", userToken);
+        var characterHub = await user.GetCharacterHubAsync();
         var dieResult = await characterHub.InvokeAsync<DieResult>(
             "Die", charSummary.CharacterId, voidSeasonId);
 
         // Assert - Character is dead but NOT migrated
         Assert.True(dieResult.Character.IsDead);
         Assert.False(dieResult.Migrated);
-
-        await characterHub.DisposeAsync();
     }
 
     [Fact]
     public async Task VoidLeague_MigrationAttempt_ShouldFail()
     {
         // Arrange - Create void league and end it
-        var (adminToken, _) = await LoginAsAdminAsync();
-        var seasonHub = await ConnectToHubAsync("/seasonHub", adminToken);
+        await using var admin = await CreateAdminSessionAsync();
+        var seasonHub = await admin.GetSeasonHubAsync();
         var voidSeasonId = $"void-migrate-e2e-{Guid.NewGuid():N}";
 
         // Create void season
@@ -121,18 +109,16 @@ public class VoidLeagueEndToEndTests : IntegrationTestBase
             seasonHub.InvokeAsync<MigrationStatus>("StartMigration", voidSeasonId, "standard"));
 
         Assert.Contains("Void League", ex.Message);
-
-        await seasonHub.DisposeAsync();
     }
 
     [Fact]
     public async Task NonVoidLeague_MigrationSucceeds()
     {
         // Arrange - Create a normal (non-void) league
-        var (adminToken, _) = await LoginAsAdminAsync();
-        var (userToken, userId) = await LoginAsUserAsync();
+        await using var admin = await CreateAdminSessionAsync();
+        await using var user = await CreateUserSessionAsync();
 
-        var seasonHub = await ConnectToHubAsync("/seasonHub", adminToken);
+        var seasonHub = await admin.GetSeasonHubAsync();
         var normalSeasonId = $"normal-e2e-{Guid.NewGuid():N}";
 
         // Create normal season (isVoid = false)
@@ -149,10 +135,9 @@ public class VoidLeagueEndToEndTests : IntegrationTestBase
             false); // isVoid = false
 
         // Create a character
-        var accountHub = await ConnectToHubAsync("/accountHub", userToken);
-        var charSummary = await accountHub.InvokeAsync<CharacterSummary>(
+        var accountHub = await user.GetAccountHubAsync();
+        await accountHub.InvokeAsync<CharacterSummary>(
             "CreateCharacter", normalSeasonId, "NormalLeaguePlayer", CharacterRestrictions.None);
-        await accountHub.DisposeAsync();
 
         // End the season
         await seasonHub.InvokeAsync<Season>("EndSeason", normalSeasonId);
@@ -165,16 +150,14 @@ public class VoidLeagueEndToEndTests : IntegrationTestBase
         Assert.Equal(MigrationState.InProgress, migrationStatus.State);
         Assert.Equal(normalSeasonId, migrationStatus.SourceSeasonId);
         Assert.Equal("standard", migrationStatus.TargetSeasonId);
-
-        await seasonHub.DisposeAsync();
     }
 
     [Fact]
     public async Task VoidLeague_GetAllSeasons_IncludesIsVoidFlag()
     {
         // Arrange - Create a void league
-        var (adminToken, _) = await LoginAsAdminAsync();
-        var seasonHub = await ConnectToHubAsync("/seasonHub", adminToken);
+        await using var admin = await CreateAdminSessionAsync();
+        var seasonHub = await admin.GetSeasonHubAsync();
         var voidSeasonId = $"void-list-e2e-{Guid.NewGuid():N}";
 
         await seasonHub.InvokeAsync<Season>(
@@ -196,18 +179,16 @@ public class VoidLeagueEndToEndTests : IntegrationTestBase
         var voidSeason = seasons.FirstOrDefault(s => s.SeasonId == voidSeasonId);
         Assert.NotNull(voidSeason);
         Assert.True(voidSeason!.IsVoid);
-
-        await seasonHub.DisposeAsync();
     }
 
     [Fact]
     public async Task NonVoidLeague_HardcoreDeathMigrates_E2E()
     {
         // Arrange - Create normal league and HC character
-        var (adminToken, _) = await LoginAsAdminAsync();
-        var (userToken, userId) = await LoginAsUserAsync();
+        await using var admin = await CreateAdminSessionAsync();
+        await using var user = await CreateUserSessionAsync();
 
-        var seasonHub = await ConnectToHubAsync("/seasonHub", adminToken);
+        var seasonHub = await admin.GetSeasonHubAsync();
         var normalSeasonId = $"normal-hc-e2e-{Guid.NewGuid():N}";
 
         // Create normal season (isVoid = false)
@@ -223,16 +204,13 @@ public class VoidLeagueEndToEndTests : IntegrationTestBase
             (Dictionary<string, object>?)null,
             false); // isVoid = false
 
-        await seasonHub.DisposeAsync();
-
         // Create hardcore character
-        var accountHub = await ConnectToHubAsync("/accountHub", userToken);
+        var accountHub = await user.GetAccountHubAsync();
         var charSummary = await accountHub.InvokeAsync<CharacterSummary>(
             "CreateCharacter", normalSeasonId, "NormalHCPlayer", CharacterRestrictions.Hardcore);
-        await accountHub.DisposeAsync();
 
         // Act - Kill the character
-        var characterHub = await ConnectToHubAsync("/characterHub", userToken);
+        var characterHub = await user.GetCharacterHubAsync();
         var dieResult = await characterHub.InvokeAsync<DieResult>(
             "Die", charSummary.CharacterId, normalSeasonId);
 
@@ -245,31 +223,26 @@ public class VoidLeagueEndToEndTests : IntegrationTestBase
             "GetCharacter", charSummary.CharacterId, "standard");
         Assert.Equal("NormalHCPlayer", standardChar.Name);
         Assert.False(standardChar.Restrictions.HasFlag(CharacterRestrictions.Hardcore));
-
-        await characterHub.DisposeAsync();
     }
 
     [Fact]
     public async Task CharacterHistory_CanBeRetrievedViaHub()
     {
         // Arrange - Create a character
-        var (userToken, userId) = await LoginAsUserAsync();
+        await using var user = await CreateUserSessionAsync();
 
-        var accountHub = await ConnectToHubAsync("/accountHub", userToken);
+        var accountHub = await user.GetAccountHubAsync();
         var charSummary = await accountHub.InvokeAsync<CharacterSummary>(
             "CreateCharacter", "standard", "HistoryE2ETest", CharacterRestrictions.None);
-        await accountHub.DisposeAsync();
 
         // Act - Get character history
-        var characterHub = await ConnectToHubAsync("/characterHub", userToken);
+        var characterHub = await user.GetCharacterHubAsync();
         var history = await characterHub.InvokeAsync<IReadOnlyList<CharacterHistoryEntry>>(
             "GetHistory", charSummary.CharacterId, "standard");
 
         // Assert - History contains Created event
         Assert.NotEmpty(history);
         Assert.Contains(history, h => h.EventType == CharacterEventTypes.Created);
-
-        await characterHub.DisposeAsync();
     }
 }
 

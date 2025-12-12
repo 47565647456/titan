@@ -161,6 +161,59 @@ public abstract class IntegrationTestBase
         await hub.DisposeAsync();
     }
 
+    /// <summary>
+    /// Ensures a test item type exists in the registry using a UserSession.
+    /// </summary>
+    protected async Task EnsureItemTypeExistsAsync(UserSession adminSession, string itemTypeId, bool isTradeable = true)
+    {
+        var hub = await adminSession.GetItemTypeHubAsync();
+        try
+        {
+            // Try to get it first
+            var existing = await hub.InvokeAsync<ItemTypeDefinition?>("Get", itemTypeId);
+            if (existing != null) return;
+        }
+        catch
+        {
+            // Item type doesn't exist, create it
+        }
+        
+        var definition = new ItemTypeDefinition
+        {
+            ItemTypeId = itemTypeId,
+            Name = itemTypeId.Replace("_", " "),
+            MaxStackSize = 1,
+            IsTradeable = isTradeable,
+            Category = "test"
+        };
+        
+        await hub.InvokeAsync<ItemTypeDefinition>("Create", definition);
+    }
+
+    #endregion
+
+    #region UserSession Factory
+
+    /// <summary>
+    /// Creates a new user session with a fresh user account.
+    /// The session manages hub connections efficiently, reusing them across calls.
+    /// </summary>
+    protected async Task<UserSession> CreateUserSessionAsync()
+    {
+        var (token, userId) = await LoginAsUserAsync();
+        return new UserSession(ApiBaseUrl, token, userId);
+    }
+
+    /// <summary>
+    /// Creates a new admin session with admin privileges.
+    /// The session manages hub connections efficiently, reusing them across calls.
+    /// </summary>
+    protected async Task<UserSession> CreateAdminSessionAsync()
+    {
+        var (token, userId) = await LoginAsAdminAsync();
+        return new UserSession(ApiBaseUrl, token, userId);
+    }
+
     #endregion
 }
 

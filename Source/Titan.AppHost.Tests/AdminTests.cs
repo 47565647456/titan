@@ -16,8 +16,8 @@ public class AdminTests : IntegrationTestBase
     public async Task Admin_CanCreateItemType()
     {
         // Arrange
-        var (token, _) = await LoginAsAdminAsync();
-        var hub = await ConnectToHubAsync("/itemTypeHub", token);
+        await using var admin = await CreateAdminSessionAsync();
+        var hub = await admin.GetItemTypeHubAsync();
 
         var definition = new ItemTypeDefinition
         {
@@ -36,16 +36,14 @@ public class AdminTests : IntegrationTestBase
         Assert.NotNull(created);
         Assert.Equal(definition.ItemTypeId, created.ItemTypeId);
         Assert.Equal(definition.Name, created.Name);
-        
-        await hub.DisposeAsync();
     }
 
     [Fact]
     public async Task Admin_CanCreateSeason()
     {
         // Arrange
-        var (token, _) = await LoginAsAdminAsync();
-        var hub = await ConnectToHubAsync("/seasonHub", token);
+        await using var admin = await CreateAdminSessionAsync();
+        var hub = await admin.GetSeasonHubAsync();
         var seasonId = $"admin-test-season-{Guid.NewGuid():N}";
 
         // Act
@@ -65,16 +63,14 @@ public class AdminTests : IntegrationTestBase
         Assert.NotNull(created);
         Assert.Equal(seasonId, created.SeasonId);
         Assert.Equal("Admin Test Season", created.Name);
-        
-        await hub.DisposeAsync();
     }
 
     [Fact]
     public async Task User_CannotCreateItemType_ThrowsException()
     {
         // Arrange - Regular user, not admin
-        var (token, _) = await LoginAsUserAsync();
-        var hub = await ConnectToHubAsync("/itemTypeHub", token);
+        await using var user = await CreateUserSessionAsync();
+        var hub = await user.GetItemTypeHubAsync();
 
         var definition = new ItemTypeDefinition
         {
@@ -87,16 +83,14 @@ public class AdminTests : IntegrationTestBase
         // Act & Assert - Should throw due to missing Admin role
         await Assert.ThrowsAsync<HubException>(() => 
             hub.InvokeAsync<ItemTypeDefinition>("Create", definition));
-        
-        await hub.DisposeAsync();
     }
 
     [Fact]
     public async Task User_CannotCreateSeason_ThrowsException()
     {
         // Arrange - Regular user, not admin
-        var (token, _) = await LoginAsUserAsync();
-        var hub = await ConnectToHubAsync("/seasonHub", token);
+        await using var user = await CreateUserSessionAsync();
+        var hub = await user.GetSeasonHubAsync();
 
         // Act & Assert - Should throw due to missing Admin role
         await Assert.ThrowsAsync<HubException>(() => 
@@ -111,7 +105,5 @@ public class AdminTests : IntegrationTestBase
                 "standard",
                 (Dictionary<string, object>?)null,
                 false)); // isVoid
-        
-        await hub.DisposeAsync();
     }
 }

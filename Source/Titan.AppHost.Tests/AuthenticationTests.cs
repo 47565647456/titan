@@ -15,29 +15,29 @@ public class AuthenticationTests : IntegrationTestBase
     [Fact]
     public async Task Can_Login_And_Get_Valid_JWT()
     {
-        // Act
-        var (token, userId) = await LoginAsUserAsync();
+        // Act - Use CreateUserSessionAsync to test login flow
+        await using var user = await CreateUserSessionAsync();
 
         // Assert
-        Assert.NotNull(token);
-        Assert.NotEqual(Guid.Empty, userId);
+        Assert.NotNull(user.Token);
+        Assert.NotEqual(Guid.Empty, user.UserId);
 
         var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
+        var jwtToken = handler.ReadJwtToken(user.Token);
 
         Assert.Equal("Titan", jwtToken.Issuer);
-        Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.NameIdentifier && c.Value == userId.ToString());
+        Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.NameIdentifier && c.Value == user.UserId.ToString());
     }
 
     [Fact]
     public async Task Admin_Login_Grants_Admin_Role()
     {
         // Act
-        var (token, _) = await LoginAsAdminAsync();
+        await using var admin = await CreateAdminSessionAsync();
 
         // Assert
         var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
+        var jwtToken = handler.ReadJwtToken(admin.Token);
 
         Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.Role && c.Value == "Admin");
         Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.Role && c.Value == "User");
@@ -47,11 +47,11 @@ public class AuthenticationTests : IntegrationTestBase
     public async Task Standard_User_Login_Has_No_Admin_Role()
     {
         // Act
-        var (token, _) = await LoginAsUserAsync();
+        await using var user = await CreateUserSessionAsync();
 
         // Assert
         var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
+        var jwtToken = handler.ReadJwtToken(user.Token);
 
         Assert.DoesNotContain(jwtToken.Claims, c => c.Type == ClaimTypes.Role && c.Value == "Admin");
         Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.Role && c.Value == "User");
@@ -60,7 +60,7 @@ public class AuthenticationTests : IntegrationTestBase
     [Fact]
     public async Task Hub_Connection_Enforces_Authorization()
     {
-        // 1. Verify Unauthenticated uses are Rejected (or at least cannot call authorized methods)
+        // 1. Verify Unauthenticated uses are Rejected
         // Note: SignalR connection might succeed but invocation fails, OR connection fails depending on config.
         // Our AuthHub is unshielded, but AccountHub is [Authorize].
         
@@ -74,17 +74,8 @@ public class AuthenticationTests : IntegrationTestBase
         await Assert.ThrowsAnyAsync<Exception>(async () => await unauthenticatedConnection.StartAsync());
 
         // 2. Verify Authenticated user CAN connect
-        var (token, _) = await LoginAsUserAsync();
-        var authenticatedConnection = CreateHubConnection("/accountHub", token);
-        
-        try
-        {
-            await authenticatedConnection.StartAsync();
-            Assert.Equal(HubConnectionState.Connected, authenticatedConnection.State);
-        }
-        finally
-        {
-            await authenticatedConnection.DisposeAsync();
-        }
+        await using var user = await CreateUserSessionAsync();
+        var hub = await user.GetAccountHubAsync();
+        Assert.Equal(HubConnectionState.Connected, hub.State);
     }
 }
