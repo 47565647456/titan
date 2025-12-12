@@ -90,6 +90,8 @@ dotnet test Source/Titan.AppHost.Tests
 - [x] **CockroachDB Persistence** - Distributed SQL storage with TLS encryption
 - [x] **Integration Tests** - Comprehensive test suite with database and clustering tests
 - [x] **Metrics/Observability** - OpenTelemetry + Aspire Dashboard
+- [x] **MemoryPack Wire Serialization** - High-performance binary serialization for Orleans RPC
+- [ ] **MemoryPack Storage Serialization** - Binary serialization for grain state persistence
 - [ ] **Admin Dashboard** - Web UI for managing players, banning, economy monitoring
 
 ### Security & Anti-Cheat
