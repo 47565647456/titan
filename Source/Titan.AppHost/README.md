@@ -31,12 +31,16 @@ To trust the admin UI in your browser, import the CA cert from the Docker volume
 
 ## Configuration Parameters
 
-| Parameter | Description | Default (Dev) |
-|-----------|-------------|---------------|
+| Parameter | Description | Default |
+|-----------|-------------|---------|
 | `cockroachdb-password` | Password for the database user | `TitanDevelopmentPassword123!` |
 | `cockroachdb-username` | Database username | `titan` |
 | `Database:CockroachCluster` | `single` or `cluster` (3-node) | `single` |
 | `Database:Volume` | Docker volume name. Set to `ephemeral` to wipe DB. | `(dynamic)` |
+| `Database:Pool:MaxPoolSize` | Max connections per silo | `50` |
+| `Database:Pool:MinPoolSize` | Min connections (fixed pool) | `50` |
+| `Database:Pool:ConnectionLifetimeSeconds` | Max connection age before recycle | `300` |
+| `Database:Pool:ConnectionIdleLifetimeSeconds` | Max idle time before close | `300` |
 | `Orleans:Replicas` | Number of instances per silo host | `2` |
 
 ## Running the Project

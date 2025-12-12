@@ -144,13 +144,21 @@ public static class DatabaseResources
 
         if (clusterInit != null) orleansInit.WaitFor(clusterInit);
 
-        // 4. Connection String (Secure)
-        // Uses Configured User + Password + Trust Server Certificate
+        // 4. Connection String (Secure) with Configurable Pooling
+        // Uses Configured User + Password + Trust Server Certificate + Connection Pool Settings
         var endpoint = primaryNode.GetEndpoint("sql");
+        
+        // Read pool settings from configuration with CockroachDB-recommended defaults
+        var poolConfig = builder.Configuration.GetSection("Database:Pool");
+        var maxPoolSize = poolConfig["MaxPoolSize"] ?? "50";
+        var minPoolSize = poolConfig["MinPoolSize"] ?? "50";
+        var connectionLifetime = poolConfig["ConnectionLifetimeSeconds"] ?? "300";
+        var connectionIdleLifetime = poolConfig["ConnectionIdleLifetimeSeconds"] ?? "300";
+        
         var connectionString = builder.AddConnectionString(
             "titan",
             ReferenceExpression.Create(
-                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan;Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;ApplicationName=Titan"));
+                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan;Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;ApplicationName=Titan;MaxPoolSize={maxPoolSize};MinPoolSize={minPoolSize};ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime}"));
 
         return (connectionString, orleansInit);
     }
