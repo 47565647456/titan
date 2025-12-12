@@ -45,3 +45,29 @@ Silo hosts use this extension:
 ```csharp
 silo.AddTitanGrainStorage(builder.Configuration);
 ```
+
+### Serialization
+Titan uses high-performance serialization throughout:
+
+#### Wire Serialization (Orleans RPC)
+- **MemoryPackCodec**: Custom Orleans codec for grain-to-grain communication
+- Types decorated with `[MemoryPackable]` are automatically serialized using MemoryPack
+- Exception handling configured via `ExceptionSerializationOptions`
+
+#### Storage Serialization (Grain Persistence)
+| Provider | Serializer | Purpose |
+|----------|------------|---------|
+| `OrleansStorage` | MemoryPack | Application grain state |
+| `GlobalStorage` | MemoryPack | Global singleton grains |
+| `PubSubStore` | MemoryPack | Stream pub/sub state |
+| `TransactionStore` | System.Text.Json | Orleans transaction internals |
+
+**Factory methods:**
+```csharp
+// For application grain storage (faster, ~40% smaller payloads)
+options.GrainStorageSerializer = MemoryPackSerializerExtensions.CreateMemoryPackGrainStorageSerializer();
+
+// For transaction storage (Orleans internal compatibility)
+options.GrainStorageSerializer = MemoryPackSerializerExtensions.CreateSystemTextJsonGrainStorageSerializer();
+```
+

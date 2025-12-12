@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Orleans.Storage;
+using Titan.ServiceDefaults.Serialization;
 using Titan.ServiceDefaults.Storage;
 
 namespace Microsoft.Extensions.Hosting;
@@ -20,11 +21,13 @@ public static class GrainStorageExtensions
     {
         var connectionString = config.GetConnectionString("titan");
 
-        // All storage providers share the same CockroachDB connection
-        AddRetryingAdoNetStorage(silo, "OrleansStorage", connectionString, config);
-        AddRetryingAdoNetStorage(silo, "TransactionStore", connectionString, config);
-        AddRetryingAdoNetStorage(silo, "GlobalStorage", connectionString, config);
-        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString, config);
+        // Use MemoryPack for application grain storage (faster, smaller payloads)
+        AddRetryingAdoNetStorage(silo, "OrleansStorage", connectionString, config, useMemoryPack: true);
+        AddRetryingAdoNetStorage(silo, "GlobalStorage", connectionString, config, useMemoryPack: true);
+        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString, config, useMemoryPack: true);
+        
+        // TransactionStore uses default JSON - Orleans transaction internals may not be MemoryPackable
+        AddRetryingAdoNetStorage(silo, "TransactionStore", connectionString, config, useMemoryPack: false);
 
         return silo;
     }
@@ -33,7 +36,8 @@ public static class GrainStorageExtensions
         ISiloBuilder silo, 
         string name, 
         string? connectionString, 
-        IConfiguration config)
+        IConfiguration config,
+        bool useMemoryPack = true)
     {
         if (string.IsNullOrEmpty(connectionString))
         {
@@ -48,6 +52,12 @@ public static class GrainStorageExtensions
         {
             options.Invariant = "Npgsql";  // CockroachDB uses PostgreSQL wire protocol
             options.ConnectionString = connectionString;
+            
+            // Use MemoryPack for faster binary serialization, or System.Text.Json for fallback
+            // (e.g., TransactionStore uses Orleans internal types that may not be MemoryPackable)
+            options.GrainStorageSerializer = useMemoryPack
+                ? MemoryPackSerializerExtensions.CreateMemoryPackGrainStorageSerializer()
+                : MemoryPackSerializerExtensions.CreateSystemTextJsonGrainStorageSerializer();
         });
 
         // Wrap with retry logic for CockroachDB SQLSTATE 40001 (serialization conflicts)

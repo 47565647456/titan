@@ -29,3 +29,13 @@ The `TestSiloConfigurator` configures all required storage providers:
 ## Running Tests
 Run via `dotnet test` or the Visual Studio Test Explorer.
 > **Note**: Some tests marked `[Trait("Category", "Database")]` may require a local Postgres instance (controlled via environment variables).
+
+### Serialization
+- `MemoryPackSerializationTests.cs`: Roundtrip tests for all `[MemoryPackable]` model types and storage serializer.
+- `SerializationBenchmarkTests.cs`: Performance comparison between MemoryPack and System.Text.Json.
+
+Run benchmarks with detailed output:
+```bash
+dotnet test --filter "SerializationBenchmarkTests" --logger "console;verbosity=detailed"
+```
+

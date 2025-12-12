@@ -91,7 +91,7 @@ dotnet test Source/Titan.AppHost.Tests
 - [x] **Integration Tests** - Comprehensive test suite with database and clustering tests
 - [x] **Metrics/Observability** - OpenTelemetry + Aspire Dashboard
 - [x] **MemoryPack Wire Serialization** - High-performance binary serialization for Orleans RPC
-- [ ] **MemoryPack Storage Serialization** - Binary serialization for grain state persistence
+- [x] **MemoryPack Storage Serialization** - Binary serialization for grain state persistence (~40% smaller payloads)
 - [ ] **Admin Dashboard** - Web UI for managing players, banning, economy monitoring
 
 ### Security & Anti-Cheat

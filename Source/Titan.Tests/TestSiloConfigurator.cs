@@ -4,6 +4,7 @@ using Orleans.TestingHost;
 using Titan.Abstractions;
 using Titan.Abstractions.Rules;
 using Titan.Grains.Trading.Rules;
+using Titan.ServiceDefaults.Serialization;
 
 namespace Titan.Tests;
 
@@ -40,21 +41,25 @@ public class TestSiloConfigurator : ISiloConfigurator
             var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION") 
                 ?? "Host=localhost;Port=5432;Database=titan;Username=postgres;Password=TitanDevelopmentPassword123!";
             
-            // Use real PostgreSQL for integration tests
+            // Use real PostgreSQL for integration tests with MemoryPack serialization
             siloBuilder.AddAdoNetGrainStorage("OrleansStorage", options =>
             {
                 options.Invariant = "Npgsql";
                 options.ConnectionString = connectionString;
+                options.GrainStorageSerializer = MemoryPackSerializerExtensions.CreateMemoryPackGrainStorageSerializer();
             });
             siloBuilder.AddAdoNetGrainStorage("TransactionStore", options =>
             {
                 options.Invariant = "Npgsql";
                 options.ConnectionString = connectionString;
+                // TransactionStore uses System.Text.Json - Orleans transaction internals may not be MemoryPackable
+                options.GrainStorageSerializer = MemoryPackSerializerExtensions.CreateSystemTextJsonGrainStorageSerializer();
             });
             siloBuilder.AddAdoNetGrainStorage("GlobalStorage", options =>
             {
                 options.Invariant = "Npgsql";
                 options.ConnectionString = connectionString;
+                options.GrainStorageSerializer = MemoryPackSerializerExtensions.CreateMemoryPackGrainStorageSerializer();
             });
         }
         else

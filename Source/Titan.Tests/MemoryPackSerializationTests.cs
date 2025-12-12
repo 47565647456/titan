@@ -2,6 +2,7 @@ using MemoryPack;
 using Titan.Abstractions.Events;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.ServiceDefaults.Serialization;
 
 namespace Titan.Tests;
 
@@ -572,6 +573,54 @@ public class MemoryPackSerializationTests
         Assert.NotNull(deserialized);
         Assert.Empty(deserialized.InitiatorItemIds);
         Assert.Empty(deserialized.TargetItemIds);
+    }
+
+    #endregion
+
+    #region Storage Serializer
+
+    [Fact]
+    public void GrainStorageSerializer_Serialize_ReturnsValidBinaryData()
+    {
+        var serializer = new MemoryPackGrainStorageSerializer();
+        var item = new Item
+        {
+            Id = Guid.NewGuid(),
+            ItemTypeId = "test_item",
+            Quantity = 10,
+            AcquiredAt = DateTimeOffset.UtcNow
+        };
+
+        var binaryData = serializer.Serialize(item);
+
+        Assert.NotNull(binaryData);
+        Assert.True(binaryData.ToArray().Length > 0);
+    }
+
+    [Fact]
+    public void GrainStorageSerializer_Roundtrip_PreservesData()
+    {
+        var serializer = new MemoryPackGrainStorageSerializer();
+        var original = new TradeSession
+        {
+            TradeId = Guid.NewGuid(),
+            InitiatorCharacterId = Guid.NewGuid(),
+            TargetCharacterId = Guid.NewGuid(),
+            SeasonId = "test-season",
+            Status = TradeStatus.Pending,
+            InitiatorItemIds = [Guid.NewGuid()],
+            TargetItemIds = [],
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        var binaryData = serializer.Serialize(original);
+        var deserialized = serializer.Deserialize<TradeSession>(binaryData);
+
+        Assert.Equal(original.TradeId, deserialized.TradeId);
+        Assert.Equal(original.SeasonId, deserialized.SeasonId);
+        Assert.Equal(original.Status, deserialized.Status);
+        Assert.Single(original.InitiatorItemIds);
+        Assert.Empty(original.TargetItemIds);
     }
 
     #endregion

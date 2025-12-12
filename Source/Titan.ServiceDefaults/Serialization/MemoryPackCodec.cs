@@ -214,9 +214,22 @@ public class MemoryPackCodec : IGeneralizedCodec, IGeneralizedCopier, ITypeFilte
     }
 
     /// <inheritdoc/>
-    bool? ITypeFilter.IsTypeAllowed(Type type) =>
-        (((IGeneralizedCopier)this).IsSupportedType(type) ||
-         ((IGeneralizedCodec)this).IsSupportedType(type)) ? true : null;
+    /// <remarks>
+    /// Returns true for Exception types to allow Orleans' built-in ExceptionCodec to serialize them.
+    /// This prevents CodecNotFoundException when MemoryPack throws MemoryPackSerializationException.
+    /// </remarks>
+    bool? ITypeFilter.IsTypeAllowed(Type type)
+    {
+        // Allow Exception types so Orleans' ExceptionCodec can serialize them
+        // This is critical for error propagation when MemoryPack throws exceptions
+        if (typeof(Exception).IsAssignableFrom(type))
+        {
+            return true;
+        }
+        
+        return (((IGeneralizedCopier)this).IsSupportedType(type) ||
+                ((IGeneralizedCodec)this).IsSupportedType(type)) ? true : null;
+    }
 
     private static bool IsMemoryPackable(Type type)
     {

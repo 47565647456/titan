@@ -1,7 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 using Orleans.Serialization;
 using Orleans.Serialization.Cloning;
+using Orleans.Serialization.Configuration;
 using Orleans.Serialization.Serializers;
+using Orleans.Storage;
 
 namespace Titan.ServiceDefaults.Serialization;
 
@@ -33,6 +35,13 @@ public static class MemoryPackSerializerExtensions
             services.Configure<MemoryPackCodecOptions>(_ => { });
         }
 
+        // Configure ExceptionSerializationOptions to allow MemoryPack exceptions to be serialized
+        // by Orleans' built-in ExceptionCodec (fix for GitHub issue dotnet/orleans#8201)
+        services.Configure<ExceptionSerializationOptions>(options =>
+        {
+            options.SupportedNamespacePrefixes.Add("MemoryPack");
+        });
+
         // Register the codec as a singleton and expose it through all required interfaces
         services.AddSingleton<MemoryPackCodec>();
         services.AddSingleton<IGeneralizedCodec>(sp => sp.GetRequiredService<MemoryPackCodec>());
@@ -41,4 +50,19 @@ public static class MemoryPackSerializerExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Creates a MemoryPack grain storage serializer for use with ADO.NET grain storage.
+    /// </summary>
+    /// <returns>A new instance of <see cref="MemoryPackGrainStorageSerializer"/>.</returns>
+    public static IGrainStorageSerializer CreateMemoryPackGrainStorageSerializer()
+        => new MemoryPackGrainStorageSerializer();
+
+    /// <summary>
+    /// Creates a System.Text.Json grain storage serializer for use with ADO.NET grain storage.
+    /// Used for storage providers that need JSON (e.g., TransactionStore with Orleans internals).
+    /// </summary>
+    /// <returns>A new instance of <see cref="SystemTextJsonGrainStorageSerializer"/>.</returns>
+    public static IGrainStorageSerializer CreateSystemTextJsonGrainStorageSerializer()
+        => new SystemTextJsonGrainStorageSerializer();
 }
