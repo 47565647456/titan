@@ -12,5 +12,5 @@ A dedicated Orleans Silo responsible for hosting Inventory and Item-related grai
 
 ## Infrastructure
 - **Clustering**: Redis.
-- **Persistence**: PostgreSQL (ADO.NET).
-- **Transactions**: Enable Orleans Transactions for atomic operations.
+- **Persistence**: Configured via `AddTitanGrainStorage()` from ServiceDefaults.
+- **Transactions**: Enabled for atomic multi-grain operations.

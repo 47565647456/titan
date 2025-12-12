@@ -21,3 +21,12 @@ Automatically configures metrics and tracing.
 
 ### Configuration Validation
 - `ValidateTitanConfiguration`: A helper to fail-fast on startup if critical config (like JWT Keys or Database passwords) is missing.
+
+### Grain Storage
+- `AddTitanGrainStorage(IConfiguration)`: Configures Orleans grain persistence based on `Database:Type` setting.
+  - **postgres** (default): Uses ADO.NET with Npgsql.
+  - **memory**: Falls back to in-memory storage when no connection string is available.
+- Silo hosts use this extension to remain database-agnostic:
+  ```csharp
+  silo.AddTitanGrainStorage(builder.Configuration);
+  ```

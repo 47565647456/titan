@@ -13,5 +13,5 @@ A dedicated Orleans Silo responsible for hosting Trade-related grains.
 
 ## Infrastructure
 - **Clustering**: Redis.
-- **Persistence**: PostgreSQL (ADO.NET).
-- **Transactions**: Critical for trading; Uses Orleans Transactions to ensure item swaps are atomic and consistent (ACID).
+- **Persistence**: Configured via `AddTitanGrainStorage()` from ServiceDefaults.
+- **Transactions**: Critical for trading; uses Orleans Transactions to ensure item swaps are atomic (ACID).
