@@ -192,11 +192,13 @@ public static class Extensions
             {
                 metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation();
+                    .AddRuntimeInstrumentation()
+                    .AddMeter("Microsoft.Orleans");
             })
             .WithTracing(tracing =>
             {
                 tracing.AddSource(builder.Environment.ApplicationName)
+                    .AddSource("Microsoft.Orleans.Runtime")
                     .AddAspNetCoreInstrumentation(tracing =>
                         // Exclude health check requests from tracing
                         tracing.Filter = context =>
@@ -234,9 +236,22 @@ public static class Extensions
 
     public static TBuilder AddDefaultHealthChecks<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
-        builder.Services.AddHealthChecks()
+        var healthChecks = builder.Services.AddHealthChecks()
             // Add a default liveness check to ensure app is responsive
             .AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
+
+        // Add Health Checks for dependencies if configured
+        var titanConn = builder.Configuration.GetConnectionString("titan");
+        if (!string.IsNullOrEmpty(titanConn))
+        {
+            healthChecks.AddNpgSql(titanConn, name: "titan-db", tags: ["ready"]);
+        }
+
+        var redisConn = builder.Configuration.GetConnectionString("orleans-clustering");
+        if (!string.IsNullOrEmpty(redisConn))
+        {
+            healthChecks.AddRedis(redisConn, name: "orleans-redis", tags: ["ready"]);
+        }
 
         return builder;
     }

@@ -37,18 +37,24 @@ public class TestSiloConfigurator : ISiloConfigurator
         // CI sets USE_DATABASE=true, local dev defaults to memory
         if (useDatabase)
         {
+            var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION") 
+                ?? "Host=localhost;Port=5432;Database=titan;Username=postgres;Password=TitanDevelopmentPassword123!";
+            
             // Use real PostgreSQL for integration tests
             siloBuilder.AddAdoNetGrainStorage("OrleansStorage", options =>
             {
                 options.Invariant = "Npgsql";
-                options.ConnectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION") 
-                    ?? "Host=localhost;Port=5432;Database=titan;Username=postgres;Password=TitanDevelopmentPassword123!";
+                options.ConnectionString = connectionString;
             });
             siloBuilder.AddAdoNetGrainStorage("TransactionStore", options =>
             {
                 options.Invariant = "Npgsql";
-                options.ConnectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION") 
-                    ?? "Host=localhost;Port=5432;Database=titan;Username=postgres;Password=TitanDevelopmentPassword123!";
+                options.ConnectionString = connectionString;
+            });
+            siloBuilder.AddAdoNetGrainStorage("GlobalStorage", options =>
+            {
+                options.Invariant = "Npgsql";
+                options.ConnectionString = connectionString;
             });
         }
         else
@@ -56,6 +62,7 @@ public class TestSiloConfigurator : ISiloConfigurator
             // Use in-memory storage for fast local development
             siloBuilder.AddMemoryGrainStorage("OrleansStorage");
             siloBuilder.AddMemoryGrainStorage("TransactionStore");
+            siloBuilder.AddMemoryGrainStorage("GlobalStorage");
         }
 
         // Register Trade Rules for Testing

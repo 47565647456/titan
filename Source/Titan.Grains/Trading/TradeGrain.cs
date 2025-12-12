@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Orleans.Runtime;
 using Orleans.Streams;
+using Orleans.Transactions;
 using Titan.Abstractions;
 using Titan.Abstractions.Events;
 using Titan.Abstractions.Grains;
@@ -26,7 +27,7 @@ public class TradeGrain : Grain, ITradeGrain
     private IAsyncStream<TradeEvent>? _tradeStream;
 
     public TradeGrain(
-        [PersistentState("trade", "OrleansStorage")] IPersistentState<TradeGrainState> state,
+        [PersistentState("trade", "GlobalStorage")] IPersistentState<TradeGrainState> state,
         IGrainFactory grainFactory,
         IOptions<TradingOptions> options,
         IEnumerable<IRule<TradeRequestContext>> rules)
@@ -331,6 +332,7 @@ public class TradeGrain : Grain, ITradeGrain
         await PublishEventAsync("TradeCancelled", characterId);
     }
 
+    [Transaction(TransactionOption.CreateOrJoin)]
     private async Task ExecuteTradeAsync()
     {
         var session = _state.State.Session!;

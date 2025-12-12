@@ -5,7 +5,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <UserSecretsId>f33c6044-fdd8-4df5-930c-034183c79606</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,7 +18,7 @@
     <!-- Aspire.Hosting.AppHost is automatically included by the SDK in 13.0 -->
     <PackageReference Include="Aspire.Hosting.Orleans" Version="13.0.2" />
     <PackageReference Include="Aspire.Hosting.Redis" Version="13.0.2" />
-    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.0.2" />
+
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
   </ItemGroup>
 

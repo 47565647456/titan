@@ -20,7 +20,7 @@ public class SeasonMigrationGrain : Grain, ISeasonMigrationGrain
     private readonly IGrainFactory _grainFactory;
 
     public SeasonMigrationGrain(
-        [PersistentState("seasonMigration", "OrleansStorage")] IPersistentState<SeasonMigrationGrainState> state,
+        [PersistentState("seasonMigration", "GlobalStorage")] IPersistentState<SeasonMigrationGrainState> state,
         IGrainFactory grainFactory)
     {
         _state = state;

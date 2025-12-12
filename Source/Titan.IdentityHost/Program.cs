@@ -39,7 +39,7 @@ builder.UseOrleans(silo =>
     silo.UseTransactions();
 
     // Memory Streams for trade events (cross-silo pub/sub)
-    silo.AddMemoryGrainStorage("PubSubStore");
+    // PubSubStore is now configured in AddTitanGrainStorage (persistent)
     silo.AddMemoryStreams(TradeStreamConstants.ProviderName);
 
     // Grain persistence - auto-configured based on Database:Type

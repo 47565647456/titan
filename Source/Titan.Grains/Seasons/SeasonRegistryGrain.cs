@@ -17,7 +17,7 @@ public class SeasonRegistryGrain : Grain, ISeasonRegistryGrain
     private readonly IPersistentState<SeasonRegistryGrainState> _state;
 
     public SeasonRegistryGrain(
-        [PersistentState("seasonRegistry", "OrleansStorage")] IPersistentState<SeasonRegistryGrainState> state)
+        [PersistentState("seasonRegistry", "GlobalStorage")] IPersistentState<SeasonRegistryGrainState> state)
     {
         _state = state;
     }

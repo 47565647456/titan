@@ -12,7 +12,7 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 - **Trading**: Secure peer-to-peer item trading.
 - **Identity**: User profiles and social provider linking (Steam, EOS).
 - **Security**: JWT Authentication and Role-based Access Control (RBAC).
-- **PostgreSQL Persistence**: Scalable, PostgreSQL-compatible distributed SQL storage.
+- **CockroachDB Persistence**: Distributed SQL storage with TLS encryption.
 - **.NET Aspire**: Cloud-native orchestration for local development and deployment.
 
 ## Quick Start
@@ -22,7 +22,7 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 - [Docker](https://www.docker.com/) (Desktop or Engine)
 
 ### 1-Click Environment Setup (Aspire)
-We recommend using **.NET Aspire** to run the solution. It automatically provisions Redis, PostgreSQL, and starts all services (API + All Silos) with the correct configuration.
+We recommend using **.NET Aspire** to run the solution. It automatically provisions Redis, CockroachDB, and starts all services (API + All Silos) with the correct configuration.
 
 1. Open `Titan.sln` in Visual Studio or Rider.
 2. Set **`Titan.AppHost`** as the Startup Project.
@@ -34,7 +34,7 @@ Your browser will open the **Aspire Dashboard**, allowing you to view running se
 Alternatively, use our automation scripts to start the database and run services manually:
 
 ```powershell
-# Start PostgreSQL
+# Start CockroachDB
 .\scripts\docker-up.ps1
 
 # Start all services
@@ -87,7 +87,7 @@ dotnet test Source/Titan.AppHost.Tests
 - [x] **Rate Limiting** - API throttling, service shielding
 
 ### Persistence & Operations
-- [x] **PostgreSQL Persistence** - Scalable SQL storage with Orleans integration
+- [x] **CockroachDB Persistence** - Distributed SQL storage with TLS encryption
 - [x] **Integration Tests** - Comprehensive test suite with database and clustering tests
 - [x] **Metrics/Observability** - OpenTelemetry + Aspire Dashboard
 - [ ] **Admin Dashboard** - Web UI for managing players, banning, economy monitoring

@@ -21,12 +21,11 @@ var redis = builder.AddRedis("orleans-clustering")
     .WithRedisInsight();
 
 // Database password - using a stable password for local dev
-var dbPassword = builder.AddParameter("postgres-password", secret: true);
-DatabaseResources.CheckProductionPassword(builder, dbPassword);
+var dbPassword = builder.AddParameter("cockroachdb-password");
+var dbUsername = builder.AddParameter("cockroachdb-username");
 
-// Database resource - extensible via Database:Type configuration
-var databaseType = builder.Configuration["Database:Type"]?.ToLowerInvariant() ?? "postgres";
-var (titanDb, dbContainer) = DatabaseResources.AddDatabase(builder, dbPassword, env, databaseType);
+// Database resource - exclusively CockroachDB
+var (titanDb, dbContainer) = DatabaseResources.AddDatabase(builder, dbPassword, dbUsername, env);
 
 // =============================================================================
 // Orleans Cluster Configuration

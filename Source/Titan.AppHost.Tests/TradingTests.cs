@@ -162,6 +162,93 @@ public class TradingTests : IntegrationTestBase
         
         await tradeHub1.DisposeAsync();
     }
+
+    /// <summary>
+    /// Stress test: Multiple concurrent trades to verify CockroachDB handles serializable transactions.
+    /// Each trade uses GlobalStorage which connects to CockroachDB in a multi-region setup.
+    /// </summary>
+    [Fact]
+    public async Task ConcurrentTrades_StressTest()
+    {
+        // Arrange - Create multiple user pairs
+        // With CockroachDB transaction retry, we can handle higher concurrency
+        const int numTradePairs = 100;
+        var (adminToken, _) = await LoginAsAdminAsync();
+        
+        // Register tradeable item type
+        await EnsureItemTypeExistsAsync(adminToken, "stress_item", isTradeable: true);
+
+        var tradeTasks = new List<Task<bool>>();
+
+        for (int i = 0; i < numTradePairs; i++)
+        {
+            var pairIndex = i;
+            tradeTasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    // Each pair has their own users
+                    var (token1, _) = await LoginAsUserAsync();
+                    var (token2, _) = await LoginAsUserAsync();
+
+                    // Create characters
+                    var accountHub1 = await ConnectToHubAsync("/accountHub", token1);
+                    var char1 = await accountHub1.InvokeAsync<CharacterSummary>(
+                        "CreateCharacter", "standard", $"StressTrader{pairIndex}A", CharacterRestrictions.None);
+                    await accountHub1.DisposeAsync();
+
+                    var accountHub2 = await ConnectToHubAsync("/accountHub", token2);
+                    var char2 = await accountHub2.InvokeAsync<CharacterSummary>(
+                        "CreateCharacter", "standard", $"StressTrader{pairIndex}B", CharacterRestrictions.None);
+                    await accountHub2.DisposeAsync();
+
+                    // Give both characters items
+                    var invHub1 = await ConnectToHubAsync("/inventoryHub", token1);
+                    var item1 = await invHub1.InvokeAsync<Item>(
+                        "AddItem", char1.CharacterId, "standard", "stress_item", 1, (Dictionary<string, object>?)null);
+                    await invHub1.DisposeAsync();
+
+                    var invHub2 = await ConnectToHubAsync("/inventoryHub", token2);
+                    var item2 = await invHub2.InvokeAsync<Item>(
+                        "AddItem", char2.CharacterId, "standard", "stress_item", 1, (Dictionary<string, object>?)null);
+                    await invHub2.DisposeAsync();
+
+                    // Execute trade
+                    var tradeHub1 = await ConnectToHubAsync("/tradeHub", token1);
+                    var session = await tradeHub1.InvokeAsync<TradeSession>(
+                        "StartTrade", char1.CharacterId, char2.CharacterId, "standard");
+                    await tradeHub1.InvokeAsync<TradeSession>("AddItem", session.TradeId, item1.Id);
+
+                    var tradeHub2 = await ConnectToHubAsync("/tradeHub", token2);
+                    await tradeHub2.InvokeAsync<TradeSession>("AddItem", session.TradeId, item2.Id);
+
+                    // Both accept
+                    await tradeHub1.InvokeAsync<AcceptTradeResult>("AcceptTrade", session.TradeId);
+                    var result = await tradeHub2.InvokeAsync<AcceptTradeResult>("AcceptTrade", session.TradeId);
+
+                    await tradeHub1.DisposeAsync();
+                    await tradeHub2.DisposeAsync();
+
+                    return result.Completed && result.Status == TradeStatus.Completed;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Trade pair {pairIndex} failed: {ex.Message}");
+                    return false;
+                }
+            }));
+        }
+
+        // Act - Wait for all concurrent trades
+        var results = await Task.WhenAll(tradeTasks);
+
+        // Assert - With retry logic, most trades should complete (80%+ success)
+        // Some may still fail due to SignalR timeouts or other non-storage errors
+        var successCount = results.Count(r => r);
+        var successRate = (double)successCount / numTradePairs;
+        Assert.True(successRate >= 0.80, 
+            $"Expected at least 80% success rate, got {successRate:P1} ({successCount}/{numTradePairs})");
+    }
 }
 
 public record AcceptTradeResult(TradeStatus Status, bool Completed);

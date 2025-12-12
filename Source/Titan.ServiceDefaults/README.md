@@ -23,10 +23,13 @@ Automatically configures metrics and tracing.
 - `ValidateTitanConfiguration`: A helper to fail-fast on startup if critical config (like JWT Keys or Database passwords) is missing.
 
 ### Grain Storage
-- `AddTitanGrainStorage(IConfiguration)`: Configures Orleans grain persistence based on `Database:Type` setting.
-  - **postgres** (default): Uses ADO.NET with Npgsql.
-  - **memory**: Falls back to in-memory storage when no connection string is available.
-- Silo hosts use this extension to remain database-agnostic:
-  ```csharp
-  silo.AddTitanGrainStorage(builder.Configuration);
-  ```
+- `AddTitanGrainStorage(IConfiguration)`: Configures Orleans grain persistence.
+  - **OrleansStorage**: Default grain storage for most grains.
+  - **TransactionStore**: For Orleans transaction state.
+  - **GlobalStorage**: Shared state (seasons, trades, migrations).
+- **RetryingGrainStorage**: A wrapper that adds exponential backoff retry logic to handle transient database failures.
+
+Silo hosts use this extension:
+```csharp
+silo.AddTitanGrainStorage(builder.Configuration);
+```

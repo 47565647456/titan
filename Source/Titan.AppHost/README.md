@@ -5,17 +5,24 @@ The **Aspire** Orchestrator for the Titan Backend. This project is the entry poi
 ## Responsibilities
 - **Orchestration**: Starts and manages all services (API, IdentityHost, InventoryHost, TradingHost).
 - **Service Discovery**: Injects connection strings and endpoints into child projects.
-- **Infrastructure**: Provisions Docker containers for Redis and PostgreSQL.
+- **Infrastructure**: Provisions Docker containers for Redis and CockroachDB.
 
 ## Resources
 
 ### Databases
-- **PostgreSQL (`titan-db`)**:
-  - Persists generic Orleans Grain state.
-  - Initialized with `init-orleans-db.sql`.
-  - **Type**: Extensible via `Database:Type` config (currently only `postgres`).
-  - **Password**: Controlled via `postgres-password` parameter.
-  - **Persistence**: Controlled via `Database:Volume` config (default: `titan-postgres-data-{env}`).
+- **CockroachDB (`titan-db`)**:
+  - Distributed SQL database with PostgreSQL wire protocol.
+  - Runs in **secure mode** with auto-generated TLS certificates.
+  - Initialized with `scripts/cockroachdb/init.sql`.
+  - **Cluster Mode**: Configurable single-node or 3-node cluster via `Database:CockroachCluster`.
+
+### Certificates
+The AppHost automatically generates TLS certificates for CockroachDB:
+- **CA Certificate**: Signs all other certs
+- **Node Certificate**: For database server
+- **Client Certificate**: For root user connections
+
+To trust the admin UI in your browser, import the CA cert from the Docker volume (see instructions in root README).
 
 ### Caching / Clustering
 - **Redis (`orleans-clustering`)**: 
@@ -26,9 +33,10 @@ The **Aspire** Orchestrator for the Titan Backend. This project is the entry poi
 
 | Parameter | Description | Default (Dev) |
 |-----------|-------------|---------------|
-| `postgres-password` | Password for the Postgres container | `TitanDevelopmentPassword123!` |
-| `Database:Type` | Database backend type | `postgres` |
-| `Database:Volume` | Docker volume name. Set to `ephemeral` to wipe DB or `none` for no volume. | `(dynamic)` |
+| `cockroachdb-password` | Password for the database user | `TitanDevelopmentPassword123!` |
+| `cockroachdb-username` | Database username | `titan` |
+| `Database:CockroachCluster` | `single` or `cluster` (3-node) | `single` |
+| `Database:Volume` | Docker volume name. Set to `ephemeral` to wipe DB. | `(dynamic)` |
 
 ## Running the Project
 Set this project as the **Startup Project** in Visual Studio or run `dotnet run` to launch the Aspire Dashboard.

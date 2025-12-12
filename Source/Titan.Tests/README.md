@@ -5,6 +5,11 @@ Unit and Integration tests for the Titan backend logic.
 ## Test Strategy
 These tests use the `Orleans.TestingHost` to spin up an in-memory **TestCluster**. This allows testing Grains in a realistic distributed environment without needing full external infrastructure (Docker).
 
+The `TestSiloConfigurator` configures all required storage providers:
+- **OrleansStorage**: Default grain persistence
+- **TransactionStore**: Orleans transactions
+- **GlobalStorage**: Shared state (seasons, trades)
+
 ## Key Test Areas
 
 ### Distributed / Clustering

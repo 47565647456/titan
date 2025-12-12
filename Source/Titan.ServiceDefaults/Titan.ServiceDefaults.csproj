@@ -15,6 +15,7 @@
     <PackageReference Include="Microsoft.Orleans.Persistence.AdoNet" Version="9.2.2-nightly.20251124.2" />
     <PackageReference Include="Microsoft.Orleans.Server" Version="9.2.2-nightly.20251124.2" />
     <PackageReference Include="Npgsql" Version="10.0.0" />
+    <PackageReference Include="Polly.Core" Version="8.6.5" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
@@ -23,6 +24,13 @@
     <PackageReference Include="Sentry.AspNetCore" Version="5.16.2" />
     <PackageReference Include="Sentry.Serilog" Version="5.16.2" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+
+    <!-- Health Checks -->
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
+
+    <!-- Orleans Telemetry -->
+    <!-- Built-in Orleans telemetry does not require a separate instrumentation package -->
   </ItemGroup>
 
 </Project>

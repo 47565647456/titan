@@ -1,5 +1,6 @@
+using Aspire.Hosting.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Titan.Abstractions.Models;
 
 namespace Titan.AppHost.Tests;
@@ -7,46 +8,33 @@ namespace Titan.AppHost.Tests;
 /// <summary>
 /// Shared fixture that starts ONE AppHost and shares it across all tests.
 /// This avoids port conflicts and speeds up test execution.
+/// Uses DistributedApplicationTestingBuilder for Aspire test support.
 /// </summary>
-public class AppHostFixture : DistributedApplicationFactory, IAsyncLifetime
+public class AppHostFixture : IAsyncLifetime
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(3);
-    
-    // We only need the base constructor that takes the entry point type
-    public AppHostFixture() : base(typeof(Projects.Titan_AppHost)) { }
 
     public DistributedApplication App { get; private set; } = null!;
     public string ApiBaseUrl { get; private set; } = null!;
 
-    protected override void OnBuilderCreating(DistributedApplicationOptions applicationOptions, HostApplicationBuilderSettings hostOptions)
-    {
-        // Pass configuration via command line args to ensure it overrides local defaults
-        applicationOptions.Args = new[] { "PostgresVolume=ephemeral" };
-        
-        hostOptions.Configuration ??= new();
-        // Ensure we are in Development mode to avoid production validation failures
-        hostOptions.EnvironmentName = "Development";
-    }
-
-    protected override void OnBuilding(DistributedApplicationBuilder builder)
-    {
-        // Add resilience to HTTP clients
-        builder.Services.ConfigureHttpClientDefaults(http => 
-            http.AddStandardResilienceHandler());
-            
-        base.OnBuilding(builder);
-    }
-
-    protected override void OnBuilt(DistributedApplication app)
-    {
-        App = app;
-        base.OnBuilt(app);
-    }
-
     public async Task InitializeAsync()
     {
-        // Start the application using the factory
-        await StartAsync();
+        // Create the AppHost using DistributedApplicationTestingBuilder with configuration as arguments
+        var appHost = await DistributedApplicationTestingBuilder
+            .CreateAsync<Projects.Titan_AppHost>(
+            [
+                "--environment=Development",
+                "Database:Volume=ephemeral",
+                "Parameters:cockroachdb-password=TestPassword123!"
+            ]);
+        
+        // Add resilience to HTTP clients
+        appHost.Services.ConfigureHttpClientDefaults(http => 
+            http.AddStandardResilienceHandler());
+        
+        // Build and start the application
+        App = await appHost.BuildAsync();
+        await App.StartAsync();
             
         // Wait for ALL Orleans silo hosts to be healthy
         await Task.WhenAll(
@@ -64,16 +52,12 @@ public class AppHostFixture : DistributedApplicationFactory, IAsyncLifetime
         ApiBaseUrl = endpoint.ToString().TrimEnd('/');
     }
 
-    // DistributedApplicationFactory handles disposal, but IAsyncLifetime requires DisposeAsync.
-    // We should call base.DisposeAsync if exposing the factory directly, or handle App disposal here.
-    // Since we manually built 'App', we should dispose it.
-    public new async Task DisposeAsync()
+    public async Task DisposeAsync()
     {
         if (App != null)
         {
             await App.DisposeAsync();
         }
-        await base.DisposeAsync();
     }
 }
 

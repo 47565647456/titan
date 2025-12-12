@@ -4,7 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <UserSecretsId>dotnet-Titan.InventoryHost-c19f0589-616f-4416-b4a6-a01f21219d70</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
