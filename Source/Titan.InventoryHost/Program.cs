@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Orleans.Serialization;
 using Titan.Abstractions;
+using Titan.ServiceDefaults.Serialization;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -42,6 +44,9 @@ builder.UseOrleans(silo =>
     // Grain persistence - auto-configured based on Database:Type
     silo.AddTitanGrainStorage(builder.Configuration);
 });
+
+// Register MemoryPack serializer for Orleans wire serialization
+builder.Services.AddSerializer(sb => sb.AddMemoryPackSerializer());
 
 var host = builder.Build();
 host.Run();
