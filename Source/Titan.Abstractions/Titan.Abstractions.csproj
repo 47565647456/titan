@@ -7,9 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MemoryPack" Version="1.21.4" />
-    <PackageReference Include="Microsoft.Orleans.Sdk" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Microsoft.Orleans.Transactions" Version="9.2.2-nightly.20251124.2" />
+    <PackageReference Include="MemoryPack" />
+    <PackageReference Include="Microsoft.Orleans.Sdk" />
+    <PackageReference Include="Microsoft.Orleans.Transactions" />
   </ItemGroup>
 
 </Project>

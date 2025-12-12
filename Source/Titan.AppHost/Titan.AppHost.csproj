@@ -16,10 +16,10 @@
 
   <ItemGroup>
     <!-- Aspire.Hosting.AppHost is automatically included by the SDK in 13.0 -->
-    <PackageReference Include="Aspire.Hosting.Orleans" Version="13.0.2" />
-    <PackageReference Include="Aspire.Hosting.Redis" Version="13.0.2" />
+    <PackageReference Include="Aspire.Hosting.Orleans" />
+    <PackageReference Include="Aspire.Hosting.Redis" />
 
-    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
   </ItemGroup>
 
 </Project>

@@ -8,17 +8,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="MemoryPack" Version="1.21.4" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageReference Include="Microsoft.Orleans.Persistence.AdoNet" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Microsoft.Orleans.Serialization" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Microsoft.Orleans.Streaming" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Microsoft.Orleans.TestingHost" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Microsoft.Orleans.Transactions" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Npgsql" Version="10.0.0" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="MemoryPack" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.Orleans.Persistence.AdoNet" />
+    <PackageReference Include="Microsoft.Orleans.Serialization" />
+    <PackageReference Include="Microsoft.Orleans.Streaming" />
+    <PackageReference Include="Microsoft.Orleans.TestingHost" />
+    <PackageReference Include="Microsoft.Orleans.Transactions" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
   <ItemGroup>

@@ -7,16 +7,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.StackExchange.Redis" Version="13.0.2" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
-    <PackageReference Include="Microsoft.Orleans.Client" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Microsoft.Orleans.Clustering.Redis" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Microsoft.Orleans.Streaming" Version="9.2.2-nightly.20251124.2" />
-    <PackageReference Include="Scalar.AspNetCore" Version="2.11.3" />
-    <PackageReference Include="Sentry.AspNetCore" Version="5.16.2" />
-    <PackageReference Include="Sentry.Serilog" Version="5.16.2" />
-    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="Aspire.StackExchange.Redis" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Orleans.Client" />
+    <PackageReference Include="Microsoft.Orleans.Clustering.Redis" />
+    <PackageReference Include="Microsoft.Orleans.Streaming" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Sentry.AspNetCore" />
+    <PackageReference Include="Sentry.Serilog" />
+    <PackageReference Include="Serilog.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,65 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Aspire -->
+    <PackageVersion Include="Aspire.Hosting.Orleans" Version="13.0.2" />
+    <PackageVersion Include="Aspire.Hosting.Redis" Version="13.0.2" />
+    <PackageVersion Include="Aspire.Hosting.Testing" Version="13.0.2" />
+    <PackageVersion Include="Aspire.StackExchange.Redis" Version="13.0.2" />
+
+    <!-- Orleans -->
+    <PackageVersion Include="Microsoft.Orleans.Client" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.Clustering.Redis" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.Sdk" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.Serialization" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.Server" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.Streaming" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.Transactions" Version="9.2.2-nightly.20251124.2" />
+
+    <!-- ASP.NET Core -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0" />
+    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.1.0" />
+
+    <!-- Serialization -->
+    <PackageVersion Include="MemoryPack" Version="1.21.4" />
+    <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
+
+    <!-- Database -->
+    <PackageVersion Include="Npgsql" Version="10.0.0" />
+
+    <!-- Observability -->
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.14.0" />
+    <PackageVersion Include="Sentry.AspNetCore" Version="6.0.0" />
+    <PackageVersion Include="Sentry.Serilog" Version="6.0.0" />
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+
+    <!-- Health Checks -->
+    <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageVersion Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />
+
+    <!-- API Documentation -->
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.11.6" />
+
+    <!-- Resilience -->
+    <PackageVersion Include="Polly.Core" Version="8.6.5" />
+
+    <!-- Testing -->
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+</Project>
