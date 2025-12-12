@@ -13,51 +13,49 @@ namespace Microsoft.Extensions.Hosting;
 public static class GrainStorageExtensions
 {
     /// <summary>
-    /// Configures Orleans grain storage with regional and global providers.
-    /// - OrleansStorage: Uses CockroachDB (titan) with retry logic
-    /// - GlobalStorage: Uses CockroachDB (titan) with retry logic
-    /// - TransactionStore: Uses CockroachDB (titan) with retry logic
+    /// Configures Orleans grain storage providers backed by CockroachDB.
+    /// All providers use the same connection with retry logic for serialization conflicts.
     /// </summary>
     public static ISiloBuilder AddTitanGrainStorage(this ISiloBuilder silo, IConfiguration config)
     {
         var connectionString = config.GetConnectionString("titan");
 
-        // Use the same storage configuration for all providers since we are moving to a single global DB
-        // Always wrap with retry logic for CockroachDB serializable transaction conflicts
+        // All storage providers share the same CockroachDB connection
         AddRetryingAdoNetStorage(silo, "OrleansStorage", connectionString, config);
         AddRetryingAdoNetStorage(silo, "TransactionStore", connectionString, config);
         AddRetryingAdoNetStorage(silo, "GlobalStorage", connectionString, config);
-        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString, config); // Persistent storage for streams
+        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString, config);
 
         return silo;
     }
 
-    private static void AddRetryingAdoNetStorage(ISiloBuilder silo, string name, string? connectionString, IConfiguration config)
+    private static void AddRetryingAdoNetStorage(
+        ISiloBuilder silo, 
+        string name, 
+        string? connectionString, 
+        IConfiguration config)
     {
         if (string.IsNullOrEmpty(connectionString))
         {
-            Console.WriteLine($"📦 Uses in-memory storage for '{name}' (no connection string)");
+            // Fall back to in-memory storage when no database is configured
             silo.AddMemoryGrainStorage(name);
             return;
         }
 
-        Console.WriteLine($"📦 Configuring CockroachDB storage for '{name}' with retry logic");
-
-        // Register the underlying ADO.NET storage with a temporary name
+        // Register the underlying ADO.NET storage with a prefixed name
         var innerStorageName = $"{name}_Inner";
         silo.AddAdoNetGrainStorage(innerStorageName, options =>
         {
-            options.Invariant = "Npgsql";  // CockroachDB is PostgreSQL-compatible
+            options.Invariant = "Npgsql";  // CockroachDB uses PostgreSQL wire protocol
             options.ConnectionString = connectionString;
         });
 
-        // Wrap with retry logic for CockroachDB serialization conflicts
+        // Wrap with retry logic for CockroachDB SQLSTATE 40001 (serialization conflicts)
         silo.Services.AddKeyedSingleton<IGrainStorage>(name, (sp, key) =>
         {
             var innerStorage = sp.GetRequiredKeyedService<IGrainStorage>(innerStorageName);
             var logger = sp.GetRequiredService<ILogger<RetryingGrainStorage>>();
             
-            // Bind retry options from configuration
             var retryOptions = new RetryOptions();
             config.GetSection("Database:Retry").Bind(retryOptions);
             
