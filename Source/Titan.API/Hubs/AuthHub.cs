@@ -8,88 +8,85 @@ namespace Titan.API.Hubs;
 
 /// <summary>
 /// WebSocket hub for authentication operations.
-/// This hub is intentionally NOT protected by [Authorize] to allow login.
+/// Login is handled via HTTP (POST /api/auth/login) following industry standards.
+/// This hub provides token refresh over existing WebSocket connections and other auth utilities.
 /// </summary>
 public class AuthHub : Hub
 {
-    private readonly IAuthServiceFactory _authServiceFactory;
     private readonly IClusterClient _clusterClient;
     private readonly ITokenService _tokenService;
     private readonly ILogger<AuthHub> _logger;
 
     public AuthHub(
-        IAuthServiceFactory authServiceFactory, 
         IClusterClient clusterClient, 
         ITokenService tokenService,
         ILogger<AuthHub> logger)
     {
-        _authServiceFactory = authServiceFactory;
         _clusterClient = clusterClient;
         _tokenService = tokenService;
         _logger = logger;
     }
 
     /// <summary>
-    /// Authenticate with a provider token. Returns user info and JWT if valid.
-    /// 
-    /// For EOS: Send the ID Token received from EOS Connect SDK.
-    /// For Mock (dev only): Use format "mock:{guid}" or "mock:admin:{guid}".
+    /// Refresh access token using a valid refresh token.
+    /// Called over existing WebSocket connection - no reconnection needed.
+    /// Returns new access + refresh tokens (rotation).
+    /// Requires authentication since we use Context.UserIdentifier.
     /// </summary>
-    /// <param name="token">The authentication token from the provider.</param>
-    /// <param name="provider">The provider name. Default: "EOS". Use "Mock" for development.</param>
-    public async Task<LoginResult> Login(string token, string provider = "EOS")
+    /// <param name="refreshToken">The refresh token ID from a previous login or refresh.</param>
+    [Authorize]
+    public async Task<RefreshResult> RefreshToken(string refreshToken)
     {
-        _logger.LogInformation("Login attempt via provider: {Provider}", provider);
+        var userId = Guid.Parse(Context.UserIdentifier!);
+        var grain = _clusterClient.GetGrain<IRefreshTokenGrain>(userId);
+        var tokenInfo = await grain.ConsumeTokenAsync(refreshToken);
 
-        // Validate provider exists
-        if (!_authServiceFactory.HasProvider(provider))
+        if (tokenInfo == null)
         {
-            var available = string.Join(", ", _authServiceFactory.GetProviderNames());
-            return new LoginResult(false, null, null, null, null, 
-                $"Unknown provider '{provider}'. Available: {available}");
+            _logger.LogWarning("Refresh token invalid or expired for user {UserId}", userId);
+            throw new HubException("Invalid or expired refresh token.");
         }
 
-        var authService = _authServiceFactory.GetService(provider);
-        var result = await authService.ValidateTokenAsync(token);
-        
-        if (!result.Success)
-        {
-            _logger.LogWarning("Login failed for provider {Provider}: {Error}", 
-                provider, result.ErrorMessage);
-            return new LoginResult(false, null, null, null, null, result.ErrorMessage);
-        }
+        // Generate new access token with stored roles
+        var accessToken = _tokenService.GenerateAccessToken(userId, tokenInfo.Provider, tokenInfo.Roles);
+        var expiresInSeconds = (int)_tokenService.AccessTokenExpiration.TotalSeconds;
 
-        // Ensure user identity grain exists and link provider
-        var identityGrain = _clusterClient.GetGrain<IUserIdentityGrain>(result.UserId!.Value);
-        await identityGrain.LinkProviderAsync(result.ProviderName!, result.ExternalId!);
-        var identity = await identityGrain.GetIdentityAsync();
+        // Generate new refresh token (rotation)
+        var newRefreshTokenInfo = await grain.CreateTokenAsync(tokenInfo.Provider, tokenInfo.Roles);
 
-        // Determine roles
-        var roles = new List<string> { "User" };
-        
-        // Admin backdoor for development: "mock:admin:{guid}"
-        if (provider.Equals("Mock", StringComparison.OrdinalIgnoreCase) &&
-            token.StartsWith("mock:admin:", StringComparison.OrdinalIgnoreCase))
-        {
-            roles.Add("Admin");
-        }
+        _logger.LogDebug("Token refreshed for user {UserId}", userId);
 
-        // Generate JWT for subsequent authenticated requests
-        var jwt = _tokenService.GenerateToken(result.UserId!.Value, result.ProviderName!, roles);
-
-        _logger.LogInformation(
-            "Login successful. UserId: {UserId}, Provider: {Provider}, ExternalId: {ExternalId}",
-            result.UserId, result.ProviderName, result.ExternalId);
-
-        return new LoginResult(true, result.UserId, result.ProviderName, identity, jwt, null);
+        return new RefreshResult(
+            AccessToken: accessToken,
+            RefreshToken: newRefreshTokenInfo.TokenId,
+            AccessTokenExpiresInSeconds: expiresInSeconds);
     }
 
     /// <summary>
-    /// Get available authentication providers.
+    /// Logout and revoke the refresh token.
     /// </summary>
-    public Task<IEnumerable<string>> GetProviders()
+    /// <param name="refreshToken">The refresh token to revoke.</param>
+    [Authorize]
+    public async Task Logout(string refreshToken)
     {
-        return Task.FromResult(_authServiceFactory.GetProviderNames());
+        var userId = Guid.Parse(Context.UserIdentifier!);
+        var grain = _clusterClient.GetGrain<IRefreshTokenGrain>(userId);
+        await grain.RevokeTokenAsync(refreshToken);
+        
+        _logger.LogInformation("User {UserId} logged out, refresh token revoked", userId);
+    }
+
+    /// <summary>
+    /// Revoke all refresh tokens for the current user (e.g., security event).
+    /// </summary>
+    [Authorize]
+    public async Task RevokeAllTokens()
+    {
+        var userId = Guid.Parse(Context.UserIdentifier!);
+        var grain = _clusterClient.GetGrain<IRefreshTokenGrain>(userId);
+        await grain.RevokeAllTokensAsync();
+        
+        _logger.LogInformation("User {UserId} revoked all refresh tokens", userId);
     }
 
     /// <summary>
@@ -103,15 +100,3 @@ public class AuthHub : Hub
         return await grain.GetProfileAsync();
     }
 }
-
-/// <summary>
-/// Result of a login attempt.
-/// </summary>
-public record LoginResult(
-    bool Success,
-    Guid? UserId,
-    string? Provider,
-    UserIdentity? Identity,
-    string? Token,
-    string? ErrorMessage
-);

@@ -26,6 +26,7 @@
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.1.0" />
@@ -56,6 +57,9 @@
 
     <!-- Resilience -->
     <PackageVersion Include="Polly.Core" Version="8.6.5" />
+
+    <!-- Client SDK -->
+    <PackageVersion Include="TypedSignalR.Client" Version="3.6.0" />
 
     <!-- Testing -->
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />

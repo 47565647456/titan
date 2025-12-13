@@ -12,12 +12,16 @@ public class UserSession : IAsyncDisposable
     private readonly Dictionary<string, HubConnection> _connections = new();
     
     public string Token { get; }
+    public string RefreshToken { get; }
+    public int AccessTokenExpiresInSeconds { get; }
     public Guid UserId { get; }
 
-    public UserSession(string apiBaseUrl, string token, Guid userId)
+    public UserSession(string apiBaseUrl, string token, string refreshToken, int expiresInSeconds, Guid userId)
     {
         _apiBaseUrl = apiBaseUrl;
         Token = token;
+        RefreshToken = refreshToken;
+        AccessTokenExpiresInSeconds = expiresInSeconds;
         UserId = userId;
     }
 

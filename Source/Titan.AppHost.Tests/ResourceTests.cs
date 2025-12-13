@@ -22,13 +22,4 @@ public class ResourceTests : IntegrationTestBase
         var content = await response.Content.ReadAsStringAsync();
         Assert.Contains("Healthy", content);
     }
-
-    [Fact]
-    public async Task AllSilos_AreHealthy()
-    {
-        // This test passes if we got here - the fixture already waited for all silos
-        // The AppHostFixture.InitializeAsync() waits for all silos to be healthy
-        Assert.NotNull(ApiBaseUrl);
-        Assert.NotEmpty(ApiBaseUrl);
-    }
 }

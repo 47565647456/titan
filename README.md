@@ -96,9 +96,12 @@ dotnet test Source/Titan.AppHost.Tests
 
 ### Security
 - [ ] **Input Validation** - Server-side verification of game actions (Registry/Rules)
+- [ ] **Grain-Level Authorization** - `ClaimsPrincipal` propagation to Orleans grains (pending [ManagedCode.Orleans.Identity](https://github.com/managed-code-hub/Orleans.Identity) .NET 10 support)
 
 ### Client Integration
-- [ ] **Client SDK** - C++, C#, and Blueprint support
+- [x] **Typed Client SDK** - Compile-time safe SignalR hub access via `TypedSignalR.Client`
+- [x] **HTTP Authentication** - Industry-standard REST endpoints for login/logout/refresh
+- [ ] **Unreal Plugin** - C++ and Blueprint client library for Unreal Engine
 
 ## Documentation
 

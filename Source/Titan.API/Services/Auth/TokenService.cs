@@ -1,30 +1,29 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Titan.API.Config;
 
 namespace Titan.API.Services.Auth;
 
 /// <summary>
-/// JWT token generation service.
-/// Generates signed tokens for authenticated users.
+/// JWT access token generation service.
+/// Generates short-lived signed tokens for authenticated users.
 /// </summary>
 public class TokenService : ITokenService
 {
-    private readonly string _key;
-    private readonly string _issuer;
-    private readonly TimeSpan _expiration;
+    private readonly JwtOptions _options;
 
-    public TokenService(IConfiguration configuration)
+    public TimeSpan AccessTokenExpiration => TimeSpan.FromMinutes(_options.AccessTokenExpirationMinutes);
+    public TimeSpan RefreshTokenExpiration => TimeSpan.FromMinutes(_options.RefreshTokenExpirationMinutes);
+
+    public TokenService(IOptions<JwtOptions> jwtOptions)
     {
-        _key = configuration["Jwt:Key"] 
-            ?? throw new InvalidOperationException("Jwt:Key must be configured.");
-        _issuer = configuration["Jwt:Issuer"] ?? "Titan";
-        _expiration = TimeSpan.FromHours(
-            configuration.GetValue<int>("Jwt:ExpirationHours", 24));
+        _options = jwtOptions.Value;
     }
 
-    public string GenerateToken(Guid userId, string provider, IEnumerable<string>? roles = null)
+    public string GenerateAccessToken(Guid userId, string provider, IEnumerable<string>? roles = null)
     {
         var claims = new List<Claim>
         {
@@ -42,14 +41,14 @@ public class TokenService : ITokenService
             }
         }
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_key));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.Key));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
-            issuer: _issuer,
-            audience: _issuer,
+            issuer: _options.Issuer,
+            audience: _options.Audience,
             claims: claims,
-            expires: DateTime.UtcNow.Add(_expiration),
+            expires: DateTime.UtcNow.Add(AccessTokenExpiration),
             signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

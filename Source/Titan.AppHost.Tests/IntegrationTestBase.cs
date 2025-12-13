@@ -1,6 +1,8 @@
+using System.Net.Http.Json;
 using Aspire.Hosting.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Models;
 
 namespace Titan.AppHost.Tests;
@@ -81,6 +83,9 @@ public abstract class IntegrationTestBase
     protected DistributedApplication App => Fixture.App;
     protected string ApiBaseUrl => Fixture.ApiBaseUrl;
 
+    private HttpClient? _httpClient;
+    protected HttpClient HttpClient => _httpClient ??= new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
+
     protected IntegrationTestBase(AppHostFixture fixture)
     {
         Fixture = fixture;
@@ -89,35 +94,29 @@ public abstract class IntegrationTestBase
     #region Authentication Helpers
 
     /// <summary>
-    /// Login via AuthHub and return the JWT token.
+    /// Login via HTTP API and return the access token, refresh token, and expiry info.
+    /// Uses the new /api/auth/login endpoint.
     /// </summary>
-    protected async Task<(string Token, Guid UserId)> LoginAsync(string mockToken, string provider = "Mock")
+    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsync(string mockToken, string provider = "Mock")
     {
-        var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub")
-            .Build();
+        var request = new { token = mockToken, provider };
+        var response = await HttpClient.PostAsJsonAsync("/api/auth/login", request);
+        response.EnsureSuccessStatusCode();
         
-        try
-        {
-            await authHub.StartAsync();
-            var result = await authHub.InvokeAsync<LoginResult>("Login", mockToken, provider);
-            
-            if (!result.Success || string.IsNullOrEmpty(result.Token))
-                throw new InvalidOperationException($"Login failed: {result.ErrorMessage}");
-            
-            return (result.Token, result.UserId!.Value);
-        }
-        finally
-        {
-            await authHub.DisposeAsync();
-        }
+        var result = await response.Content.ReadFromJsonAsync<LoginResponse>()
+            ?? throw new InvalidOperationException("Failed to parse login response");
+        
+        if (!result.Success || string.IsNullOrEmpty(result.AccessToken))
+            throw new InvalidOperationException($"Login failed");
+        
+        return (result.AccessToken, result.RefreshToken!, result.AccessTokenExpiresInSeconds!.Value, result.UserId!.Value);
     }
 
-    protected Task<(string Token, Guid UserId)> LoginAsUserAsync()
-        => LoginAsync($"mock:{Guid.NewGuid()}");
+    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsUserAsync()
+        => await LoginAsync($"mock:{Guid.NewGuid()}");
 
-    protected Task<(string Token, Guid UserId)> LoginAsAdminAsync()
-        => LoginAsync($"mock:admin:{Guid.NewGuid()}");
+    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsAdminAsync()
+        => await LoginAsync($"mock:admin:{Guid.NewGuid()}");
 
     protected HubConnection CreateHubConnection(string hubPath, string token)
         => new HubConnectionBuilder()
@@ -200,8 +199,8 @@ public abstract class IntegrationTestBase
     /// </summary>
     protected async Task<UserSession> CreateUserSessionAsync()
     {
-        var (token, userId) = await LoginAsUserAsync();
-        return new UserSession(ApiBaseUrl, token, userId);
+        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
+        return new UserSession(ApiBaseUrl, accessToken, refreshToken, expiresIn, userId);
     }
 
     /// <summary>
@@ -210,20 +209,9 @@ public abstract class IntegrationTestBase
     /// </summary>
     protected async Task<UserSession> CreateAdminSessionAsync()
     {
-        var (token, userId) = await LoginAsAdminAsync();
-        return new UserSession(ApiBaseUrl, token, userId);
+        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsAdminAsync();
+        return new UserSession(ApiBaseUrl, accessToken, refreshToken, expiresIn, userId);
     }
 
     #endregion
 }
-
-/// <summary>
-/// LoginResult record matching AuthHub response.
-/// </summary>
-public record LoginResult(
-    bool Success, 
-    Guid? UserId, 
-    string? Provider, 
-    UserIdentity? Identity, 
-    string? Token, 
-    string? ErrorMessage);

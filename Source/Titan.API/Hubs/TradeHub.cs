@@ -23,19 +23,7 @@ public class TradeHub : TitanHubBase
 
     #region Security Helpers
 
-    /// <summary>
-    /// Verifies that the specified character belongs to the authenticated user.
-    /// </summary>
-    private async Task VerifyCharacterOwnershipAsync(Guid characterId)
-    {
-        var accountGrain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
-        var characters = await accountGrain.GetCharactersAsync();
-        
-        if (!characters.Any(c => c.CharacterId == characterId))
-        {
-            throw new HubException("Character does not belong to this account.");
-        }
-    }
+    // VerifyCharacterOwnershipAsync is inherited from TitanHubBase
 
     /// <summary>
     /// Gets the caller's owned character that is a participant in the specified trade.

@@ -1,0 +1,185 @@
+using System.Security.Claims;
+using Titan.Abstractions.Grains;
+using Titan.Abstractions.Models;
+using Titan.API.Services.Auth;
+
+namespace Titan.API.Controllers;
+
+/// <summary>
+/// HTTP authentication endpoints following industry standards.
+/// Login/logout use stateless HTTP requests; real-time operations use WebSocket.
+/// </summary>
+public static class AuthController
+{
+    public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup("/api/auth")
+            .WithTags("Authentication");
+        
+        group.MapPost("/login", LoginAsync)
+            .WithName("Login")
+            .WithDescription("Authenticate with a provider token");
+        
+        group.MapPost("/refresh", RefreshAsync)
+            .WithName("RefreshToken")
+            .WithDescription("Refresh access token using a valid refresh token");
+        
+        group.MapPost("/logout", LogoutAsync)
+            .RequireAuthorization()
+            .WithName("Logout")
+            .WithDescription("Logout and revoke refresh token");
+        
+        group.MapGet("/providers", GetProviders)
+            .WithName("GetProviders")
+            .WithDescription("Get available authentication providers");
+    }
+    
+    private static async Task<IResult> LoginAsync(
+        LoginRequest request,
+        IAuthServiceFactory authServiceFactory,
+        IClusterClient clusterClient,
+        ITokenService tokenService,
+        ILogger<LoginRequest> logger)
+    {
+        logger.LogInformation("Login attempt via provider: {Provider}", request.Provider);
+        
+        // Validate provider exists
+        if (!authServiceFactory.HasProvider(request.Provider))
+        {
+            var available = string.Join(", ", authServiceFactory.GetProviderNames());
+            return Results.BadRequest(new { error = $"Unknown provider '{request.Provider}'. Available: {available}" });
+        }
+        
+        var authService = authServiceFactory.GetService(request.Provider);
+        var result = await authService.ValidateTokenAsync(request.Token);
+        
+        if (!result.Success)
+        {
+            logger.LogWarning("Login failed for provider {Provider}: {Error}", 
+                request.Provider, result.ErrorMessage);
+            return Results.Unauthorized();
+        }
+        
+        // Ensure user identity grain exists and link provider
+        var identityGrain = clusterClient.GetGrain<IUserIdentityGrain>(result.UserId!.Value);
+        await identityGrain.LinkProviderAsync(result.ProviderName!, result.ExternalId!);
+        var identity = await identityGrain.GetIdentityAsync();
+        
+        // Determine roles
+        var roles = new List<string> { "User" };
+        
+        // Admin backdoor for development: "mock:admin:{guid}"
+        if (request.Provider.Equals("Mock", StringComparison.OrdinalIgnoreCase) &&
+            request.Token.StartsWith("mock:admin:", StringComparison.OrdinalIgnoreCase))
+        {
+            roles.Add("Admin");
+        }
+        
+        // Generate access token
+        var accessToken = tokenService.GenerateAccessToken(result.UserId!.Value, result.ProviderName!, roles);
+        var expiresInSeconds = (int)tokenService.AccessTokenExpiration.TotalSeconds;
+        
+        // Generate refresh token via grain
+        var refreshTokenGrain = clusterClient.GetGrain<IRefreshTokenGrain>(result.UserId!.Value);
+        var refreshTokenInfo = await refreshTokenGrain.CreateTokenAsync(result.ProviderName!, roles);
+        
+        logger.LogInformation(
+            "Login successful. UserId: {UserId}, Provider: {Provider}, ExternalId: {ExternalId}",
+            result.UserId, result.ProviderName, result.ExternalId);
+        
+        return Results.Ok(new LoginResponse(
+            Success: true,
+            UserId: result.UserId,
+            Provider: result.ProviderName,
+            Identity: identity,
+            AccessToken: accessToken,
+            RefreshToken: refreshTokenInfo.TokenId,
+            AccessTokenExpiresInSeconds: expiresInSeconds));
+    }
+    
+    private static async Task<IResult> RefreshAsync(
+        RefreshRequest request,
+        IClusterClient clusterClient,
+        ITokenService tokenService,
+        ILogger<RefreshRequest> logger)
+    {
+        var grain = clusterClient.GetGrain<IRefreshTokenGrain>(request.UserId);
+        var tokenInfo = await grain.ConsumeTokenAsync(request.RefreshToken);
+        
+        if (tokenInfo == null)
+        {
+            logger.LogWarning("Refresh token invalid or expired for user {UserId}", request.UserId);
+            return Results.Unauthorized();
+        }
+        
+        // Generate new access token with stored roles
+        var accessToken = tokenService.GenerateAccessToken(request.UserId, tokenInfo.Provider, tokenInfo.Roles);
+        var expiresInSeconds = (int)tokenService.AccessTokenExpiration.TotalSeconds;
+        
+        // Generate new refresh token (rotation)
+        var newRefreshTokenInfo = await grain.CreateTokenAsync(tokenInfo.Provider, tokenInfo.Roles);
+        
+        logger.LogDebug("Token refreshed for user {UserId}", request.UserId);
+        
+        return Results.Ok(new RefreshResult(accessToken, newRefreshTokenInfo.TokenId, expiresInSeconds));
+    }
+    
+    private static async Task<IResult> LogoutAsync(
+        LogoutRequest request,
+        ClaimsPrincipal user,
+        IClusterClient clusterClient,
+        ILogger<LogoutRequest> logger)
+    {
+        var userIdClaim = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Results.Unauthorized();
+        }
+        
+        var grain = clusterClient.GetGrain<IRefreshTokenGrain>(userId);
+        await grain.RevokeTokenAsync(request.RefreshToken);
+        
+        logger.LogInformation("User {UserId} logged out, refresh token revoked", userId);
+        
+        return Results.Ok();
+    }
+    
+    private static IResult GetProviders(IAuthServiceFactory factory)
+    {
+        return Results.Ok(factory.GetProviderNames());
+    }
+}
+
+// Request/Response DTOs for HTTP endpoints
+
+/// <summary>
+/// Login request with provider token.
+/// </summary>
+/// <param name="Token">The authentication token from the provider (e.g., EOS ID token, or "mock:{guid}").</param>
+/// <param name="Provider">The provider name. Default: "EOS". Use "Mock" for development.</param>
+public record LoginRequest(string Token, string Provider = "EOS");
+
+/// <summary>
+/// Refresh token request.
+/// </summary>
+/// <param name="RefreshToken">The refresh token from a previous login or refresh.</param>
+/// <param name="UserId">The user ID associated with the refresh token.</param>
+public record RefreshRequest(string RefreshToken, Guid UserId);
+
+/// <summary>
+/// Logout request.
+/// </summary>
+/// <param name="RefreshToken">The refresh token to revoke.</param>
+public record LogoutRequest(string RefreshToken);
+
+/// <summary>
+/// Login response with tokens and user info.
+/// </summary>
+public record LoginResponse(
+    bool Success,
+    Guid? UserId,
+    string? Provider,
+    UserIdentity? Identity,
+    string? AccessToken,
+    string? RefreshToken,
+    int? AccessTokenExpiresInSeconds);

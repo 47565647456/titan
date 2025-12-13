@@ -11,6 +11,7 @@ using Titan.API.Services.Auth;
 using Titan.Abstractions.Rules;
 using Titan.Grains.Trading.Rules;
 using Titan.API.Config;
+using Titan.API.Controllers;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -220,5 +221,8 @@ app.MapHub<InventoryHub>("/inventoryHub");
 app.MapHub<ItemTypeHub>("/itemTypeHub");
 app.MapHub<SeasonHub>("/seasonHub");
 app.MapHub<TradeHub>("/tradeHub");
+
+// Map HTTP Authentication API (industry standard: HTTP for auth, WebSocket for real-time)
+app.MapAuthEndpoints();
 
 app.Run();
