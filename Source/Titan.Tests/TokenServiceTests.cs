@@ -32,7 +32,7 @@ public class TokenServiceTests
         var userId = Guid.NewGuid();
 
         // Act
-        var token = service.GenerateToken(userId, "Mock");
+        var token = service.GenerateAccessToken(userId, "Mock");
 
         // Assert
         Assert.NotNull(token);
@@ -49,7 +49,7 @@ public class TokenServiceTests
         var userId = Guid.NewGuid();
 
         // Act
-        var token = service.GenerateToken(userId, "Mock");
+        var token = service.GenerateAccessToken(userId, "Mock");
         var claims = ParseJwtClaims(token);
 
         // Assert
@@ -65,7 +65,7 @@ public class TokenServiceTests
         var userId = Guid.NewGuid();
 
         // Act
-        var token = service.GenerateToken(userId, "EOS");
+        var token = service.GenerateAccessToken(userId, "EOS");
         var claims = ParseJwtClaims(token);
 
         // Assert
@@ -82,7 +82,7 @@ public class TokenServiceTests
         var roles = new[] { "User", "Admin" };
 
         // Act
-        var token = service.GenerateToken(userId, "Mock", roles);
+        var token = service.GenerateAccessToken(userId, "Mock", roles);
         var payload = GetJwtPayload(token);
 
         // Assert - role claim can be array or single value
@@ -97,7 +97,7 @@ public class TokenServiceTests
         var userId = Guid.NewGuid();
 
         // Act
-        var token = service.GenerateToken(userId, "Mock");
+        var token = service.GenerateAccessToken(userId, "Mock");
         var claims = ParseJwtClaims(token);
 
         // Assert
@@ -113,8 +113,8 @@ public class TokenServiceTests
         var userId = Guid.NewGuid();
 
         // Act
-        var token1 = service.GenerateToken(userId, "Mock");
-        var token2 = service.GenerateToken(userId, "Mock");
+        var token1 = service.GenerateAccessToken(userId, "Mock");
+        var token2 = service.GenerateAccessToken(userId, "Mock");
 
         // Assert - tokens should differ due to unique JTI and timestamp
         Assert.NotEqual(token1, token2);

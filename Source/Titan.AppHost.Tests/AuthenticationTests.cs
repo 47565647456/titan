@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Xunit;
 
@@ -78,4 +79,118 @@ public class AuthenticationTests : IntegrationTestBase
         var hub = await user.GetAccountHubAsync();
         Assert.Equal(HubConnectionState.Connected, hub.State);
     }
+
+    #region Token Refresh Tests
+
+    [Fact]
+    public async Task Login_Returns_RefreshToken()
+    {
+        // Act
+        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
+
+        // Assert
+        Assert.NotNull(accessToken);
+        Assert.NotNull(refreshToken);
+        Assert.NotEmpty(refreshToken);
+        Assert.True(expiresIn > 0, "Access token expiry should be positive");
+        Assert.NotEqual(Guid.Empty, userId);
+    }
+
+    [Fact]
+    public async Task RefreshToken_Returns_NewTokens()
+    {
+        // Arrange - Login and get initial tokens
+        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
+
+        var authHub = new HubConnectionBuilder()
+            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
+            .Build();
+
+        await authHub.StartAsync();
+
+        try
+        {
+            // Act - Refresh tokens
+            var result = await authHub.InvokeAsync<RefreshResult>("RefreshToken", refreshToken, userId);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.NotNull(result.AccessToken);
+            Assert.NotNull(result.RefreshToken);
+            Assert.True(result.AccessTokenExpiresInSeconds > 0);
+
+            // New tokens should be different from original
+            Assert.NotEqual(accessToken, result.AccessToken);
+            Assert.NotEqual(refreshToken, result.RefreshToken);
+        }
+        finally
+        {
+            await authHub.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task RefreshToken_Rotates_Token_OldTokenFails()
+    {
+        // Arrange - Login and get initial tokens
+        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
+
+        var authHub = new HubConnectionBuilder()
+            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
+            .Build();
+
+        await authHub.StartAsync();
+
+        try
+        {
+            // Act - Use refresh token once
+            var result = await authHub.InvokeAsync<RefreshResult>("RefreshToken", refreshToken, userId);
+            Assert.NotNull(result);
+
+            // Try to use the OLD refresh token again - should fail (rotation)
+            await Assert.ThrowsAsync<HubException>(async () =>
+                await authHub.InvokeAsync<RefreshResult>("RefreshToken", refreshToken, userId));
+        }
+        finally
+        {
+            await authHub.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Logout_Revokes_RefreshToken()
+    {
+        // Arrange - Login and get tokens
+        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
+
+        var authHub = new HubConnectionBuilder()
+            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
+            .Build();
+
+        await authHub.StartAsync();
+
+        try
+        {
+            // Act - Logout (revokes refresh token)
+            await authHub.InvokeAsync("Logout", refreshToken);
+
+            // Try to use the revoked refresh token - should fail
+            await Assert.ThrowsAsync<HubException>(async () =>
+                await authHub.InvokeAsync<RefreshResult>("RefreshToken", refreshToken, userId));
+        }
+        finally
+        {
+            await authHub.DisposeAsync();
+        }
+    }
+
+    #endregion
 }
+
+/// <summary>
+/// Result of a token refresh operation.
+/// </summary>
+public record RefreshResult(
+    string AccessToken,
+    string RefreshToken,
+    int AccessTokenExpiresInSeconds);

@@ -6,8 +6,8 @@ using Microsoft.IdentityModel.Tokens;
 namespace Titan.API.Services.Auth;
 
 /// <summary>
-/// JWT token generation service.
-/// Generates signed tokens for authenticated users.
+/// JWT access token generation service.
+/// Generates short-lived signed tokens for authenticated users.
 /// </summary>
 public class TokenService : ITokenService
 {
@@ -15,16 +15,29 @@ public class TokenService : ITokenService
     private readonly string _issuer;
     private readonly TimeSpan _expiration;
 
+    public TimeSpan AccessTokenExpiration => _expiration;
+
     public TokenService(IConfiguration configuration)
     {
         _key = configuration["Jwt:Key"] 
             ?? throw new InvalidOperationException("Jwt:Key must be configured.");
         _issuer = configuration["Jwt:Issuer"] ?? "Titan";
-        _expiration = TimeSpan.FromHours(
-            configuration.GetValue<int>("Jwt:ExpirationHours", 24));
+        
+        // Use new config key, fallback to old for backwards compatibility
+        var minutes = configuration.GetValue<int?>("Jwt:AccessTokenExpirationMinutes");
+        if (minutes.HasValue)
+        {
+            _expiration = TimeSpan.FromMinutes(minutes.Value);
+        }
+        else
+        {
+            // Fallback to old ExpirationHours config
+            _expiration = TimeSpan.FromHours(
+                configuration.GetValue("Jwt:ExpirationHours", 24));
+        }
     }
 
-    public string GenerateToken(Guid userId, string provider, IEnumerable<string>? roles = null)
+    public string GenerateAccessToken(Guid userId, string provider, IEnumerable<string>? roles = null)
     {
         var claims = new List<Claim>
         {

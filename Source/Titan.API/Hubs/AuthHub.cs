@@ -8,7 +8,7 @@ namespace Titan.API.Hubs;
 
 /// <summary>
 /// WebSocket hub for authentication operations.
-/// This hub is intentionally NOT protected by [Authorize] to allow login.
+/// This hub is intentionally NOT protected by [Authorize] to allow login and token refresh.
 /// </summary>
 public class AuthHub : Hub
 {
@@ -30,7 +30,7 @@ public class AuthHub : Hub
     }
 
     /// <summary>
-    /// Authenticate with a provider token. Returns user info and JWT if valid.
+    /// Authenticate with a provider token. Returns user info, access token, and refresh token.
     /// 
     /// For EOS: Send the ID Token received from EOS Connect SDK.
     /// For Mock (dev only): Use format "mock:{guid}" or "mock:admin:{guid}".
@@ -45,8 +45,7 @@ public class AuthHub : Hub
         if (!_authServiceFactory.HasProvider(provider))
         {
             var available = string.Join(", ", _authServiceFactory.GetProviderNames());
-            return new LoginResult(false, null, null, null, null, 
-                $"Unknown provider '{provider}'. Available: {available}");
+            return LoginResult.Failed($"Unknown provider '{provider}'. Available: {available}");
         }
 
         var authService = _authServiceFactory.GetService(provider);
@@ -56,7 +55,7 @@ public class AuthHub : Hub
         {
             _logger.LogWarning("Login failed for provider {Provider}: {Error}", 
                 provider, result.ErrorMessage);
-            return new LoginResult(false, null, null, null, null, result.ErrorMessage);
+            return LoginResult.Failed(result.ErrorMessage);
         }
 
         // Ensure user identity grain exists and link provider
@@ -74,14 +73,87 @@ public class AuthHub : Hub
             roles.Add("Admin");
         }
 
-        // Generate JWT for subsequent authenticated requests
-        var jwt = _tokenService.GenerateToken(result.UserId!.Value, result.ProviderName!, roles);
+        // Generate access token
+        var accessToken = _tokenService.GenerateAccessToken(result.UserId!.Value, result.ProviderName!, roles);
+        var expiresInSeconds = (int)_tokenService.AccessTokenExpiration.TotalSeconds;
+
+        // Generate refresh token via grain
+        var refreshTokenGrain = _clusterClient.GetGrain<IRefreshTokenGrain>(result.UserId!.Value);
+        var refreshTokenInfo = await refreshTokenGrain.CreateTokenAsync(result.ProviderName!, roles);
 
         _logger.LogInformation(
             "Login successful. UserId: {UserId}, Provider: {Provider}, ExternalId: {ExternalId}",
             result.UserId, result.ProviderName, result.ExternalId);
 
-        return new LoginResult(true, result.UserId, result.ProviderName, identity, jwt, null);
+        return new LoginResult(
+            Success: true,
+            UserId: result.UserId,
+            Provider: result.ProviderName,
+            Identity: identity,
+            AccessToken: accessToken,
+            RefreshToken: refreshTokenInfo.TokenId,
+            AccessTokenExpiresInSeconds: expiresInSeconds,
+            ErrorMessage: null);
+    }
+
+    /// <summary>
+    /// Refresh access token using a valid refresh token.
+    /// Called over existing WebSocket connection - no reconnection needed.
+    /// Returns new access + refresh tokens (rotation).
+    /// </summary>
+    /// <param name="refreshToken">The refresh token ID from a previous login or refresh.</param>
+    /// <param name="userId">The user ID associated with the refresh token.</param>
+    public async Task<RefreshResult> RefreshToken(string refreshToken, Guid userId)
+    {
+        var grain = _clusterClient.GetGrain<IRefreshTokenGrain>(userId);
+        var tokenInfo = await grain.ConsumeTokenAsync(refreshToken);
+
+        if (tokenInfo == null)
+        {
+            _logger.LogWarning("Refresh token invalid or expired for user {UserId}", userId);
+            throw new HubException("Invalid or expired refresh token.");
+        }
+
+        // Generate new access token with stored roles
+        var accessToken = _tokenService.GenerateAccessToken(userId, tokenInfo.Provider, tokenInfo.Roles);
+        var expiresInSeconds = (int)_tokenService.AccessTokenExpiration.TotalSeconds;
+
+        // Generate new refresh token (rotation)
+        var newRefreshTokenInfo = await grain.CreateTokenAsync(tokenInfo.Provider, tokenInfo.Roles);
+
+        _logger.LogDebug("Token refreshed for user {UserId}", userId);
+
+        return new RefreshResult(
+            AccessToken: accessToken,
+            RefreshToken: newRefreshTokenInfo.TokenId,
+            AccessTokenExpiresInSeconds: expiresInSeconds);
+    }
+
+    /// <summary>
+    /// Logout and revoke the refresh token.
+    /// </summary>
+    /// <param name="refreshToken">The refresh token to revoke.</param>
+    [Authorize]
+    public async Task Logout(string refreshToken)
+    {
+        var userId = Guid.Parse(Context.UserIdentifier!);
+        var grain = _clusterClient.GetGrain<IRefreshTokenGrain>(userId);
+        await grain.RevokeTokenAsync(refreshToken);
+        
+        _logger.LogInformation("User {UserId} logged out, refresh token revoked", userId);
+    }
+
+    /// <summary>
+    /// Revoke all refresh tokens for the current user (e.g., security event).
+    /// </summary>
+    [Authorize]
+    public async Task RevokeAllTokens()
+    {
+        var userId = Guid.Parse(Context.UserIdentifier!);
+        var grain = _clusterClient.GetGrain<IRefreshTokenGrain>(userId);
+        await grain.RevokeAllTokensAsync();
+        
+        _logger.LogInformation("User {UserId} revoked all refresh tokens", userId);
     }
 
     /// <summary>
@@ -112,6 +184,26 @@ public record LoginResult(
     Guid? UserId,
     string? Provider,
     UserIdentity? Identity,
-    string? Token,
-    string? ErrorMessage
-);
+    string? AccessToken,
+    string? RefreshToken,
+    int? AccessTokenExpiresInSeconds,
+    string? ErrorMessage)
+{
+    public static LoginResult Failed(string? errorMessage) => new(
+        Success: false,
+        UserId: null,
+        Provider: null,
+        Identity: null,
+        AccessToken: null,
+        RefreshToken: null,
+        AccessTokenExpiresInSeconds: null,
+        ErrorMessage: errorMessage);
+}
+
+/// <summary>
+/// Result of a token refresh.
+/// </summary>
+public record RefreshResult(
+    string AccessToken,
+    string RefreshToken,
+    int AccessTokenExpiresInSeconds);

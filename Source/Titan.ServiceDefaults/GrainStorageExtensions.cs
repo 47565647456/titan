@@ -24,9 +24,9 @@ public static class GrainStorageExtensions
         // Use MemoryPack for application grain storage (faster, smaller payloads)
         AddRetryingAdoNetStorage(silo, "OrleansStorage", connectionString, config, useMemoryPack: true);
         AddRetryingAdoNetStorage(silo, "GlobalStorage", connectionString, config, useMemoryPack: true);
-        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString, config, useMemoryPack: true);
         
-        // TransactionStore uses default JSON - Orleans transaction internals may not be MemoryPackable
+        // PubSubStore and TransactionStore use JSON - Orleans internal types are not MemoryPackable
+        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString, config, useMemoryPack: false);
         AddRetryingAdoNetStorage(silo, "TransactionStore", connectionString, config, useMemoryPack: false);
 
         return silo;

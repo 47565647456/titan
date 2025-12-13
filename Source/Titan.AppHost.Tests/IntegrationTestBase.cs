@@ -89,9 +89,9 @@ public abstract class IntegrationTestBase
     #region Authentication Helpers
 
     /// <summary>
-    /// Login via AuthHub and return the JWT token.
+    /// Login via AuthHub and return the access token, refresh token, and expiry info.
     /// </summary>
-    protected async Task<(string Token, Guid UserId)> LoginAsync(string mockToken, string provider = "Mock")
+    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsync(string mockToken, string provider = "Mock")
     {
         var authHub = new HubConnectionBuilder()
             .WithUrl($"{ApiBaseUrl}/authHub")
@@ -102,10 +102,10 @@ public abstract class IntegrationTestBase
             await authHub.StartAsync();
             var result = await authHub.InvokeAsync<LoginResult>("Login", mockToken, provider);
             
-            if (!result.Success || string.IsNullOrEmpty(result.Token))
+            if (!result.Success || string.IsNullOrEmpty(result.AccessToken))
                 throw new InvalidOperationException($"Login failed: {result.ErrorMessage}");
             
-            return (result.Token, result.UserId!.Value);
+            return (result.AccessToken, result.RefreshToken!, result.AccessTokenExpiresInSeconds!.Value, result.UserId!.Value);
         }
         finally
         {
@@ -113,11 +113,11 @@ public abstract class IntegrationTestBase
         }
     }
 
-    protected Task<(string Token, Guid UserId)> LoginAsUserAsync()
-        => LoginAsync($"mock:{Guid.NewGuid()}");
+    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsUserAsync()
+        => await LoginAsync($"mock:{Guid.NewGuid()}");
 
-    protected Task<(string Token, Guid UserId)> LoginAsAdminAsync()
-        => LoginAsync($"mock:admin:{Guid.NewGuid()}");
+    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsAdminAsync()
+        => await LoginAsync($"mock:admin:{Guid.NewGuid()}");
 
     protected HubConnection CreateHubConnection(string hubPath, string token)
         => new HubConnectionBuilder()
@@ -200,8 +200,8 @@ public abstract class IntegrationTestBase
     /// </summary>
     protected async Task<UserSession> CreateUserSessionAsync()
     {
-        var (token, userId) = await LoginAsUserAsync();
-        return new UserSession(ApiBaseUrl, token, userId);
+        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
+        return new UserSession(ApiBaseUrl, accessToken, refreshToken, expiresIn, userId);
     }
 
     /// <summary>
@@ -210,8 +210,8 @@ public abstract class IntegrationTestBase
     /// </summary>
     protected async Task<UserSession> CreateAdminSessionAsync()
     {
-        var (token, userId) = await LoginAsAdminAsync();
-        return new UserSession(ApiBaseUrl, token, userId);
+        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsAdminAsync();
+        return new UserSession(ApiBaseUrl, accessToken, refreshToken, expiresIn, userId);
     }
 
     #endregion
@@ -225,5 +225,8 @@ public record LoginResult(
     Guid? UserId, 
     string? Provider, 
     UserIdentity? Identity, 
-    string? Token, 
+    string? AccessToken, 
+    string? RefreshToken,
+    int? AccessTokenExpiresInSeconds,
     string? ErrorMessage);
+
