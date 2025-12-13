@@ -129,4 +129,65 @@ public class SessionLogGrainTests : IAsyncLifetime
         Assert.Single(sessions);
         Assert.Null(sessions[0].IpAddress);
     }
+
+    [Fact]
+    public async Task SessionHistory_PrunesOldEntries_WhenExceedingMaxSize()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<ISessionLogGrain>(userId);
+        const int maxHistorySize = 100; // Matches SessionLogGrain.MaxHistorySize
+
+        // Create 105 sessions (5 more than max)
+        for (int i = 0; i < maxHistorySize + 5; i++)
+        {
+            await grain.StartSessionAsync($"10.0.0.{i % 256}");
+            await grain.EndSessionAsync();
+        }
+
+        // Act - get all sessions (up to a large count)
+        var sessions = await grain.GetRecentSessionsAsync(200);
+
+        // Assert - should be capped at MaxHistorySize
+        Assert.Equal(maxHistorySize, sessions.Count);
+        
+        // The oldest sessions should have been pruned (IPs 10.0.0.0 through 10.0.0.4)
+        // The newest session should be 10.0.0.104 % 256 = 10.0.0.104
+        Assert.DoesNotContain(sessions, s => s.IpAddress == "10.0.0.0");
+        Assert.DoesNotContain(sessions, s => s.IpAddress == "10.0.0.4");
+    }
+
+    [Fact]
+    public async Task EndSession_WhenNoActiveSession_DoesNotThrow()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<ISessionLogGrain>(userId);
+
+        // Act - call EndSession without starting one (should be idempotent)
+        await grain.EndSessionAsync();
+        var sessions = await grain.GetRecentSessionsAsync();
+
+        // Assert - no crash, no sessions
+        Assert.Empty(sessions);
+    }
+
+    [Fact]
+    public async Task EndSession_CalledTwice_DoesNotThrow()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<ISessionLogGrain>(userId);
+        await grain.StartSessionAsync("1.2.3.4");
+        await grain.EndSessionAsync();
+
+        // Act - call EndSession again (should be idempotent)
+        await grain.EndSessionAsync();
+        var sessions = await grain.GetRecentSessionsAsync();
+
+        // Assert - still just one session, no crash
+        Assert.Single(sessions);
+        Assert.NotNull(sessions[0].LogoutAt);
+    }
 }
+

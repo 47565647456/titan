@@ -184,5 +184,37 @@ public class PlayerPresenceGrainTests : IAsyncLifetime
         Assert.False(wasLast);
         Assert.True(await grain.IsOnlineAsync());
     }
+
+    [Fact]
+    public async Task UnregisterConnection_NonExistent_DoesNotThrow()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<IPlayerPresenceGrain>(userId);
+        await grain.RegisterConnectionAsync("conn-1", "AccountHub");
+
+        // Act - unregister a connection that doesn't exist
+        var wasLast = await grain.UnregisterConnectionAsync("non-existent-connection");
+
+        // Assert - should not crash, user still online
+        Assert.False(wasLast); // Not last because conn-1 still exists
+        Assert.True(await grain.IsOnlineAsync());
+        Assert.Equal(1, await grain.GetConnectionCountAsync());
+    }
+
+    [Fact]
+    public async Task UnregisterConnection_WhenNoConnections_ReturnsTrue()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<IPlayerPresenceGrain>(userId);
+
+        // Act - unregister when no connections exist
+        var wasLast = await grain.UnregisterConnectionAsync("any-connection");
+
+        // Assert - should return true (count is 0)
+        Assert.True(wasLast);
+        Assert.False(await grain.IsOnlineAsync());
+    }
 }
 
