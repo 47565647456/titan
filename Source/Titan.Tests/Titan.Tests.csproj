@@ -29,6 +29,7 @@
     <ProjectReference Include="..\Titan.Grains\Titan.Grains.csproj" />
     <ProjectReference Include="..\Titan.Abstractions\Titan.Abstractions.csproj" />
     <ProjectReference Include="..\Titan.API\Titan.API.csproj" />
+    <ProjectReference Include="..\Titan.Client\Titan.Client.csproj" />
   </ItemGroup>
 
 </Project>
