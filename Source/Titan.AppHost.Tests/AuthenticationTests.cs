@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Titan.Abstractions.Models;
 using Xunit;
 
 namespace Titan.AppHost.Tests;
@@ -184,13 +185,42 @@ public class AuthenticationTests : IntegrationTestBase
         }
     }
 
+
+    [Fact]
+    public async Task RevokeAllTokens_InvalidatesForAllSessions()
+    {
+        // 1. First login (Device A)
+        var userId = Guid.NewGuid();
+        var (tokenA, refreshTokenA, _, _) = await LoginAsync($"mock:{userId}");
+
+        // 2. Second login (Device B) - Same user
+        var (tokenB, refreshTokenB, _, _) = await LoginAsync($"mock:{userId}");
+
+        // 3. Connect as Device A and Revoke All
+        var authHubA = new HubConnectionBuilder()
+            .WithUrl($"{ApiBaseUrl}/authHub?access_token={tokenA}")
+            .Build();
+        await authHubA.StartAsync();
+        
+        try
+        {
+            await authHubA.InvokeAsync("RevokeAllTokens");
+
+            // 4. Verify Token A is revoked
+            await Assert.ThrowsAsync<HubException>(async () => 
+                await authHubA.InvokeAsync<RefreshResult>("RefreshToken", refreshTokenA, userId));
+                
+            // 5. Verify Token B is revoked
+            await Assert.ThrowsAsync<HubException>(async () => 
+                await authHubA.InvokeAsync<RefreshResult>("RefreshToken", refreshTokenB, userId));
+        }
+        finally
+        {
+            await authHubA.DisposeAsync();
+        }
+    }
+
     #endregion
 }
 
-/// <summary>
-/// Result of a token refresh operation.
-/// </summary>
-public record RefreshResult(
-    string AccessToken,
-    string RefreshToken,
-    int AccessTokenExpiresInSeconds);
+

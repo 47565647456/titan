@@ -31,12 +31,12 @@ public class RefreshTokenGrain : Grain, IRefreshTokenGrain
     {
         _state = state;
         _tokenLifetime = TimeSpan.FromHours(
-            configuration.GetValue("Jwt:RefreshTokenExpirationHours", 24));
+            configuration.GetValue<int>("Jwt:RefreshTokenExpirationHours", 24));
     }
 
     public async Task<RefreshTokenInfo> CreateTokenAsync(string provider, IReadOnlyList<string> roles)
     {
-        // Cleanup expired tokens on each create
+        // Cleanup expired tokens on each create (persisted together with new token)
         CleanupExpiredTokens();
 
         // Generate cryptographically secure token ID
@@ -59,6 +59,7 @@ public class RefreshTokenGrain : Grain, IRefreshTokenGrain
 
     public async Task<RefreshTokenInfo?> ConsumeTokenAsync(string tokenId)
     {
+        // Cleanup expired tokens (persisted if consumed or expired)
         CleanupExpiredTokens();
 
         if (!_state.State.ActiveTokens.TryGetValue(tokenId, out var info))
@@ -96,13 +97,22 @@ public class RefreshTokenGrain : Grain, IRefreshTokenGrain
         }
     }
 
-    public Task<int> GetActiveTokenCountAsync()
+    public async Task<int> GetActiveTokenCountAsync()
     {
-        CleanupExpiredTokens();
-        return Task.FromResult(_state.State.ActiveTokens.Count);
+        // Cleanup and persist if changes made
+        if (CleanupExpiredTokens())
+        {
+            await _state.WriteStateAsync();
+        }
+        return _state.State.ActiveTokens.Count;
     }
 
-    private void CleanupExpiredTokens()
+    /// <summary>
+    /// Removes expired tokens from the state.
+    /// Returns true if any tokens were removed.
+    /// Does NOT persist state - caller must call WriteStateAsync.
+    /// </summary>
+    private bool CleanupExpiredTokens()
     {
         var now = DateTimeOffset.UtcNow;
         var expired = _state.State.ActiveTokens
@@ -110,9 +120,16 @@ public class RefreshTokenGrain : Grain, IRefreshTokenGrain
             .Select(kvp => kvp.Key)
             .ToList();
             
+        if (expired.Count == 0)
+        {
+            return false;
+        }
+
         foreach (var key in expired)
         {
             _state.State.ActiveTokens.Remove(key);
         }
+        
+        return true;
     }
 }

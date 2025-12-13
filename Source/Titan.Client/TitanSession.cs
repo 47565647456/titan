@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
+using Titan.Abstractions.Models;
 
 namespace Titan.Client;
 
@@ -152,26 +153,35 @@ public class TitanSession : IAsyncDisposable
 
     /// <summary>
     /// Schedules automatic token refresh before expiry.
+    /// Thread-safe.
     /// </summary>
     private void ScheduleTokenRefresh()
     {
-        if (_disposed || _accessTokenExpiresInSeconds <= 0)
-            return;
+        _semaphore.Wait();
+        try
+        {
+            if (_disposed || _accessTokenExpiresInSeconds <= 0 || !_autoRefreshEnabled)
+                return;
 
-        // Refresh 30 seconds before expiry, but at least 1 second from now
-        var delaySeconds = Math.Max(_accessTokenExpiresInSeconds - RefreshBufferSeconds, 1);
-        var delay = TimeSpan.FromSeconds(delaySeconds);
+            // Refresh 30 seconds before expiry, but at least 1 second from now
+            var delaySeconds = Math.Max(_accessTokenExpiresInSeconds - RefreshBufferSeconds, 1);
+            var delay = TimeSpan.FromSeconds(delaySeconds);
 
-        _refreshTimer?.Dispose();
-        _refreshTimer = new Timer(
-            RefreshTokenCallback,
-            null,
-            delay,
-            Timeout.InfiniteTimeSpan);
+            _refreshTimer?.Dispose();
+            _refreshTimer = new Timer(
+                RefreshTokenCallback,
+                null,
+                delay,
+                Timeout.InfiniteTimeSpan);
 
-        _logger?.LogDebug(
-            "Token refresh scheduled in {Seconds}s for user {UserId}", 
-            delaySeconds, UserId);
+            _logger?.LogDebug(
+                "Token refresh scheduled in {Seconds}s for user {UserId}", 
+                delaySeconds, UserId);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
     }
 
     /// <summary>
@@ -179,8 +189,7 @@ public class TitanSession : IAsyncDisposable
     /// </summary>
     private async void RefreshTokenCallback(object? state)
     {
-        if (_disposed)
-            return;
+        if (_disposed) return;
 
         try
         {
@@ -198,12 +207,15 @@ public class TitanSession : IAsyncDisposable
     /// </summary>
     public async Task RefreshTokenAsync()
     {
-        var authHub = await GetAuthHubAsync();
-        
+        // Must read refresh token safely first
         string currentRefreshToken;
         await _semaphore.WaitAsync();
         try
         {
+            if (string.IsNullOrEmpty(_refreshToken))
+            {
+                throw new InvalidOperationException("Refresh token is empty. Cannot refresh.");
+            }
             currentRefreshToken = _refreshToken;
         }
         finally
@@ -211,52 +223,61 @@ public class TitanSession : IAsyncDisposable
             _semaphore.Release();
         }
 
-        // Call RefreshToken over existing WebSocket
+        // Call RefreshToken over existing WebSocket using GetAuthHub (which manages internal parallelism internally)
+        var authHub = await GetAuthHubAsync();
         var result = await authHub.InvokeAsync<RefreshResult>("RefreshToken", currentRefreshToken, UserId);
 
-        await _semaphore.WaitAsync();
+        await UpdateTokensAsync(result.AccessToken, result.RefreshToken, result.AccessTokenExpiresInSeconds);
+
+        _logger?.LogDebug("Token refreshed for user {UserId}", UserId);
+        OnTokenRefreshed?.Invoke(result.AccessToken);
+    }
+
+    /// <summary>
+    /// Stops automatic token refresh.
+    /// Thread-safe.
+    /// </summary>
+    public void StopAutoRefresh()
+    {
+        _semaphore.Wait();
         try
         {
-            _accessToken = result.AccessToken;
-            _refreshToken = result.RefreshToken;
-            _accessTokenExpiresInSeconds = result.AccessTokenExpiresInSeconds;
+            _autoRefreshEnabled = false;
+            _refreshTimer?.Dispose();
+            _refreshTimer = null;
+            _logger?.LogDebug("Auto-refresh stopped for user {UserId}", UserId);
         }
         finally
         {
             _semaphore.Release();
         }
-
-        _logger?.LogDebug("Token refreshed for user {UserId}", UserId);
-        OnTokenRefreshed?.Invoke(result.AccessToken);
-
-        // Schedule next refresh
-        if (_autoRefreshEnabled)
-        {
-            ScheduleTokenRefresh();
-        }
-    }
-
-    /// <summary>
-    /// Stops automatic token refresh.
-    /// </summary>
-    public void StopAutoRefresh()
-    {
-        _autoRefreshEnabled = false;
-        _refreshTimer?.Dispose();
-        _refreshTimer = null;
-        _logger?.LogDebug("Auto-refresh stopped for user {UserId}", UserId);
     }
 
     /// <summary>
     /// Starts automatic token refresh if not already running.
+    /// Thread-safe.
     /// </summary>
     public void StartAutoRefresh()
     {
-        if (!_autoRefreshEnabled)
+        _semaphore.Wait();
+        try
         {
-            _autoRefreshEnabled = true;
-            ScheduleTokenRefresh();
-            _logger?.LogDebug("Auto-refresh started for user {UserId}", UserId);
+            if (!_autoRefreshEnabled)
+            {
+                _autoRefreshEnabled = true;
+                _semaphore.Release(); // Release before calling Schedule to avoid recursion lock if Schedule also locks
+                // Wait... Schedule uses Wait(). SemaphoreSlim IS NOT REENTRANT.
+                // We need to refactor ScheduleTokenRefresh to NOT take the lock, or extract the logic.
+                // Let's modify ScheduleTokenRefresh to ASSUME lock is held? No, private helpers are tricky.
+                // Correct approach: Release lock then call Schedule (which takes lock).
+                ScheduleTokenRefresh();
+                _logger?.LogDebug("Auto-refresh started for user {UserId}", UserId);
+                return;
+            }
+        }
+        finally
+        {
+            if (_semaphore.CurrentCount == 0) _semaphore.Release();
         }
     }
 
@@ -331,8 +352,16 @@ public class TitanSession : IAsyncDisposable
             }
 
             // Create new connection (still holding semaphore to prevent duplicates)
+            // Use AccessTokenProvider to ensure re-connections always get the LATEST token
             var connection = new HubConnectionBuilder()
-                .WithUrl($"{_apiBaseUrl}{hubPath}?access_token={_accessToken}")
+                .WithUrl($"{_apiBaseUrl}{hubPath}", options =>
+                {
+                    options.AccessTokenProvider = () =>
+                    {
+                        // Safely read current token
+                        return Task.FromResult<string?>(AccessToken);
+                    };
+                })
                 .WithAutomaticReconnect()
                 .Build();
 
@@ -504,10 +533,4 @@ public class TitanSession : IAsyncDisposable
     }
 }
 
-/// <summary>
-/// Result of a token refresh operation.
-/// </summary>
-public record RefreshResult(
-    string AccessToken,
-    string RefreshToken,
-    int AccessTokenExpiresInSeconds);
+

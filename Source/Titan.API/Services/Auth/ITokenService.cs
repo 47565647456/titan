@@ -15,8 +15,8 @@ public interface ITokenService
     string GenerateAccessToken(Guid userId, string provider, IEnumerable<string>? roles = null);
 
     /// <summary>
-    /// The configured access token expiration duration.
-    /// Clients can use this to schedule refresh before expiry.
+    /// Gets the configured expiration time for access tokens.
+    /// Used by clients to schedule token refreshes.
     /// </summary>
     TimeSpan AccessTokenExpiration { get; }
 }

@@ -100,6 +100,8 @@ public class AuthHub : Hub
     /// Refresh access token using a valid refresh token.
     /// Called over existing WebSocket connection - no reconnection needed.
     /// Returns new access + refresh tokens (rotation).
+    /// Security: Relies on the unguessability of the refresh token. 
+    /// The (UserId, RefreshToken) pair acts as the composite credential.
     /// </summary>
     /// <param name="refreshToken">The refresh token ID from a previous login or refresh.</param>
     /// <param name="userId">The user ID associated with the refresh token.</param>
@@ -200,10 +202,4 @@ public record LoginResult(
         ErrorMessage: errorMessage);
 }
 
-/// <summary>
-/// Result of a token refresh.
-/// </summary>
-public record RefreshResult(
-    string AccessToken,
-    string RefreshToken,
-    int AccessTokenExpiresInSeconds);
+
