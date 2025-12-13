@@ -11,14 +11,13 @@ namespace Titan.API.Hubs;
 /// Write operations (Create/Update/Delete) require Admin role.
 /// </summary>
 [Authorize]
-public class ItemTypeHub : Hub
+public class ItemTypeHub : TitanHubBase
 {
-    private readonly IClusterClient _clusterClient;
     private readonly ILogger<ItemTypeHub> _logger;
 
     public ItemTypeHub(IClusterClient clusterClient, ILogger<ItemTypeHub> logger)
+        : base(clusterClient, logger)
     {
-        _clusterClient = clusterClient;
         _logger = logger;
     }
 
@@ -49,7 +48,7 @@ public class ItemTypeHub : Hub
     /// </summary>
     public async Task<IReadOnlyList<ItemTypeDefinition>> GetAll()
     {
-        var registry = _clusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
         return await registry.GetAllAsync();
     }
 
@@ -58,7 +57,7 @@ public class ItemTypeHub : Hub
     /// </summary>
     public async Task<ItemTypeDefinition?> Get(string itemTypeId)
     {
-        var registry = _clusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
         return await registry.GetAsync(itemTypeId);
     }
 
@@ -67,7 +66,7 @@ public class ItemTypeHub : Hub
     /// </summary>
     public async Task<bool> Exists(string itemTypeId)
     {
-        var registry = _clusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
         return await registry.ExistsAsync(itemTypeId);
     }
 
@@ -84,7 +83,7 @@ public class ItemTypeHub : Hub
         if (string.IsNullOrWhiteSpace(definition.Name))
             throw new HubException("Name is required.");
 
-        var registry = _clusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
 
         if (await registry.ExistsAsync(definition.ItemTypeId))
             throw new HubException($"Item type '{definition.ItemTypeId}' already exists.");
@@ -108,7 +107,7 @@ public class ItemTypeHub : Hub
         if (definition.ItemTypeId != itemTypeId)
             throw new HubException("ItemTypeId in request must match.");
 
-        var registry = _clusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
 
         if (!await registry.ExistsAsync(itemTypeId))
             throw new HubException($"Item type '{itemTypeId}' not found.");
@@ -129,7 +128,7 @@ public class ItemTypeHub : Hub
     [Authorize(Roles = "Admin")]
     public async Task Delete(string itemTypeId)
     {
-        var registry = _clusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
 
         if (!await registry.ExistsAsync(itemTypeId))
             throw new HubException($"Item type '{itemTypeId}' not found.");

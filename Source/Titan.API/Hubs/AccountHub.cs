@@ -10,26 +10,19 @@ namespace Titan.API.Hubs;
 /// All operations are scoped to the authenticated user's account.
 /// </summary>
 [Authorize]
-public class AccountHub : Hub
+public class AccountHub : TitanHubBase
 {
-    private readonly IClusterClient _clusterClient;
-
-    public AccountHub(IClusterClient clusterClient)
+    public AccountHub(IClusterClient clusterClient, ILogger<AccountHub> logger)
+        : base(clusterClient, logger)
     {
-        _clusterClient = clusterClient;
     }
-
-    /// <summary>
-    /// Gets the authenticated user's ID from the JWT token.
-    /// </summary>
-    private Guid GetUserId() => Guid.Parse(Context.UserIdentifier!);
 
     /// <summary>
     /// Get the authenticated user's account info including unlocked cosmetics and achievements.
     /// </summary>
     public async Task<Account> GetAccount()
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.GetAccountAsync();
     }
 
@@ -38,7 +31,7 @@ public class AccountHub : Hub
     /// </summary>
     public async Task<IReadOnlyList<CharacterSummary>> GetCharacters()
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.GetCharactersAsync();
     }
 
@@ -47,7 +40,7 @@ public class AccountHub : Hub
     /// </summary>
     public async Task<CharacterSummary> CreateCharacter(string seasonId, string name, CharacterRestrictions restrictions = CharacterRestrictions.None)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.CreateCharacterAsync(seasonId, name, restrictions);
     }
 
@@ -56,7 +49,7 @@ public class AccountHub : Hub
     /// </summary>
     public async Task<bool> HasCosmetic(string cosmeticId)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.HasCosmeticAsync(cosmeticId);
     }
 
@@ -65,7 +58,7 @@ public class AccountHub : Hub
     /// </summary>
     public async Task UnlockCosmetic(string cosmeticId)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         await grain.UnlockCosmeticAsync(cosmeticId);
     }
 
@@ -74,7 +67,7 @@ public class AccountHub : Hub
     /// </summary>
     public async Task<bool> HasAchievement(string achievementId)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.HasAchievementAsync(achievementId);
     }
 
@@ -83,7 +76,7 @@ public class AccountHub : Hub
     /// </summary>
     public async Task UnlockAchievement(string achievementId)
     {
-        var grain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         await grain.UnlockAchievementAsync(achievementId);
     }
 }

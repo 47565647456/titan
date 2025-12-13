@@ -94,9 +94,8 @@ dotnet test Source/Titan.AppHost.Tests
 - [x] **MemoryPack Storage Serialization** - Binary serialization for grain state persistence (~40% smaller payloads)
 - [ ] **Admin Dashboard** - Web UI for managing players, banning, economy monitoring
 
-### Security & Anti-Cheat
+### Security
 - [ ] **Input Validation** - Server-side verification of game actions (Registry/Rules)
-- [ ] **Cheat Detection** - Anomaly detection, stat validation
 
 ### Client Integration
 - [ ] **Client SDK** - C++, C#, and Blueprint support

@@ -11,30 +11,24 @@ namespace Titan.API.Hubs;
 /// All operations verify that the caller owns the character they're acting as.
 /// </summary>
 [Authorize]
-public class TradeHub : Hub
+public class TradeHub : TitanHubBase
 {
-    private readonly IClusterClient _clusterClient;
     private readonly TradeStreamSubscriber _streamSubscriber;
 
-    public TradeHub(IClusterClient clusterClient, TradeStreamSubscriber streamSubscriber)
+    public TradeHub(IClusterClient clusterClient, TradeStreamSubscriber streamSubscriber, ILogger<TradeHub> logger)
+        : base(clusterClient, logger)
     {
-        _clusterClient = clusterClient;
         _streamSubscriber = streamSubscriber;
     }
 
     #region Security Helpers
 
     /// <summary>
-    /// Gets the authenticated user's ID from the JWT token.
-    /// </summary>
-    private Guid GetUserId() => Guid.Parse(Context.UserIdentifier!);
-
-    /// <summary>
     /// Verifies that the specified character belongs to the authenticated user.
     /// </summary>
     private async Task VerifyCharacterOwnershipAsync(Guid characterId)
     {
-        var accountGrain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var accountGrain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         var characters = await accountGrain.GetCharactersAsync();
         
         if (!characters.Any(c => c.CharacterId == characterId))
@@ -49,10 +43,10 @@ public class TradeHub : Hub
     /// </summary>
     private async Task<Guid> GetOwnedCharacterInTradeAsync(Guid tradeId)
     {
-        var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
+        var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
         var session = await grain.GetSessionAsync();
         
-        var accountGrain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var accountGrain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         var characters = await accountGrain.GetCharactersAsync();
         var characterIds = characters.Select(c => c.CharacterId).ToHashSet();
 
@@ -105,7 +99,7 @@ public class TradeHub : Hub
         await VerifyCharacterOwnershipAsync(myCharacterId);
         
         var tradeId = Guid.NewGuid();
-        var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
+        var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
 
         var session = await grain.InitiateAsync(myCharacterId, targetCharacterId, seasonId);
         
@@ -122,7 +116,7 @@ public class TradeHub : Hub
         // Verify caller is a participant
         await GetOwnedCharacterInTradeAsync(tradeId);
         
-        var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
+        var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
         return await grain.GetSessionAsync();
     }
 
@@ -133,7 +127,7 @@ public class TradeHub : Hub
     {
         var myCharacterId = await GetOwnedCharacterInTradeAsync(tradeId);
         
-        var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
+        var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
         await grain.AddItemAsync(myCharacterId, itemId);
         var session = await grain.GetSessionAsync();
 
@@ -149,7 +143,7 @@ public class TradeHub : Hub
     {
         var myCharacterId = await GetOwnedCharacterInTradeAsync(tradeId);
         
-        var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
+        var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
         await grain.RemoveItemAsync(myCharacterId, itemId);
         var session = await grain.GetSessionAsync();
 
@@ -165,7 +159,7 @@ public class TradeHub : Hub
     {
         var myCharacterId = await GetOwnedCharacterInTradeAsync(tradeId);
         
-        var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
+        var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
         var status = await grain.AcceptAsync(myCharacterId);
 
         var eventType = status == TradeStatus.Completed ? "TradeCompleted" : "TradeAccepted";
@@ -181,7 +175,7 @@ public class TradeHub : Hub
     {
         var myCharacterId = await GetOwnedCharacterInTradeAsync(tradeId);
         
-        var grain = _clusterClient.GetGrain<ITradeGrain>(tradeId);
+        var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
         await grain.CancelAsync(myCharacterId);
 
         await NotifyTradeUpdate(tradeId, "TradeCancelled", new { CharacterId = myCharacterId });

@@ -12,13 +12,11 @@ namespace Titan.API.Hubs;
 /// Management operations require Admin role.
 /// </summary>
 [Authorize]
-public class SeasonHub : Hub
+public class SeasonHub : TitanHubBase
 {
-    private readonly IClusterClient _clusterClient;
-
-    public SeasonHub(IClusterClient clusterClient)
+    public SeasonHub(IClusterClient clusterClient, ILogger<SeasonHub> logger)
+        : base(clusterClient, logger)
     {
-        _clusterClient = clusterClient;
     }
 
     #region Subscriptions
@@ -64,7 +62,7 @@ public class SeasonHub : Hub
     /// </summary>
     public async Task<IReadOnlyList<Season>> GetAllSeasons()
     {
-        var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
         return await registry.GetAllSeasonsAsync();
     }
 
@@ -73,7 +71,7 @@ public class SeasonHub : Hub
     /// </summary>
     public async Task<Season?> GetCurrentSeason()
     {
-        var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
         return await registry.GetCurrentSeasonAsync();
     }
 
@@ -82,7 +80,7 @@ public class SeasonHub : Hub
     /// </summary>
     public async Task<Season?> GetSeason(string seasonId)
     {
-        var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
         return await registry.GetSeasonAsync(seasonId);
     }
 
@@ -102,7 +100,7 @@ public class SeasonHub : Hub
         Dictionary<string, string>? modifiers = null,
         bool isVoid = false)
     {
-        var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
 
         var season = new Season
         {
@@ -131,7 +129,7 @@ public class SeasonHub : Hub
     [Authorize(Roles = "Admin")]
     public async Task<Season> EndSeason(string seasonId)
     {
-        var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
         var season = await registry.EndSeasonAsync(seasonId);
         
         await NotifySeasonEvent(seasonId, "SeasonEnded", season);
@@ -146,7 +144,7 @@ public class SeasonHub : Hub
     [Authorize(Roles = "Admin")]
     public async Task<Season> UpdateSeasonStatus(string seasonId, SeasonStatus status)
     {
-        var registry = _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
         var season = await registry.UpdateSeasonStatusAsync(seasonId, status);
         
         await NotifySeasonEvent(seasonId, "SeasonStatusUpdated", season);
@@ -163,7 +161,7 @@ public class SeasonHub : Hub
     /// </summary>
     public async Task<MigrationStatus> GetMigrationStatus(string seasonId)
     {
-        var grain = _clusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
+        var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         return await grain.GetStatusAsync();
     }
 
@@ -174,7 +172,7 @@ public class SeasonHub : Hub
     [Authorize(Roles = "Admin")]
     public async Task<MigrationStatus> StartMigration(string seasonId, string? targetSeasonId = null)
     {
-        var grain = _clusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
+        var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         return await grain.StartMigrationAsync(targetSeasonId ?? "standard");
     }
 
@@ -183,7 +181,7 @@ public class SeasonHub : Hub
     /// </summary>
     public async Task<MigrationStatus> MigrateCharacter(string seasonId, Guid characterId)
     {
-        var grain = _clusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
+        var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         return await grain.MigrateCharacterAsync(characterId);
     }
 
@@ -194,7 +192,7 @@ public class SeasonHub : Hub
     [Authorize(Roles = "Admin")]
     public async Task<MigrationStatus> CancelMigration(string seasonId)
     {
-        var grain = _clusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
+        var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         await grain.CancelMigrationAsync();
         return await grain.GetStatusAsync();
     }
