@@ -36,18 +36,18 @@ public abstract class TitanHubBase : Hub
             var userId = GetUserId();
             var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
 
-            // Track presence (in-memory)
+            // Track presence (in-memory) - returns true if this is first connection
             var presenceGrain = _clusterClient.GetGrain<IPlayerPresenceGrain>(userId);
-            await presenceGrain.RegisterConnectionAsync(Context.ConnectionId, GetType().Name);
+            var isFirstConnection = await presenceGrain.RegisterConnectionAsync(Context.ConnectionId, GetType().Name);
 
             // Log session (persisted) - only on first connection for this user
-            if (await presenceGrain.GetConnectionCountAsync() == 1)
+            if (isFirstConnection)
             {
                 var sessionGrain = _clusterClient.GetGrain<ISessionLogGrain>(userId);
                 await sessionGrain.StartSessionAsync(ip);
             }
 
-            _logger.LogDebug("User {UserId} connected via {Hub}", userId, GetType().Name);
+            _logger.LogDebug("User {UserId} connected via {Hub} (first: {IsFirst})", userId, GetType().Name, isFirstConnection);
         }
         await base.OnConnectedAsync();
     }
@@ -57,17 +57,19 @@ public abstract class TitanHubBase : Hub
         if (Context.UserIdentifier != null)
         {
             var userId = GetUserId();
+            
+            // Track presence (in-memory) - returns true if this was last connection
             var presenceGrain = _clusterClient.GetGrain<IPlayerPresenceGrain>(userId);
-            await presenceGrain.UnregisterConnectionAsync(Context.ConnectionId);
+            var wasLastConnection = await presenceGrain.UnregisterConnectionAsync(Context.ConnectionId);
 
             // End session (persisted) - only when last connection closes
-            if (await presenceGrain.GetConnectionCountAsync() == 0)
+            if (wasLastConnection)
             {
                 var sessionGrain = _clusterClient.GetGrain<ISessionLogGrain>(userId);
                 await sessionGrain.EndSessionAsync();
             }
 
-            _logger.LogDebug("User {UserId} disconnected from {Hub}", userId, GetType().Name);
+            _logger.LogDebug("User {UserId} disconnected from {Hub} (last: {IsLast})", userId, GetType().Name, wasLastConnection);
         }
         await base.OnDisconnectedAsync(exception);
     }

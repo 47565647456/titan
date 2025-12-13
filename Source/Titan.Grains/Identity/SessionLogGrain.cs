@@ -19,6 +19,8 @@ public partial class SessionLogGrainState
 /// </summary>
 public class SessionLogGrain : Grain, ISessionLogGrain
 {
+    private const int MaxHistorySize = 100;
+    
     private readonly IPersistentState<SessionLogGrainState> _state;
 
     public SessionLogGrain(
@@ -38,6 +40,13 @@ public class SessionLogGrain : Grain, ISessionLogGrain
             IpAddress = ipAddress
         };
         _state.State.SessionHistory.Add(_state.State.CurrentSession);
+        
+        // Prune old entries if we've exceeded max history size
+        while (_state.State.SessionHistory.Count > MaxHistorySize)
+        {
+            _state.State.SessionHistory.RemoveAt(0);
+        }
+        
         await _state.WriteStateAsync();
         return sessionId;
     }
@@ -47,7 +56,7 @@ public class SessionLogGrain : Grain, ISessionLogGrain
         if (_state.State.CurrentSession != null)
         {
             var loginAt = _state.State.CurrentSession.LoginAt;
-            _state.State.CurrentSession = _state.State.CurrentSession with
+            var updatedSession = _state.State.CurrentSession with
             {
                 LogoutAt = DateTimeOffset.UtcNow,
                 Duration = DateTimeOffset.UtcNow - loginAt
@@ -57,10 +66,11 @@ public class SessionLogGrain : Grain, ISessionLogGrain
             var idx = _state.State.SessionHistory.FindIndex(
                 s => s.SessionId == _state.State.CurrentSession.SessionId);
             if (idx >= 0)
-                _state.State.SessionHistory[idx] = _state.State.CurrentSession;
+                _state.State.SessionHistory[idx] = updatedSession;
 
-            await _state.WriteStateAsync();
+            // Clear current session before write to ensure consistency
             _state.State.CurrentSession = null;
+            await _state.WriteStateAsync();
         }
     }
 

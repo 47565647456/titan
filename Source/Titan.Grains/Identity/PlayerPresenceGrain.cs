@@ -13,8 +13,10 @@ public class PlayerPresenceGrain : Grain, IPlayerPresenceGrain
     private DateTimeOffset _lastSeen = DateTimeOffset.UtcNow;
     private string? _currentActivity;
 
-    public Task RegisterConnectionAsync(string connectionId, string hubName)
+    public Task<bool> RegisterConnectionAsync(string connectionId, string hubName)
     {
+        var wasEmpty = _connections.Count == 0;
+        
         _connections[connectionId] = new PlayerSession
         {
             ConnectionId = connectionId,
@@ -23,14 +25,18 @@ public class PlayerPresenceGrain : Grain, IPlayerPresenceGrain
             HubName = hubName
         };
         _lastSeen = DateTimeOffset.UtcNow;
-        return Task.CompletedTask;
+        
+        // Return true if this is the first connection (user just came online)
+        return Task.FromResult(wasEmpty);
     }
 
-    public Task UnregisterConnectionAsync(string connectionId)
+    public Task<bool> UnregisterConnectionAsync(string connectionId)
     {
         _connections.Remove(connectionId);
         _lastSeen = DateTimeOffset.UtcNow;
-        return Task.CompletedTask;
+        
+        // Return true if this was the last connection (user went offline)
+        return Task.FromResult(_connections.Count == 0);
     }
 
     public Task<PlayerPresence> GetPresenceAsync()

@@ -123,4 +123,66 @@ public class PlayerPresenceGrainTests : IAsyncLifetime
         // Assert
         Assert.True(presence.LastSeen >= beforeConnect);
     }
+
+    [Fact]
+    public async Task RegisterConnection_ReturnsTrue_OnFirstConnection()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<IPlayerPresenceGrain>(userId);
+
+        // Act
+        var isFirst = await grain.RegisterConnectionAsync("conn-1", "AccountHub");
+
+        // Assert
+        Assert.True(isFirst);
+    }
+
+    [Fact]
+    public async Task RegisterConnection_ReturnsFalse_OnSubsequentConnections()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<IPlayerPresenceGrain>(userId);
+        await grain.RegisterConnectionAsync("conn-1", "AccountHub");
+
+        // Act
+        var isFirst = await grain.RegisterConnectionAsync("conn-2", "TradeHub");
+
+        // Assert
+        Assert.False(isFirst);
+    }
+
+    [Fact]
+    public async Task UnregisterConnection_ReturnsTrue_OnLastConnection()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<IPlayerPresenceGrain>(userId);
+        await grain.RegisterConnectionAsync("conn-1", "AccountHub");
+
+        // Act
+        var wasLast = await grain.UnregisterConnectionAsync("conn-1");
+
+        // Assert
+        Assert.True(wasLast);
+    }
+
+    [Fact]
+    public async Task UnregisterConnection_ReturnsFalse_WhenConnectionsRemain()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var grain = _grainFactory.GetGrain<IPlayerPresenceGrain>(userId);
+        await grain.RegisterConnectionAsync("conn-1", "AccountHub");
+        await grain.RegisterConnectionAsync("conn-2", "TradeHub");
+
+        // Act
+        var wasLast = await grain.UnregisterConnectionAsync("conn-1");
+
+        // Assert
+        Assert.False(wasLast);
+        Assert.True(await grain.IsOnlineAsync());
+    }
 }
+

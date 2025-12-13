@@ -11,13 +11,15 @@ public interface IPlayerPresenceGrain : IGrainWithGuidKey
 {
     /// <summary>
     /// Register a new connection for this user.
+    /// Returns true if this is the first connection (user just came online).
     /// </summary>
-    Task RegisterConnectionAsync(string connectionId, string hubName);
+    Task<bool> RegisterConnectionAsync(string connectionId, string hubName);
 
     /// <summary>
     /// Unregister a connection when it closes.
+    /// Returns true if this was the last connection (user went offline).
     /// </summary>
-    Task UnregisterConnectionAsync(string connectionId);
+    Task<bool> UnregisterConnectionAsync(string connectionId);
 
     /// <summary>
     /// Get the current presence status.
