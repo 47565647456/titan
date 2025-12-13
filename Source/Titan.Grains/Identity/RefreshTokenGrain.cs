@@ -30,8 +30,17 @@ public class RefreshTokenGrain : Grain, IRefreshTokenGrain
         IConfiguration configuration)
     {
         _state = state;
-        _tokenLifetime = TimeSpan.FromHours(
-            configuration.GetValue<int>("Jwt:RefreshTokenExpirationHours", 24));
+        // Use minutes config key, fallback to hours for backwards compatibility
+        var minutes = configuration.GetValue<int?>("Jwt:RefreshTokenExpirationMinutes");
+        if (minutes.HasValue)
+        {
+            _tokenLifetime = TimeSpan.FromMinutes(minutes.Value);
+        }
+        else
+        {
+            _tokenLifetime = TimeSpan.FromHours(
+                configuration.GetValue<int>("Jwt:RefreshTokenExpirationHours", 24));
+        }
     }
 
     public async Task<RefreshTokenInfo> CreateTokenAsync(string provider, IReadOnlyList<string> roles)

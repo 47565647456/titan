@@ -19,4 +19,10 @@ public interface ITokenService
     /// Used by clients to schedule token refreshes.
     /// </summary>
     TimeSpan AccessTokenExpiration { get; }
+
+    /// <summary>
+    /// Gets the configured expiration time for refresh tokens.
+    /// Used by grains when creating refresh tokens.
+    /// </summary>
+    TimeSpan RefreshTokenExpiration { get; }
 }

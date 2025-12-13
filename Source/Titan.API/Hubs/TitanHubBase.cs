@@ -69,8 +69,36 @@ public abstract class TitanHubBase : Hub
                 await sessionGrain.EndSessionAsync();
             }
 
-            _logger.LogDebug("User {UserId} disconnected from {Hub} (last: {IsLast})", userId, GetType().Name, wasLastConnection);
+        _logger.LogDebug("User {UserId} disconnected from {Hub} (last: {IsLast})", userId, GetType().Name, wasLastConnection);
         }
         await base.OnDisconnectedAsync(exception);
     }
+
+    #region Ownership Verification
+
+    /// <summary>
+    /// Verifies that the specified character belongs to the authenticated user.
+    /// Throws HubException if ownership verification fails.
+    /// </summary>
+    protected async Task VerifyCharacterOwnershipAsync(Guid characterId)
+    {
+        var characterIds = await GetOwnedCharacterIdsAsync();
+        if (!characterIds.Contains(characterId))
+        {
+            throw new HubException("Character does not belong to this account.");
+        }
+    }
+
+    /// <summary>
+    /// Gets the set of character IDs owned by the authenticated user.
+    /// Useful for batch ownership checks.
+    /// </summary>
+    protected async Task<HashSet<Guid>> GetOwnedCharacterIdsAsync()
+    {
+        var accountGrain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var characters = await accountGrain.GetCharactersAsync();
+        return characters.Select(c => c.CharacterId).ToHashSet();
+    }
+
+    #endregion
 }

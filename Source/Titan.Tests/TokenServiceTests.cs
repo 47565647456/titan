@@ -1,4 +1,5 @@
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using Titan.API.Config;
 using Titan.API.Services.Auth;
 
 namespace Titan.Tests;
@@ -8,20 +9,22 @@ namespace Titan.Tests;
 /// </summary>
 public class TokenServiceTests
 {
-    private ITokenService CreateTokenService(string? key = null, string? issuer = null, int? expirationHours = null)
+    private static ITokenService CreateTokenService(
+        string? key = null, 
+        string? issuer = null, 
+        int? accessTokenExpirationMinutes = null,
+        int? refreshTokenExpirationMinutes = null)
     {
-        var configData = new Dictionary<string, string?>
+        var options = new JwtOptions
         {
-            ["Jwt:Key"] = key ?? "TestSecretKeyThatIsAtLeast32BytesLong!!",
-            ["Jwt:Issuer"] = issuer ?? "TestIssuer",
-            ["Jwt:ExpirationHours"] = expirationHours?.ToString() ?? "24"
+            Key = key ?? "TestSecretKeyThatIsAtLeast32BytesLong!!",
+            Issuer = issuer ?? "TestIssuer",
+            Audience = "TestAudience",
+            AccessTokenExpirationMinutes = accessTokenExpirationMinutes ?? 15,
+            RefreshTokenExpirationMinutes = refreshTokenExpirationMinutes ?? 10080
         };
 
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configData)
-            .Build();
-
-        return new TokenService(configuration);
+        return new TokenService(Options.Create(options));
     }
 
     [Fact]
@@ -121,16 +124,23 @@ public class TokenServiceTests
     }
 
     [Fact]
-    public void Constructor_WithoutKey_ShouldThrow()
+    public void AccessTokenExpiration_ShouldMatchConfiguration()
     {
         // Arrange
-        var configData = new Dictionary<string, string?>();
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(configData)
-            .Build();
+        var service = CreateTokenService(accessTokenExpirationMinutes: 30);
 
-        // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => new TokenService(configuration));
+        // Assert
+        Assert.Equal(TimeSpan.FromMinutes(30), service.AccessTokenExpiration);
+    }
+
+    [Fact]
+    public void RefreshTokenExpiration_ShouldMatchConfiguration()
+    {
+        // Arrange
+        var service = CreateTokenService(refreshTokenExpirationMinutes: 1440); // 1 day
+
+        // Assert
+        Assert.Equal(TimeSpan.FromMinutes(1440), service.RefreshTokenExpiration);
     }
 
     #region Helpers

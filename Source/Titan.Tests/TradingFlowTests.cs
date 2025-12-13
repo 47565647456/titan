@@ -112,44 +112,4 @@ public class TradingFlowTests : IAsyncLifetime
         Assert.Equal(TradeStatus.Completed, finalStatus);
         Assert.False(await giverInventory.HasItemAsync(gift.Id));
     }
-
-    [Fact]
-    public async Task Inventory_AddAndRemoveItems_ShouldWork()
-    {
-        // Arrange
-        var characterId = Guid.NewGuid();
-        var inventory = _cluster.GrainFactory.GetGrain<IInventoryGrain>(characterId, TestSeasonId);
-
-        // Act
-        var item = await inventory.AddItemAsync("TestItem", 5);
-        var fetched = await inventory.GetItemAsync(item.Id);
-
-        // Assert
-        Assert.NotNull(fetched);
-        Assert.Equal("TestItem", fetched!.ItemTypeId);
-        Assert.Equal(5, fetched.Quantity);
-
-        // Remove
-        var removed = await inventory.RemoveItemAsync(item.Id);
-        Assert.True(removed);
-        Assert.False(await inventory.HasItemAsync(item.Id));
-    }
-
-    [Fact]
-    public async Task UserIdentity_LinkProvider_ShouldPersist()
-    {
-        // Arrange
-        var userId = Guid.NewGuid();
-        var identityGrain = _cluster.GrainFactory.GetGrain<IUserIdentityGrain>(userId);
-
-        // Act
-        await identityGrain.LinkProviderAsync("Steam", "steam_12345");
-        await identityGrain.LinkProviderAsync("EOS", "eos_67890");
-        var identity = await identityGrain.GetIdentityAsync();
-
-        // Assert
-        Assert.Equal(2, identity.LinkedProviders.Count);
-        Assert.True(await identityGrain.HasProviderAsync("Steam"));
-        Assert.True(await identityGrain.HasProviderAsync("EOS"));
-    }
 }

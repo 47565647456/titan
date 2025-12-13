@@ -1,6 +1,8 @@
+using System.Net.Http.Json;
 using Aspire.Hosting.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Models;
 
 namespace Titan.AppHost.Tests;
@@ -81,6 +83,9 @@ public abstract class IntegrationTestBase
     protected DistributedApplication App => Fixture.App;
     protected string ApiBaseUrl => Fixture.ApiBaseUrl;
 
+    private HttpClient? _httpClient;
+    protected HttpClient HttpClient => _httpClient ??= new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
+
     protected IntegrationTestBase(AppHostFixture fixture)
     {
         Fixture = fixture;
@@ -89,28 +94,22 @@ public abstract class IntegrationTestBase
     #region Authentication Helpers
 
     /// <summary>
-    /// Login via AuthHub and return the access token, refresh token, and expiry info.
+    /// Login via HTTP API and return the access token, refresh token, and expiry info.
+    /// Uses the new /api/auth/login endpoint.
     /// </summary>
     protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsync(string mockToken, string provider = "Mock")
     {
-        var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub")
-            .Build();
+        var request = new { token = mockToken, provider };
+        var response = await HttpClient.PostAsJsonAsync("/api/auth/login", request);
+        response.EnsureSuccessStatusCode();
         
-        try
-        {
-            await authHub.StartAsync();
-            var result = await authHub.InvokeAsync<LoginResult>("Login", mockToken, provider);
-            
-            if (!result.Success || string.IsNullOrEmpty(result.AccessToken))
-                throw new InvalidOperationException($"Login failed: {result.ErrorMessage}");
-            
-            return (result.AccessToken, result.RefreshToken!, result.AccessTokenExpiresInSeconds!.Value, result.UserId!.Value);
-        }
-        finally
-        {
-            await authHub.DisposeAsync();
-        }
+        var result = await response.Content.ReadFromJsonAsync<LoginResponse>()
+            ?? throw new InvalidOperationException("Failed to parse login response");
+        
+        if (!result.Success || string.IsNullOrEmpty(result.AccessToken))
+            throw new InvalidOperationException($"Login failed");
+        
+        return (result.AccessToken, result.RefreshToken!, result.AccessTokenExpiresInSeconds!.Value, result.UserId!.Value);
     }
 
     protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsUserAsync()
@@ -216,17 +215,3 @@ public abstract class IntegrationTestBase
 
     #endregion
 }
-
-/// <summary>
-/// LoginResult record matching AuthHub response.
-/// </summary>
-public record LoginResult(
-    bool Success, 
-    Guid? UserId, 
-    string? Provider, 
-    UserIdentity? Identity, 
-    string? AccessToken, 
-    string? RefreshToken,
-    int? AccessTokenExpiresInSeconds,
-    string? ErrorMessage);
-
