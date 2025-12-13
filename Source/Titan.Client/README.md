@@ -25,7 +25,7 @@ var account = await accountHub.InvokeAsync<Account>("GetAccount");
 
 // Reuse connections
 var characterHub = await session.GetCharacterHubAsync();
-var characters = await accountHub.InvokeAsync<IReadOnlyList<CharacterSummary>>("GetCharacters");
+var characters = await characterHub.InvokeAsync<IReadOnlyList<CharacterSummary>>("GetCharacters");
 
 // Dispose when done
 await session.DisposeAsync();
