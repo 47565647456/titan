@@ -10,26 +10,19 @@ namespace Titan.API.Hubs;
 /// All operations verify the character belongs to the authenticated user.
 /// </summary>
 [Authorize]
-public class InventoryHub : Hub
+public class InventoryHub : TitanHubBase
 {
-    private readonly IClusterClient _clusterClient;
-
-    public InventoryHub(IClusterClient clusterClient)
+    public InventoryHub(IClusterClient clusterClient, ILogger<InventoryHub> logger)
+        : base(clusterClient, logger)
     {
-        _clusterClient = clusterClient;
     }
-
-    /// <summary>
-    /// Gets the authenticated user's ID from the JWT token.
-    /// </summary>
-    private Guid GetUserId() => Guid.Parse(Context.UserIdentifier!);
 
     /// <summary>
     /// Verifies that the specified character belongs to the authenticated user.
     /// </summary>
     private async Task VerifyCharacterOwnershipAsync(Guid characterId)
     {
-        var accountGrain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var accountGrain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         var characters = await accountGrain.GetCharactersAsync();
         
         if (!characters.Any(c => c.CharacterId == characterId))
@@ -45,7 +38,7 @@ public class InventoryHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
         return await grain.GetItemsAsync();
     }
 
@@ -56,7 +49,7 @@ public class InventoryHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
         return await grain.AddItemAsync(itemTypeId, quantity, metadata);
     }
 
@@ -65,7 +58,7 @@ public class InventoryHub : Hub
     /// </summary>
     public async Task<IReadOnlyList<ItemHistoryEntry>> GetItemHistory(Guid itemId)
     {
-        var grain = _clusterClient.GetGrain<IItemHistoryGrain>(itemId);
+        var grain = ClusterClient.GetGrain<IItemHistoryGrain>(itemId);
         return await grain.GetHistoryAsync();
     }
 
@@ -76,7 +69,7 @@ public class InventoryHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
         return await grain.GetItemAsync(itemId);
     }
 
@@ -87,7 +80,7 @@ public class InventoryHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
         return await grain.RemoveItemAsync(itemId);
     }
 
@@ -98,7 +91,7 @@ public class InventoryHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
         return await grain.HasItemAsync(itemId);
     }
 }

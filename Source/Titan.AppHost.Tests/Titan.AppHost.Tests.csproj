@@ -31,6 +31,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Titan.Abstractions\Titan.Abstractions.csproj" />
     <ProjectReference Include="..\Titan.AppHost\Titan.AppHost.csproj" />
+    <ProjectReference Include="..\Titan.Client\Titan.Client.csproj" />
   </ItemGroup>
 
 </Project>

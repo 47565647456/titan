@@ -4,7 +4,7 @@ namespace Titan.AppHost.Tests;
 
 /// <summary>
 /// Manages a single set of hub connections for a user, reusing connections across operations.
-/// This dramatically reduces connection overhead compared to creating new connections per operation.
+/// This reduces connection overhead compared to creating new connections per operation.
 /// </summary>
 public class UserSession : IAsyncDisposable
 {
@@ -53,6 +53,31 @@ public class UserSession : IAsyncDisposable
     public Task<HubConnection> GetTradeHubAsync() => GetOrCreateHubAsync("/tradeHub");
     public Task<HubConnection> GetItemTypeHubAsync() => GetOrCreateHubAsync("/itemTypeHub");
     public Task<HubConnection> GetSeasonHubAsync() => GetOrCreateHubAsync("/seasonHub");
+
+    /// <summary>
+    /// Gets the number of active hub connections.
+    /// </summary>
+    public int ConnectionCount => _connections.Count(c => c.Value.State == HubConnectionState.Connected);
+
+    /// <summary>
+    /// Disconnects from a specific hub.
+    /// </summary>
+    public async Task DisconnectHubAsync(string hubPath)
+    {
+        if (_connections.TryGetValue(hubPath, out var connection))
+        {
+            _connections.Remove(hubPath);
+            try
+            {
+                await connection.StopAsync();
+                await connection.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disposal errors
+            }
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {

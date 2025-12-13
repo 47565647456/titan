@@ -10,26 +10,19 @@ namespace Titan.API.Hubs;
 /// All operations verify the character belongs to the authenticated user.
 /// </summary>
 [Authorize]
-public class CharacterHub : Hub
+public class CharacterHub : TitanHubBase
 {
-    private readonly IClusterClient _clusterClient;
-
-    public CharacterHub(IClusterClient clusterClient)
+    public CharacterHub(IClusterClient clusterClient, ILogger<CharacterHub> logger)
+        : base(clusterClient, logger)
     {
-        _clusterClient = clusterClient;
     }
-
-    /// <summary>
-    /// Gets the authenticated user's ID from the JWT token.
-    /// </summary>
-    private Guid GetUserId() => Guid.Parse(Context.UserIdentifier!);
 
     /// <summary>
     /// Verifies that the specified character belongs to the authenticated user.
     /// </summary>
     private async Task VerifyCharacterOwnershipAsync(Guid characterId)
     {
-        var accountGrain = _clusterClient.GetGrain<IAccountGrain>(GetUserId());
+        var accountGrain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         var characters = await accountGrain.GetCharactersAsync();
         
         if (!characters.Any(c => c.CharacterId == characterId))
@@ -45,7 +38,7 @@ public class CharacterHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.GetCharacterAsync();
     }
 
@@ -56,7 +49,7 @@ public class CharacterHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.AddExperienceAsync(amount);
     }
 
@@ -67,7 +60,7 @@ public class CharacterHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.SetStatAsync(statName, value);
     }
 
@@ -78,7 +71,7 @@ public class CharacterHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.GetChallengeProgressAsync();
     }
 
@@ -89,7 +82,7 @@ public class CharacterHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         await grain.UpdateChallengeProgressAsync(challengeId, progress);
     }
 
@@ -100,7 +93,7 @@ public class CharacterHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         var character = await grain.DieAsync();
         return new DieResult(character, character.IsMigrated);
     }
@@ -113,7 +106,7 @@ public class CharacterHub : Hub
     {
         await VerifyCharacterOwnershipAsync(characterId);
         
-        var grain = _clusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
+        var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.GetHistoryAsync();
     }
 }
