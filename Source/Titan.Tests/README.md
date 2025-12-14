@@ -12,30 +12,40 @@ The `TestSiloConfigurator` configures all required storage providers:
 
 ## Key Test Areas
 
-### Distributed / Clustering
-- `DistributedClusterTests.cs`: Verifies behavior across multiple Silos.
-  - Sili failures & recovery.
-  - Cross-silo trading.
-  - Persistence reliability.
-
-### Trading
-- `TradeFlowTests.cs`: Happy path and edge cases for trading.
-- `TradeTransactionTests.cs`: Verifies ACID properties of item swaps.
-
 ### Inventory & Items
-- `InventoryTests.cs`: Stacking logic, capacity limits.
-- `ItemTypeRegistryTests.cs`: Validation of item definitions.
+- `CharacterInventoryGrainTests.cs`: Stacking logic, capacity limits.
+- `BaseTypeRegistryTests.cs`: Validation of item definitions.
+- `AccountStashGrainTests.cs`: Stash logic.
+- `ItemGeneratorTests.cs`: RNG and item creation logic.
 
-## Running Tests
-Run via `dotnet test` or the Visual Studio Test Explorer.
-> **Note**: Some tests marked `[Trait("Category", "Database")]` may require a local Postgres instance (controlled via environment variables).
+### Seasons & Leagues
+- `SeasonTests.cs`: Season lifecycle, SSF/Hardcore restrictions.
+- `VoidLeagueTests.cs`: Void league mechanics (no migration on death).
+- `SeasonMigrationTests.cs`: Character migration logic between seasons.
+
+### Social & Infrastructure
+- `SocialGraphTests.cs`: Friend lists and social interactions.
+- `PlayerPresenceGrainTests.cs`: Online status tracking.
+- `SeedDataLoadingTests.cs`: Verification of initial data seeding.
 
 ### Serialization
 - `MemoryPackSerializationTests.cs`: Roundtrip tests for all `[MemoryPackable]` model types and storage serializer.
 - `SerializationBenchmarkTests.cs`: Performance comparison between MemoryPack and System.Text.Json.
 
+### Running Benchmarks
 Run benchmarks with detailed output:
 ```bash
 dotnet test --filter "SerializationBenchmarkTests" --logger "console;verbosity=detailed"
 ```
 
+## Running Tests
+Run via `dotnet test` or the Visual Studio Test Explorer.
+
+### Database Testing
+By default, tests run using **in-memory** storage providers for speed.
+To run tests against a real CockroachDB instance, set the environment variable:
+```powershell
+$env:USE_DATABASE="true"
+$env:POSTGRES_CONNECTION="Host=localhost;Port=5432;Database=titan;Username=postgres;Password=TitanDevelopmentPassword123!"
+dotnet test
+```

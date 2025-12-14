@@ -5,30 +5,63 @@ This project contains the shared contracts, interfaces, and models used througho
 ## Key Components
 
 ### Grain Interfaces
-Defines the public API for all Orleans Grains.
-- `IUserIdentityGrain`: User authentication and identity management.
-- `IInventoryGrain`: Item storage and management.
+Defines the public methods for all Orleans Grains.
+
+#### Core
+- `IUserIdentityGrain`: User authentication and identity resolution.
+- `IAccountGrain`: Main user account management.
+- `IUserProfileGrain`: User profile data (Display Name, Settings).
+- `IRefreshTokenGrain`: Management of refresh tokens and rotation.
+- `ICharacterGrain`: Character persistence and logic.
 - `ITradeGrain`: Trade session logic.
 - `ISocialGrain`: Friend lists and social graph.
-- `IItemTypeRegistryGrain`: Metadata for game items.
+- `IPlayerPresenceGrain`: Tracking online status of players.
+- `ISessionLogGrain`: Tracking session history.
+
+#### Items & Inventory
+- `ICharacterInventoryGrain`: Inventory management for a specific character.
+- `IAccountStashGrain`: Shared stash storage for a user account.
+- `IBaseTypeRegistryGrain`: Registry for item base definitions (Base Types).
+- `IBaseTypeReaderGrain`: Stateless worker for high-performance base type lookups.
+- `IModifierRegistryGrain`: Registry for item modifiers (Affixes).
+- `IModifierReaderGrain`: Stateless worker for high-performance modifier lookups.
+- `IUniqueRegistryGrain`: Registry for unique item definitions.
+- `IItemGeneratorGrain`: Logic for generating new items.
+- `IItemHistoryGrain`: Tracking item ownership history.
+
+#### Seasonal
+- `ISeasonRegistryGrain`: Management of game seasons.
+- `ISeasonMigrationGrain`: Handling migration of characters/items between seasons.
 
 ### Models
 Shared data transfer objects (records) used in Grain method signatures.
-- `inventory/*`: Item items, stacks, and transfer models.
-- `trading/*`: Trade status, offers, and session models.
+- `Models/Items/*`: `Item`, `BaseType`, `ModifierDefinition`, `InventoryGrid`, `StashTab`, `UniqueDefinition`.
+- `Models/TradeModels.cs`: `TradeStatus`, `TradeSession`, `TradeOffer`.
+- `Models/CharacterModels.cs`: `Character`, `CharacterSummary`.
 
 ### Configuration Options
 Configuration classes mapped to `appsettings.json` sections.
 
 #### ItemRegistryOptions
-Configuration for the Item Type Registry.
 - **SectionName**: `"ItemRegistry"`
 - `SeedFilePath`: Path to JSON file for seeding item types.
-- `AllowUnknownItemTypes`: (Boolean) If true, allows items with unknown Types to be created (useful for dev).
+- `ForceSeed`: (Boolean) Force re-seed on startup.
+- `AllowUnknownItemTypes`: (Boolean) Dev flag to allow loose typing.
+
+#### BaseTypeSeedOptions
+- **SectionName**: `"BaseTypeSeeding"`
+- `SeedFilePath`: Path to JSON seed file.
+- `ForceReseed`: Force re-seed even if populated.
+
+#### ItemHistoryOptions
+- **SectionName**: `"ItemHistory"`
+- `MaxEntriesPerItem`: Limit history entries per item.
+- `RetentionDays`: Days to keep history.
+
+#### ItemRegistryCacheOptions
+- `CacheDuration`: Duration to cache registry lookups (default: 5m).
 
 #### TradingOptions
-Configuration for the Trading System.
 - **SectionName**: `"Trading"`
-- `TradeTimeout`: Duration before a pending trade expires (default: 15m).
-- `ExpirationCheckInterval`: How often to check for expired trades.
-- `MaxItemsPerUser`: Cap on items per trade.
+- `TradeTimeout`: Duration before a pending trade expires.
+- `MaxItemsPerUser`: Cap on items per trade side.

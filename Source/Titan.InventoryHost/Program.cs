@@ -21,8 +21,8 @@ builder.AddTitanLogging("inventory-host");
 // Configure Item Registry Options
 builder.Services.Configure<ItemRegistryOptions>(options =>
 {
-    // Default: allow unknown item types for development
-    options.AllowUnknownItemTypes = true;
+    // Tests can change this
+    options.AllowUnknownItemTypes = false;
 });
 
 // Bind from configuration if available

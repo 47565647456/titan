@@ -24,8 +24,11 @@ var invHub = await user.GetInventoryHubAsync();  // Reuses same session
 - **Authentication**: Verifies JWT generation, Admin roles, and SignalR connection security (`AuthenticationTests.cs`).
 - **Account Management**: Character creation, inventory access, cross-user isolation (`AccountTests.cs`).
 - **Admin Operations**: Item type and season creation with role-based authorization (`AdminTests.cs`).
-- **Trading**: Full trade lifecycle, atomic item transfers, concurrent trades (`TradingTests.cs`).
+- **Trading**: Full trade lifecycle, atomic item transfers, concurrent trades (`TradingTests.cs`, `TradingFlowIntegrationTests.cs`).
 - **Void League**: Season creation, hardcore death handling, migration rules (`VoidLeagueEndToEndTests.cs`).
+- **Client SDK**: Validates the `Titan.Client` library against the running API (`TitanClientIntegrationTests.cs`).
+- **Concurrency & Clustering**: Verifies system behavior under load and distributed scenarios (`DistributedClusterIntegrationTests.cs`).
+- **Connection Tracking**: Verifies online presence and session tracking (`ConnectionTrackingTests.cs`).
 - **Infrastructure**: Health checks and silo availability (`ResourceTests.cs`).
 
 ## Running Tests

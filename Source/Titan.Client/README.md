@@ -74,7 +74,7 @@ var providers = await client.Auth.GetProvidersAsync();
 | Character | `GetCharacterClientAsync()` | Character stats, experience, challenges |
 | Inventory | `GetInventoryClientAsync()` | Item management, history |
 | Trade | `GetTradeClientAsync()` | Trading operations with real-time updates |
-| ItemType | `GetItemTypeClientAsync()` | Item type definitions |
+| BaseType | `GetBaseTypeClientAsync()` | Item base type definitions |
 | Season | `GetSeasonClientAsync()` | Season management |
 | Auth | `GetAuthHubClientAsync()` | WebSocket-based auth operations |
 

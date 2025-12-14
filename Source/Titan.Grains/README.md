@@ -5,26 +5,37 @@ The core business logic layer of the Titan backend. This library contains the im
 ## Implemented Grains
 
 ### Identity
-- `UserIdentityGrain`: manages user accounts, linked providers (Steam, EOS, etc.), and profile data.
-- **Persistence**: ADO.NET (Postgres).
+Core user and social management grains.
+- `UserIdentityGrain`: User authentication and identity resolution.
+- `AccountGrain`: Main user profile and account data.
+- `UserProfileGrain`: Public profile data (display name, avatar).
+- `SocialGrain`: Friend lists and social interactions.
+- `PlayerPresenceGrain`: Tracking online status.
+- `RefreshTokenGrain`: Persistence for auth refresh tokens.
+- `SessionLogGrain`: Audit log for user sessions.
 
-### Inventory
-- `InventoryGrain`: Manages a player's items. Handles stacking, splitting, and limits.
-- `ItemTypeRegistryGrain`: Caches item metadata (name, max stack size) for validation.
-- **Rules**: Enforces stack limits defined in `ItemTypeRegistry`.
+### Items & Inventory
+Item management and generation system.
+- `CharacterInventoryGrain`: Inventory for a specific character.
+- `AccountStashGrain`: Shared stash storage for an account.
+- `BaseTypeRegistryGrain`: Writes and manages Base Types (Admin).
+- `BaseTypeReaderGrain`: Read-optimized caching facade for Base Types (High Throughput).
+- `ModifierRegistryGrain`: Writes and manages Modifiers.
+- `ModifierReaderGrain`: Read-optimized caching facade for Modifiers.
+- `UniqueRegistryGrain`: Rights and manages Unique Items.
+- `ItemGeneratorGrain`: Logic for rolling new items (RNG).
+- `ItemHistoryGrain`: Audit log for item ownership and changes.
+
+### Seasons & Characters
+- `SeasonRegistryGrain`: Management of active/past game seasons.
+- `SeasonMigrationGrain`: Logic for migrating characters between seasons.
+- `CharacterGrain`: Character persistence and progression.
 
 ### Trading
-- `TradeGrain`: Manages a secure trade session between two players.
-- `TradeSession`: State machine for the trade lifecycle (Open -> Locked -> Accepted -> Completed).
-- **Features**: 
-  - Cross-silo atomic transactions.
-  - Snapshot isolation using TransactionalState.
-  - Automatic expiration via `RegisterTimer`.
-
-### Social
-- `SocialGrain`: Manages friend lists and block lists.
+- `TradeGrain`: Manages secure trade sessions between players.
+  - Features: Cross-silo atomic transactions, snapshot isolation, timeout enforcement.
 
 ## Persistence
 This project uses Orleans 'State' and 'TransactionalState' features.
-- In **Production/Aspire**, it maps to the registered ADO.NET providers in the Host projects.
-- In **Development/Tests**, it can fallback to Memory storage.
+- **Production**: Maps to CockroachDB (ADO.NET) via `Titan.Abstractions` configuration.
+- **Development**: Supports Memory storage fallback (if configured).

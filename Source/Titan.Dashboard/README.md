@@ -36,7 +36,7 @@ The Dashboard is configured via Aspire orchestration. Required configuration:
 
 | Setting | Source | Description |
 |---------|--------|-------------|
-| `ConnectionStrings:titan` | Aspire | CockroachDB connection for Identity |
+| `ConnectionStrings:titan-admin` | Aspire | CockroachDB connection for Identity (Admin DB) |
 | `ConnectionStrings:orleans-clustering` | Aspire | Redis for Orleans clustering |
 
 ## Running
@@ -52,7 +52,7 @@ Access the dashboard at the URL shown in the Aspire dashboard (typically `https:
 
 ## Default Credentials (Development)
 
-On first startup, the Dashboard seeds a default SuperAdmin account:
+On first startup, the Dashboard seeds a default SuperAdmin account (configured in `appsettings.json`):
 
 - **Email**: `admin@titan.local`
 - **Password**: `Admin123!`
