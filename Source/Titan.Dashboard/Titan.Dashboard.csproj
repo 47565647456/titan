@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Orleans Client -->
+    <PackageReference Include="Microsoft.Orleans.Client" />
+    <PackageReference Include="Microsoft.Orleans.Clustering.Redis" />
+    
+    <!-- Aspire Redis for clustering -->
+    <PackageReference Include="Aspire.StackExchange.Redis" />
+    
+    <!-- ASP.NET Core Identity with EF Core -->
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    
+    <!-- Authentication -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Project References -->
+    <ProjectReference Include="..\Titan.Abstractions\Titan.Abstractions.csproj" />
+    <ProjectReference Include="..\Titan.ServiceDefaults\Titan.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>
+

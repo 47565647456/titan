@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.0.31903.59
+# Visual Studio Version 18
+VisualStudioVersion = 18.1.11304.174 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Titan.Abstractions", "Titan.Abstractions\Titan.Abstractions.csproj", "{B6E25C4F-F5DA-414E-BE33-05B8B71523C8}"
 EndProject
@@ -24,6 +24,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Titan.AppHost.Tests", "Titan.AppHost.Tests\Titan.AppHost.Tests.csproj", "{CE1D570C-D411-4BEA-8BE0-22989416DB91}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Titan.Client", "Titan.Client\Titan.Client.csproj", "{13D3A821-564F-49A1-AC8E-F01B4A6832F3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Titan.Dashboard", "Titan.Dashboard\Titan.Dashboard.csproj", "{39C17A1D-A42F-442B-8037-1C0504F5FE1F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -167,6 +169,18 @@ Global
 		{13D3A821-564F-49A1-AC8E-F01B4A6832F3}.Release|x64.Build.0 = Release|Any CPU
 		{13D3A821-564F-49A1-AC8E-F01B4A6832F3}.Release|x86.ActiveCfg = Release|Any CPU
 		{13D3A821-564F-49A1-AC8E-F01B4A6832F3}.Release|x86.Build.0 = Release|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Debug|x64.Build.0 = Debug|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Debug|x86.Build.0 = Debug|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Release|x64.ActiveCfg = Release|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Release|x64.Build.0 = Release|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Release|x86.ActiveCfg = Release|Any CPU
+		{39C17A1D-A42F-442B-8037-1C0504F5FE1F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

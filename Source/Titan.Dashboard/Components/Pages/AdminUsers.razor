@@ -1,0 +1,408 @@
+@page "/admin/users"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using Titan.Dashboard.Data
+@attribute [Authorize(Policy = "SuperAdmin")]
+@inject UserManager<AdminUser> UserManager
+@inject RoleManager<AdminRole> RoleManager
+@inject ILogger<AdminUsers> Logger
+
+<PageTitle>Admin Users - Titan Admin</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1>👤 Admin Users</h1>
+        <p class="subtitle">Manage dashboard administrator accounts</p>
+    </div>
+
+    <div class="actions-bar">
+        <button class="btn btn-primary" @onclick="ShowCreateDialog">
+            ➕ Create Admin User
+        </button>
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="loading">Loading admin users...</div>
+    }
+    else if (AdminUserList == null || AdminUserList.Count == 0)
+    {
+        <div class="empty-state">
+            <p>No admin users found.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Display Name</th>
+                        <th>Roles</th>
+                        <th>Created</th>
+                        <th>Last Login</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in AdminUserList)
+                    {
+                        <tr>
+                            <td>@user.Email</td>
+                            <td>@(user.DisplayName ?? "—")</td>
+                            <td>
+                                @foreach (var role in user.Roles)
+                                {
+                                    <span class="badge badge-role-@role.ToLower()">@role</span>
+                                }
+                            </td>
+                            <td>@user.CreatedAt.ToString("MMM d, yyyy")</td>
+                            <td>@(user.LastLoginAt?.ToString("MMM d, yyyy HH:mm") ?? "Never")</td>
+                            <td>
+                                <button class="btn btn-small btn-secondary" @onclick="() => ShowEditDialog(user)">Edit</button>
+                                @if (user.Email != CurrentUserEmail)
+                                {
+                                    <button class="btn btn-small btn-danger" @onclick="() => ShowDeleteDialog(user)">Delete</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (ShowDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <h2>@(IsEditing ? "Edit Admin User" : "Create Admin User")</h2>
+                
+                <EditForm Model="EditModel" OnValidSubmit="SaveUserAsync">
+                    <DataAnnotationsValidator />
+                    
+                    <div class="form-group">
+                        <label>Email</label>
+                        <InputText @bind-Value="EditModel!.Email" class="form-control" disabled="@IsEditing" />
+                        <ValidationMessage For="() => EditModel!.Email" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Display Name</label>
+                        <InputText @bind-Value="EditModel!.DisplayName" class="form-control" />
+                    </div>
+                    
+                    @if (!IsEditing)
+                    {
+                        <div class="form-group">
+                            <label>Password</label>
+                            <InputText @bind-Value="EditModel!.Password" class="form-control" type="password" />
+                            <ValidationMessage For="() => EditModel!.Password" />
+                        </div>
+                    }
+                    
+                    <div class="form-group">
+                        <label>Roles</label>
+                        <div class="checkbox-list">
+                            @foreach (var role in AvailableRoles)
+                            {
+                                <label class="checkbox-item">
+                                    <input type="checkbox" 
+                                           checked="@EditModel!.SelectedRoles.Contains(role)"
+                                           @onchange="@(e => ToggleRole(role, (bool?)e.Value ?? false))" />
+                                    @role
+                                </label>
+                            }
+                        </div>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="alert alert-danger">@ErrorMessage</div>
+                    }
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseDialog">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+                            @(IsSaving ? "Saving..." : "Save")
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    @if (ShowDeleteConfirm)
+    {
+        <div class="modal-overlay" @onclick="CloseDeleteDialog">
+            <div class="modal-content modal-small" @onclick:stopPropagation="true">
+                <h2>⚠️ Delete Admin User</h2>
+                <p>Are you sure you want to delete <strong>@DeleteTarget?.Email</strong>?</p>
+                <p class="text-muted">This action cannot be undone.</p>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseDeleteDialog">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteUserAsync" disabled="@IsDeleting">
+                        @(IsDeleting ? "Deleting..." : "Delete")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+    
+    private List<AdminUserViewModel>? AdminUserList { get; set; }
+    private List<string> AvailableRoles { get; set; } = new();
+    private string? CurrentUserEmail { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool ShowDialog { get; set; }
+    private bool ShowDeleteConfirm { get; set; }
+    private bool IsEditing { get; set; }
+    private bool IsSaving { get; set; }
+    private bool IsDeleting { get; set; }
+    private string? ErrorMessage { get; set; }
+    private AdminUserEditModel? EditModel { get; set; }
+    private AdminUserViewModel? DeleteTarget { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState != null)
+        {
+            var state = await AuthState;
+            CurrentUserEmail = state.User.Identity?.Name;
+        }
+        
+        await LoadRolesAsync();
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        AvailableRoles = await RoleManager.Roles
+            .Select(r => r.Name!)
+            .ToListAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var users = await UserManager.Users.ToListAsync();
+            var viewModels = new List<AdminUserViewModel>();
+            
+            foreach (var user in users)
+            {
+                var roles = await UserManager.GetRolesAsync(user);
+                viewModels.Add(new AdminUserViewModel
+                {
+                    Id = user.Id,
+                    Email = user.Email!,
+                    DisplayName = user.DisplayName,
+                    Roles = roles.ToList(),
+                    CreatedAt = user.CreatedAt,
+                    LastLoginAt = user.LastLoginAt
+                });
+            }
+            
+            AdminUserList = viewModels.OrderBy(u => u.Email).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load admin users");
+            ErrorMessage = "Failed to load admin users";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void ShowCreateDialog()
+    {
+        EditModel = new AdminUserEditModel();
+        IsEditing = false;
+        ErrorMessage = null;
+        ShowDialog = true;
+    }
+
+    private void ShowEditDialog(AdminUserViewModel user)
+    {
+        EditModel = new AdminUserEditModel
+        {
+            Id = user.Id,
+            Email = user.Email,
+            DisplayName = user.DisplayName,
+            SelectedRoles = new HashSet<string>(user.Roles)
+        };
+        IsEditing = true;
+        ErrorMessage = null;
+        ShowDialog = true;
+    }
+
+    private void CloseDialog()
+    {
+        ShowDialog = false;
+        EditModel = null;
+    }
+
+    private void ShowDeleteDialog(AdminUserViewModel user)
+    {
+        DeleteTarget = user;
+        ShowDeleteConfirm = true;
+    }
+
+    private void CloseDeleteDialog()
+    {
+        ShowDeleteConfirm = false;
+        DeleteTarget = null;
+    }
+
+    private void ToggleRole(string role, bool isSelected)
+    {
+        if (EditModel == null) return;
+        
+        if (isSelected)
+            EditModel.SelectedRoles.Add(role);
+        else
+            EditModel.SelectedRoles.Remove(role);
+    }
+
+    private async Task SaveUserAsync()
+    {
+        if (EditModel == null) return;
+        
+        IsSaving = true;
+        ErrorMessage = null;
+        
+        try
+        {
+            if (IsEditing)
+            {
+                var user = await UserManager.FindByIdAsync(EditModel.Id.ToString());
+                if (user == null)
+                {
+                    ErrorMessage = "User not found";
+                    return;
+                }
+
+                user.DisplayName = EditModel.DisplayName;
+                var updateResult = await UserManager.UpdateAsync(user);
+                if (!updateResult.Succeeded)
+                {
+                    ErrorMessage = string.Join(", ", updateResult.Errors.Select(e => e.Description));
+                    return;
+                }
+
+                // Update roles
+                var currentRoles = await UserManager.GetRolesAsync(user);
+                var rolesToRemove = currentRoles.Except(EditModel.SelectedRoles).ToList();
+                var rolesToAdd = EditModel.SelectedRoles.Except(currentRoles).ToList();
+
+                if (rolesToRemove.Any())
+                    await UserManager.RemoveFromRolesAsync(user, rolesToRemove);
+                if (rolesToAdd.Any())
+                    await UserManager.AddToRolesAsync(user, rolesToAdd);
+
+                Logger.LogInformation("Updated admin user: {Email}", user.Email);
+            }
+            else
+            {
+                var user = new AdminUser
+                {
+                    UserName = EditModel.Email,
+                    Email = EditModel.Email,
+                    EmailConfirmed = true,
+                    DisplayName = EditModel.DisplayName
+                };
+
+                var createResult = await UserManager.CreateAsync(user, EditModel.Password!);
+                if (!createResult.Succeeded)
+                {
+                    ErrorMessage = string.Join(", ", createResult.Errors.Select(e => e.Description));
+                    return;
+                }
+
+                if (EditModel.SelectedRoles.Any())
+                {
+                    await UserManager.AddToRolesAsync(user, EditModel.SelectedRoles);
+                }
+
+                Logger.LogInformation("Created admin user: {Email}", user.Email);
+            }
+
+            CloseDialog();
+            await LoadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save admin user");
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task DeleteUserAsync()
+    {
+        if (DeleteTarget == null) return;
+        
+        IsDeleting = true;
+        
+        try
+        {
+            var user = await UserManager.FindByIdAsync(DeleteTarget.Id.ToString());
+            if (user != null)
+            {
+                await UserManager.DeleteAsync(user);
+                Logger.LogInformation("Deleted admin user: {Email}", DeleteTarget.Email);
+            }
+            
+            CloseDeleteDialog();
+            await LoadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete admin user");
+        }
+        finally
+        {
+            IsDeleting = false;
+        }
+    }
+
+    private sealed class AdminUserViewModel
+    {
+        public Guid Id { get; set; }
+        public string Email { get; set; } = "";
+        public string? DisplayName { get; set; }
+        public List<string> Roles { get; set; } = new();
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset? LastLoginAt { get; set; }
+    }
+
+    private sealed class AdminUserEditModel
+    {
+        public Guid Id { get; set; }
+        
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.EmailAddress]
+        public string Email { get; set; } = "";
+        
+        public string? DisplayName { get; set; }
+        
+        [System.ComponentModel.DataAnnotations.MinLength(6)]
+        public string? Password { get; set; }
+        
+        public HashSet<string> SelectedRoles { get; set; } = new();
+    }
+}

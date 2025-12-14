@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Titan.API\Titan.API.csproj" />
+    <ProjectReference Include="..\Titan.Dashboard\Titan.Dashboard.csproj" />
     <ProjectReference Include="..\Titan.IdentityHost\Titan.IdentityHost.csproj" />
     <ProjectReference Include="..\Titan.InventoryHost\Titan.InventoryHost.csproj" />
     <ProjectReference Include="..\Titan.TradingHost\Titan.TradingHost.csproj" />

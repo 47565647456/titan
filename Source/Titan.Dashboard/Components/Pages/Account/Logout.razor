@@ -1,0 +1,17 @@
+@page "/Account/Logout"
+@using Microsoft.AspNetCore.Identity
+@using Titan.Dashboard.Data
+@inject SignInManager<AdminUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject ILogger<Logout> Logger
+
+<PageTitle>Logout - Titan Admin</PageTitle>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await SignInManager.SignOutAsync();
+        Logger.LogInformation("Admin signed out");
+        NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+    }
+}

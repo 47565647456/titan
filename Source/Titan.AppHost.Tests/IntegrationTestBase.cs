@@ -18,6 +18,7 @@ public class AppHostFixture : IAsyncLifetime
 
     public DistributedApplication App { get; private set; } = null!;
     public string ApiBaseUrl { get; private set; } = null!;
+    public string DashboardBaseUrl { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -43,7 +44,8 @@ public class AppHostFixture : IAsyncLifetime
             App.ResourceNotifications.WaitForResourceHealthyAsync("identity-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("inventory-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("trading-host"),
-            App.ResourceNotifications.WaitForResourceHealthyAsync("api")
+            App.ResourceNotifications.WaitForResourceHealthyAsync("api"),
+            App.ResourceNotifications.WaitForResourceHealthyAsync("dashboard")
         ).WaitAsync(DefaultTimeout);
         
         // Give Orleans cluster time to stabilize
@@ -52,6 +54,10 @@ public class AppHostFixture : IAsyncLifetime
         // Get API endpoint
         var endpoint = App.GetEndpoint("api", "https");
         ApiBaseUrl = endpoint.ToString().TrimEnd('/');
+        
+        // Get Dashboard endpoint (uses http since Dashboard might not have https configured)
+        var dashboardEndpoint = App.GetEndpoint("dashboard", "http");
+        DashboardBaseUrl = dashboardEndpoint.ToString().TrimEnd('/');
     }
 
     public async Task DisposeAsync()
