@@ -8,12 +8,30 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 
 - **Distributed State**: Persistent player data using Orleans Grains.
 - **Real-Time Communication**: Full duplex communication via **SignalR** Hubs.
-- **Inventory System**: Transactional item management.
-- **Trading**: Secure peer-to-peer item trading.
+- **Inventory System**: Transactional item management with stack validation.
+- **Trading**: Secure peer-to-peer item trading with atomic swaps.
+- **Seasons & Leagues**: Path of Exile-style seasons with "Void League" support (no migration on death).
 - **Identity**: User profiles and social provider linking (Steam, EOS).
 - **Security**: JWT Authentication and Role-based Access Control (RBAC).
-- **CockroachDB Persistence**: Distributed SQL storage.
+- **CockroachDB Persistence**: Distributed SQL storage with retrying logic for serializable transactions.
+- **High Performance**: **MemoryPack** serialization for wire and storage (~40% smaller payloads).
 - **.NET Aspire**: Cloud-native orchestration for local development and deployment.
+
+## Code Organization
+
+The solution is split into specialized micro-services and libraries:
+
+| Project | Description |
+|---------|-------------|
+| **Titan.AppHost** | .NET Aspire orchestrator. Validates configuration and manages containers (Redis, CockroachDB). |
+| **Titan.API** | The public gateway. Hosts SignalR Hubs and HTTP endpoints. Acts as an Orleans Client. |
+| **Titan.Grains** | Core business logic (Inventory, Trading, Identity) implemented as Orleans Grains. |
+| **Titan.Abstractions** | Shared contracts, interfaces, and models used by Clients and Grains. |
+| **Titan.IdentityHost** | Dedicated Silo for Identity, Social, and Metadata grains. |
+| **Titan.InventoryHost** | Dedicated Silo for Inventory and Item-related grains. |
+| **Titan.TradingHost** | Dedicated Silo for Trade management and high-concurrency operations. |
+| **Titan.Client** | Strongly-typed .NET Client SDK for connecting to the API. |
+| **Titan.Dashboard** | Blazor Server admin interface for managing the game state. |
 
 ## Quick Start
 
