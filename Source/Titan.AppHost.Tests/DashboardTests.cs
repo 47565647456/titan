@@ -60,7 +60,7 @@ public class DashboardTests : IntegrationTestBase
         
         // Act - Submit invalid credentials (Blazor forms may require anti-forgery tokens)
         // Without proper tokens, we expect a failure or redirect back to login
-        var formContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        using var formContent = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["Input.Email"] = "invalid@test.com",
             ["Input.Password"] = "wrongpassword",
