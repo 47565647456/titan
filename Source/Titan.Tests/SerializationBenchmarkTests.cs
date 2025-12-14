@@ -3,7 +3,8 @@ using System.Text;
 using MemoryPack;
 using System.Text.Json;
 using Titan.Abstractions.Models;
-using Titan.Grains.Inventory;
+using Titan.Abstractions.Models.Items;
+using Titan.Grains.Items;
 using Xunit.Abstractions;
 
 namespace Titan.Tests;
@@ -27,15 +28,24 @@ public class SerializationBenchmarkTests
         var item = new Item
         {
             Id = Guid.NewGuid(),
-            ItemTypeId = "legendary_sword",
-            Quantity = 1,
-            Metadata = new Dictionary<string, string>
+            BaseTypeId = "legendary_sword",
+            ItemLevel = 50,
+            Rarity = ItemRarity.Rare,
+            Name = "Doom Blade",
+            Prefixes = new List<RolledModifier>
             {
-                ["enchant"] = "fire",
-                ["durability"] = "100",
-                ["level"] = "50"
+                new RolledModifier { ModifierId = "mod_fire", Values = new[] { 100, 150 }, DisplayText = "+100-150 Fire Damage" }
             },
-            AcquiredAt = DateTimeOffset.UtcNow
+            Suffixes = new List<RolledModifier>
+            {
+                new RolledModifier { ModifierId = "mod_attack_speed", Values = new[] { 15 }, DisplayText = "+15% Attack Speed" }
+            },
+            Sockets = new List<Socket>
+            {
+                new Socket { Group = 0, Color = SocketColor.Red },
+                new Socket { Group = 0, Color = SocketColor.Green }
+            },
+            CreatedAt = DateTimeOffset.UtcNow
         };
 
         var memoryPackBytes = MemoryPackSerializer.Serialize(item);
@@ -52,26 +62,28 @@ public class SerializationBenchmarkTests
     [Fact]
     public void PayloadSize_Comparison_InventoryState()
     {
-        var inventory = new InventoryGrainState
+        var inventory = new CharacterInventoryState
         {
-            Items = Enumerable.Range(0, 100).Select(i => new Item
+            Stats = new CharacterStats { Level = 50, Strength = 100, Dexterity = 50, Intelligence = 30 },
+            BagGrid = InventoryGrid.Create(12, 5),
+            BagItems = Enumerable.Range(0, 20).Select(i => new Item
             {
                 Id = Guid.NewGuid(),
-                ItemTypeId = $"item_type_{i % 10}",
-                Quantity = i + 1,
-                Metadata = new Dictionary<string, string>
+                BaseTypeId = $"item_type_{i % 10}",
+                ItemLevel = i + 1,
+                Rarity = (ItemRarity)(i % 4),
+                Prefixes = new List<RolledModifier>
                 {
-                    ["slot"] = i.ToString(),
-                    ["rarity"] = (i % 5).ToString()
+                    new RolledModifier { ModifierId = $"mod_{i}", Values = new[] { i * 10 }, DisplayText = $"+{i * 10} Stat" }
                 },
-                AcquiredAt = DateTimeOffset.UtcNow.AddDays(-i)
-            }).ToList()
+                CreatedAt = DateTimeOffset.UtcNow.AddDays(-i)
+            }).ToDictionary(item => item.Id, item => item)
         };
 
         var memoryPackBytes = MemoryPackSerializer.Serialize(inventory);
         var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(inventory);
 
-        _output.WriteLine("=== Inventory (100 items) Payload Size ===");
+        _output.WriteLine("=== Inventory (20 items) Payload Size ===");
         _output.WriteLine($"MemoryPack: {memoryPackBytes.Length,6:N0} bytes");
         _output.WriteLine($"JSON:       {jsonBytes.Length,6:N0} bytes");
         _output.WriteLine($"Reduction:  {(1 - (double)memoryPackBytes.Length / jsonBytes.Length):P1}");
@@ -112,16 +124,18 @@ public class SerializationBenchmarkTests
     {
         const int iterations = 10000;
 
-        var inventory = new InventoryGrainState
+        var inventory = new CharacterInventoryState
         {
-            Items = Enumerable.Range(0, 50).Select(i => new Item
+            Stats = new CharacterStats { Level = 50, Strength = 100, Dexterity = 50, Intelligence = 30 },
+            BagGrid = InventoryGrid.Create(12, 5),
+            BagItems = Enumerable.Range(0, 20).Select(i => new Item
             {
                 Id = Guid.NewGuid(),
-                ItemTypeId = $"item_{i}",
-                Quantity = i + 1,
-                Metadata = new Dictionary<string, string> { ["key"] = "value" },
-                AcquiredAt = DateTimeOffset.UtcNow
-            }).ToList()
+                BaseTypeId = $"item_{i}",
+                ItemLevel = i + 1,
+                Rarity = ItemRarity.Normal,
+                CreatedAt = DateTimeOffset.UtcNow
+            }).ToDictionary(item => item.Id, item => item)
         };
 
         // Warmup

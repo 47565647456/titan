@@ -2,7 +2,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Orleans.Serialization;
 using Titan.Abstractions;
-using Titan.Grains.Registry;
+using Titan.Abstractions.Rules;
+using Titan.Grains.Hosting;
+using Titan.Grains.Trading.Rules;
 using Titan.ServiceDefaults.Serialization;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -17,21 +19,37 @@ builder.AddKeyedRedisClient("orleans-clustering");
 // Configure Serilog with file logging (dev) and Sentry sink (production)
 builder.AddTitanLogging("identity-host");
 
-// Configure Item Registry Options
-builder.Services.Configure<ItemRegistryOptions>(options =>
+// Configure BaseType Seeding
+builder.Services.Configure<BaseTypeSeedOptions>(options =>
 {
-    options.SeedFilePath = "data/item-types.json";
+    // Defaults: skip if already populated, use embedded defaults
 });
-
-// Bind from configuration if available
-var registrySection = builder.Configuration.GetSection(ItemRegistryOptions.SectionName);
-if (registrySection.Exists())
+var seedSection = builder.Configuration.GetSection(BaseTypeSeedOptions.SectionName);
+if (seedSection.Exists())
 {
-    builder.Services.Configure<ItemRegistryOptions>(registrySection);
+    builder.Services.Configure<BaseTypeSeedOptions>(seedSection);
 }
 
-// Register the seeding hosted service
-builder.Services.AddHostedService<ItemTypeSeedHostedService>();
+// Configure Item History
+builder.Services.Configure<ItemHistoryOptions>(options =>
+{
+    // Defaults: 100 entries per item, 90 day retention
+});
+var historySection = builder.Configuration.GetSection(ItemHistoryOptions.SectionName);
+if (historySection.Exists())
+{
+    builder.Services.Configure<ItemHistoryOptions>(historySection);
+}
+
+// Configure Item Registry Cache (for BaseTypeReaderGrain, ModifierReaderGrain)
+builder.Services.Configure<ItemRegistryCacheOptions>(options =>
+{
+    // Default: 5 minute cache (set by class default)
+});
+
+// Register trade validation rules (required for any silo that may activate TradeGrain)
+builder.Services.AddSingleton<IRule<TradeRequestContext>, SameSeasonRule>();
+builder.Services.AddSingleton<IRule<TradeRequestContext>, SoloSelfFoundRule>();
 
 // Configure Orleans Silo
 // Clustering is auto-configured by Aspire via Redis
@@ -46,6 +64,9 @@ builder.UseOrleans(silo =>
 
     // Grain persistence - auto-configured based on Database:Type
     silo.AddTitanGrainStorage(builder.Configuration);
+    
+    // Seed base types after silo joins cluster
+    silo.AddStartupTask<BaseTypeSeedStartupTask>();
 });
 
 // Register MemoryPack serializer for Orleans wire serialization

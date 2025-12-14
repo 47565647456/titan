@@ -1,40 +1,45 @@
-using Titan.Abstractions.Models;
+using Titan.Abstractions.Models.Items;
 
 namespace Titan.Abstractions.Contracts;
 
 /// <summary>
-/// Strongly-typed client contract for ItemTypeHub operations.
+/// Strongly-typed client contract for BaseTypeHub operations.
 /// Used with TypedSignalR.Client source generator.
 /// </summary>
-public interface IItemTypeHubClient
+public interface IBaseTypeHubClient
 {
     /// <summary>
-    /// Get an item type definition by ID.
+    /// Get a base type definition by ID.
     /// </summary>
-    Task<ItemTypeDefinition?> GetItemType(string itemTypeId);
+    Task<BaseType?> GetBaseType(string baseTypeId);
 
     /// <summary>
-    /// Get all item type definitions.
+    /// Get all base type definitions.
     /// </summary>
-    Task<IReadOnlyList<ItemTypeDefinition>> GetAllItemTypes();
+    Task<IReadOnlyList<BaseType>> GetAllBaseTypes();
 
     /// <summary>
-    /// Get item types by category.
+    /// Get base types by category.
     /// </summary>
-    Task<IReadOnlyList<ItemTypeDefinition>> GetItemTypesByCategory(string category);
+    Task<IReadOnlyList<BaseType>> GetBaseTypesByCategory(ItemCategory category);
 
     /// <summary>
-    /// Register a new item type (admin only).
+    /// Get base types by equipment slot.
     /// </summary>
-    Task<ItemTypeDefinition> RegisterItemType(ItemTypeDefinition definition);
+    Task<IReadOnlyList<BaseType>> GetBaseTypesBySlot(EquipmentSlot slot);
 
     /// <summary>
-    /// Update an existing item type (admin only).
+    /// Register a new base type (admin only).
     /// </summary>
-    Task<ItemTypeDefinition> UpdateItemType(ItemTypeDefinition definition);
+    Task<BaseType> RegisterBaseType(BaseType baseType);
 
     /// <summary>
-    /// Delete an item type (admin only).
+    /// Update an existing base type (admin only).
     /// </summary>
-    Task<bool> DeleteItemType(string itemTypeId);
+    Task<BaseType> UpdateBaseType(BaseType baseType);
+
+    /// <summary>
+    /// Delete a base type (admin only).
+    /// </summary>
+    Task<bool> DeleteBaseType(string baseTypeId);
 }

@@ -1,0 +1,366 @@
+@page "/basetypes"
+@page "/itemtypes"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Orleans
+@using Titan.Abstractions.Grains.Items
+@using Titan.Abstractions.Models.Items
+@attribute [Authorize(Policy = "Viewer")]
+@inject IClusterClient ClusterClient
+@inject ILogger<BaseTypes> Logger
+
+<PageTitle>Base Types - Titan Admin</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1>📦 Base Types</h1>
+        <p class="subtitle">Manage item base type definitions</p>
+    </div>
+
+    <AuthorizeView Policy="Admin">
+        <Authorized>
+            <div class="actions-bar">
+                <button class="btn btn-primary" @onclick="ShowCreateDialog">
+                    ➕ Create Base Type
+                </button>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+
+    @if (IsLoading)
+    {
+        <div class="loading">Loading base types...</div>
+    }
+    else if (BaseTypeList == null || BaseTypeList.Count == 0)
+    {
+        <div class="empty-state">
+            <p>No base types found.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Category</th>
+                        <th>Slot</th>
+                        <th>Size</th>
+                        <th>Stack</th>
+                        <th>Tradeable</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in BaseTypeList)
+                    {
+                        <tr>
+                            <td><code>@item.BaseTypeId</code></td>
+                            <td>@item.Name</td>
+                            <td>@item.Category</td>
+                            <td>@item.Slot</td>
+                            <td>@($"{item.Width}×{item.Height}")</td>
+                            <td>@item.MaxStackSize</td>
+                            <td>@(item.IsTradeable ? "✅" : "❌")</td>
+                            <td>
+                                <AuthorizeView Policy="Admin">
+                                    <Authorized>
+                                        <button class="btn btn-small btn-secondary" @onclick="() => ShowEditDialog(item)">Edit</button>
+                                        <button class="btn btn-small btn-danger" @onclick="() => ShowDeleteDialog(item)">Delete</button>
+                                    </Authorized>
+                                </AuthorizeView>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (ShowDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <h2>@(IsEditing ? "Edit Base Type" : "Create Base Type")</h2>
+                
+                <EditForm Model="EditModel" OnValidSubmit="SaveBaseTypeAsync">
+                    <DataAnnotationsValidator />
+                    
+                    <div class="form-group">
+                        <label>Base Type ID</label>
+                        <InputText @bind-Value="EditModel!.BaseTypeId" class="form-control" disabled="@IsEditing" />
+                        <ValidationMessage For="() => EditModel!.BaseTypeId" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Name</label>
+                        <InputText @bind-Value="EditModel!.Name" class="form-control" />
+                        <ValidationMessage For="() => EditModel!.Name" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Description</label>
+                        <InputTextArea @bind-Value="EditModel!.Description" class="form-control" rows="3" />
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Category</label>
+                            <InputSelect @bind-Value="EditModel!.Category" class="form-control">
+                                @foreach (var cat in Enum.GetValues<ItemCategory>())
+                                {
+                                    <option value="@cat">@cat</option>
+                                }
+                            </InputSelect>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Equipment Slot</label>
+                            <InputSelect @bind-Value="EditModel!.Slot" class="form-control">
+                                @foreach (var slot in Enum.GetValues<EquipmentSlot>())
+                                {
+                                    <option value="@slot">@slot</option>
+                                }
+                            </InputSelect>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Width</label>
+                            <InputNumber @bind-Value="EditModel!.Width" class="form-control" />
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Height</label>
+                            <InputNumber @bind-Value="EditModel!.Height" class="form-control" />
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Max Stack Size</label>
+                            <InputNumber @bind-Value="EditModel!.MaxStackSize" class="form-control" />
+                        </div>
+                    </div>
+                    
+                    <div class="form-group checkbox-group">
+                        <InputCheckbox @bind-Value="EditModel!.IsTradeable" />
+                        <label>Tradeable</label>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="alert alert-danger">@ErrorMessage</div>
+                    }
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseDialog">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+                            @(IsSaving ? "Saving..." : "Save")
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    @if (ShowDeleteConfirm)
+    {
+        <div class="modal-overlay" @onclick="CloseDeleteDialog">
+            <div class="modal-content modal-small" @onclick:stopPropagation="true">
+                <h2>⚠️ Delete Base Type</h2>
+                <p>Are you sure you want to delete <strong>@DeleteTarget?.Name</strong>?</p>
+                <p class="text-muted">This action cannot be undone.</p>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseDeleteDialog">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="DeleteBaseTypeAsync" disabled="@IsDeleting">
+                        @(IsDeleting ? "Deleting..." : "Delete")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<BaseType>? BaseTypeList { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool ShowDialog { get; set; }
+    private bool ShowDeleteConfirm { get; set; }
+    private bool IsEditing { get; set; }
+    private bool IsSaving { get; set; }
+    private bool IsDeleting { get; set; }
+    private string? ErrorMessage { get; set; }
+    private BaseTypeEditModel? EditModel { get; set; }
+    private BaseType? DeleteTarget { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBaseTypesAsync();
+    }
+
+    private async Task LoadBaseTypesAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var grain = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
+            BaseTypeList = await grain.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load base types");
+            ErrorMessage = "Failed to load base types";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void ShowCreateDialog()
+    {
+        EditModel = new BaseTypeEditModel();
+        IsEditing = false;
+        ErrorMessage = null;
+        ShowDialog = true;
+    }
+
+    private void ShowEditDialog(BaseType item)
+    {
+        EditModel = new BaseTypeEditModel
+        {
+            BaseTypeId = item.BaseTypeId,
+            Name = item.Name,
+            Description = item.Description,
+            Category = item.Category,
+            Slot = item.Slot,
+            Width = item.Width,
+            Height = item.Height,
+            MaxStackSize = item.MaxStackSize,
+            IsTradeable = item.IsTradeable
+        };
+        IsEditing = true;
+        ErrorMessage = null;
+        ShowDialog = true;
+    }
+
+    private void CloseDialog()
+    {
+        ShowDialog = false;
+        EditModel = null;
+    }
+
+    private void ShowDeleteDialog(BaseType item)
+    {
+        DeleteTarget = item;
+        ShowDeleteConfirm = true;
+    }
+
+    private void CloseDeleteDialog()
+    {
+        ShowDeleteConfirm = false;
+        DeleteTarget = null;
+    }
+
+    private async Task SaveBaseTypeAsync()
+    {
+        if (EditModel == null) return;
+        
+        IsSaving = true;
+        ErrorMessage = null;
+        
+        try
+        {
+            var grain = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
+            var baseType = new BaseType
+            {
+                BaseTypeId = EditModel.BaseTypeId,
+                Name = EditModel.Name,
+                Description = EditModel.Description,
+                Category = EditModel.Category,
+                Slot = EditModel.Slot,
+                Width = EditModel.Width,
+                Height = EditModel.Height,
+                MaxStackSize = EditModel.MaxStackSize,
+                IsTradeable = EditModel.IsTradeable
+            };
+
+            if (IsEditing)
+            {
+                await grain.UpdateAsync(baseType);
+                Logger.LogInformation("Updated base type: {BaseTypeId}", baseType.BaseTypeId);
+            }
+            else
+            {
+                await grain.RegisterAsync(baseType);
+                Logger.LogInformation("Created base type: {BaseTypeId}", baseType.BaseTypeId);
+            }
+
+            CloseDialog();
+            await LoadBaseTypesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to save base type");
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task DeleteBaseTypeAsync()
+    {
+        if (DeleteTarget == null) return;
+        
+        IsDeleting = true;
+        
+        try
+        {
+            var grain = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
+            await grain.DeleteAsync(DeleteTarget.BaseTypeId);
+            Logger.LogInformation("Deleted base type: {BaseTypeId}", DeleteTarget.BaseTypeId);
+            
+            CloseDeleteDialog();
+            await LoadBaseTypesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete base type");
+        }
+        finally
+        {
+            IsDeleting = false;
+        }
+    }
+
+    private sealed class BaseTypeEditModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(100, MinimumLength = 1)]
+        public string BaseTypeId { get; set; } = "";
+
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(200, MinimumLength = 1)]
+        public string Name { get; set; } = "";
+
+        public string? Description { get; set; }
+        public ItemCategory Category { get; set; } = ItemCategory.Equipment;
+        public EquipmentSlot Slot { get; set; } = EquipmentSlot.None;
+        
+        [System.ComponentModel.DataAnnotations.Range(1, 10)]
+        public int Width { get; set; } = 1;
+        
+        [System.ComponentModel.DataAnnotations.Range(1, 10)]
+        public int Height { get; set; } = 1;
+        
+        [System.ComponentModel.DataAnnotations.Range(1, 9999)]
+        public int MaxStackSize { get; set; } = 1;
+        
+        public bool IsTradeable { get; set; } = true;
+    }
+}

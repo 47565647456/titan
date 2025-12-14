@@ -73,6 +73,19 @@ public class TestSiloConfigurator : ISiloConfigurator
         // Register Trade Rules for Testing
         siloBuilder.Services.AddSingleton<IRule<TradeRequestContext>, SameSeasonRule>();
         siloBuilder.Services.AddSingleton<IRule<TradeRequestContext>, SoloSelfFoundRule>();
+
+        // Configure Item History Options for tests
+        siloBuilder.Services.Configure<ItemHistoryOptions>(options =>
+        {
+            options.MaxEntriesPerItem = 50;  // Smaller limit for tests
+            options.RetentionDays = 30;
+        });
+
+        // Disable caching for reader grains in tests (ensures fresh data)
+        siloBuilder.Services.Configure<ItemRegistryCacheOptions>(options =>
+        {
+            options.CacheDuration = TimeSpan.Zero;  // Always refresh cache
+        });
     }
 }
 

@@ -55,7 +55,7 @@ public class UserSession : IAsyncDisposable
     public Task<HubConnection> GetCharacterHubAsync() => GetOrCreateHubAsync("/characterHub");
     public Task<HubConnection> GetInventoryHubAsync() => GetOrCreateHubAsync("/inventoryHub");
     public Task<HubConnection> GetTradeHubAsync() => GetOrCreateHubAsync("/tradeHub");
-    public Task<HubConnection> GetItemTypeHubAsync() => GetOrCreateHubAsync("/itemTypeHub");
+    public Task<HubConnection> GetBaseTypeHubAsync() => GetOrCreateHubAsync("/baseTypeHub");
     public Task<HubConnection> GetSeasonHubAsync() => GetOrCreateHubAsync("/seasonHub");
 
     /// <summary>

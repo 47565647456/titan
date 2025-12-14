@@ -18,4 +18,8 @@
     <PackageReference Include="Microsoft.Orleans.Transactions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Data\item-seed-data.json" LogicalName="Titan.Grains.Data.item-seed-data.json" />
+  </ItemGroup>
+
 </Project>

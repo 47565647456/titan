@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Titan.Abstractions.Models;
+using Titan.Abstractions.Models.Items;
 
 namespace Titan.AppHost.Tests;
 
@@ -13,29 +14,32 @@ public class AdminTests : IntegrationTestBase
     public AdminTests(AppHostFixture fixture) : base(fixture) { }
 
     [Fact]
-    public async Task Admin_CanCreateItemType()
+    public async Task Admin_CanCreateBaseType()
     {
         // Arrange
         await using var admin = await CreateAdminSessionAsync();
-        var hub = await admin.GetItemTypeHubAsync();
+        var hub = await admin.GetBaseTypeHubAsync();
 
-        var definition = new ItemTypeDefinition
+        var baseType = new BaseType
         {
-            ItemTypeId = $"admin-test-item-{Guid.NewGuid():N}",
+            BaseTypeId = $"admin-test-item-{Guid.NewGuid():N}",
             Name = "Admin Test Item",
             Description = "Created by admin test",
+            Category = ItemCategory.Currency,
+            Slot = EquipmentSlot.None,
+            Width = 1,
+            Height = 1,
             MaxStackSize = 10,
-            IsTradeable = true,
-            Category = "test"
+            IsTradeable = true
         };
 
         // Act
-        var created = await hub.InvokeAsync<ItemTypeDefinition>("Create", definition);
+        var created = await hub.InvokeAsync<BaseType>("Create", baseType);
 
         // Assert
         Assert.NotNull(created);
-        Assert.Equal(definition.ItemTypeId, created.ItemTypeId);
-        Assert.Equal(definition.Name, created.Name);
+        Assert.Equal(baseType.BaseTypeId, created.BaseTypeId);
+        Assert.Equal(baseType.Name, created.Name);
     }
 
     [Fact]
@@ -66,23 +70,24 @@ public class AdminTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task User_CannotCreateItemType_ThrowsException()
+    public async Task User_CannotCreateBaseType_ThrowsException()
     {
         // Arrange - Regular user, not admin
         await using var user = await CreateUserSessionAsync();
-        var hub = await user.GetItemTypeHubAsync();
+        var hub = await user.GetBaseTypeHubAsync();
 
-        var definition = new ItemTypeDefinition
+        var baseType = new BaseType
         {
-            ItemTypeId = "user-should-not-create",
+            BaseTypeId = "user-should-not-create",
             Name = "Unauthorized Item",
+            Category = ItemCategory.Currency,
             MaxStackSize = 1,
             IsTradeable = false
         };
 
         // Act & Assert - Should throw due to missing Admin role
         await Assert.ThrowsAsync<HubException>(() => 
-            hub.InvokeAsync<ItemTypeDefinition>("Create", definition));
+            hub.InvokeAsync<BaseType>("Create", baseType));
     }
 
     [Fact]

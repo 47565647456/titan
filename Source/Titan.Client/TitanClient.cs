@@ -19,7 +19,7 @@ public sealed class TitanClient : IAsyncDisposable
     private HubConnection? _characterHub;
     private HubConnection? _inventoryHub;
     private HubConnection? _tradeHub;
-    private HubConnection? _itemTypeHub;
+    private HubConnection? _baseTypeHub;
     private HubConnection? _seasonHub;
     private HubConnection? _authHub;
 
@@ -113,12 +113,12 @@ public sealed class TitanClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Gets a typed ItemType hub client.
+    /// Gets a typed BaseType hub client.
     /// </summary>
-    public async Task<IItemTypeHubClient> GetItemTypeClientAsync()
+    public async Task<IBaseTypeHubClient> GetBaseTypeClientAsync()
     {
-        _itemTypeHub ??= await CreateAndConnectHubAsync("/itemTypeHub");
-        return _itemTypeHub.CreateHubProxy<IItemTypeHubClient>();
+        _baseTypeHub ??= await CreateAndConnectHubAsync("/baseTypeHub");
+        return _baseTypeHub.CreateHubProxy<IBaseTypeHubClient>();
     }
 
     /// <summary>
@@ -195,7 +195,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        var hubs = new[] { _accountHub, _characterHub, _inventoryHub, _tradeHub, _itemTypeHub, _seasonHub, _authHub };
+        var hubs = new[] { _accountHub, _characterHub, _inventoryHub, _tradeHub, _baseTypeHub, _seasonHub, _authHub };
 
         foreach (var hub in hubs)
         {

@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Orleans.Serialization;
 using Titan.Abstractions;
+using Titan.Abstractions.Rules;
+using Titan.Grains.Trading.Rules;
 using Titan.ServiceDefaults.Serialization;
 
 var builder = Host.CreateApplicationBuilder(args);
@@ -29,6 +31,27 @@ if (registrySection.Exists())
 {
     builder.Services.Configure<ItemRegistryOptions>(registrySection);
 }
+
+// Configure Item History
+builder.Services.Configure<ItemHistoryOptions>(options =>
+{
+    // Defaults: 100 entries per item, 90 day retention
+});
+var historySection = builder.Configuration.GetSection(ItemHistoryOptions.SectionName);
+if (historySection.Exists())
+{
+    builder.Services.Configure<ItemHistoryOptions>(historySection);
+}
+
+// Configure Item Registry Cache (for BaseTypeReaderGrain, ModifierReaderGrain)
+builder.Services.Configure<ItemRegistryCacheOptions>(options =>
+{
+    // Default: 5 minute cache (set by class default)
+});
+
+// Register trade validation rules (required for any silo that may activate TradeGrain)
+builder.Services.AddSingleton<IRule<TradeRequestContext>, SameSeasonRule>();
+builder.Services.AddSingleton<IRule<TradeRequestContext>, SoloSelfFoundRule>();
 
 // Configure Orleans Silo
 // Clustering is auto-configured by Aspire via Redis

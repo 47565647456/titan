@@ -6,7 +6,9 @@ using Orleans.Transactions;
 using Titan.Abstractions;
 using Titan.Abstractions.Events;
 using Titan.Abstractions.Grains;
+using Titan.Abstractions.Grains.Items;
 using Titan.Abstractions.Models;
+using Titan.Abstractions.Models.Items;
 
 using Titan.Abstractions.Rules;
 using Titan.Grains.Trading.Rules;
@@ -43,7 +45,6 @@ public class TradeGrain : Grain, ITradeGrain
 
     public override Task OnActivateAsync(CancellationToken cancellationToken)
     {
-        // ... (rest of method unchanged)
         // Initialize the stream for publishing trade events
         var streamProvider = this.GetStreamProvider(TradeStreamConstants.ProviderName);
         _tradeStream = streamProvider.GetStream<TradeEvent>(
@@ -179,28 +180,30 @@ public class TradeGrain : Grain, ITradeGrain
         if (session.Status != TradeStatus.Pending)
             throw new InvalidOperationException($"Cannot modify a trade with status: {session.Status}");
 
-        var inventory = _grainFactory.GetGrain<IInventoryGrain>(characterId, session.SeasonId);
-        var reader = _grainFactory.GetGrain<IItemTypeReaderGrain>("default");
+        // Get the inventory grain for the character
+        var inventory = _grainFactory.GetGrain<ICharacterInventoryGrain>(characterId, session.SeasonId);
+        var baseTypeReader = _grainFactory.GetGrain<IBaseTypeReaderGrain>("default");
 
         var itemIdList = itemIds.ToList();
-        
+        var bagItems = await inventory.GetBagItemsAsync();
+
         // Validate all items
         foreach (var itemId in itemIdList)
         {
             // Verify character owns the item
-            var item = await inventory.GetItemAsync(itemId);
-            if (item == null)
+            if (!bagItems.TryGetValue(itemId, out var item))
                 throw new InvalidOperationException($"Character does not own item {itemId}.");
 
             // Check if item type is tradeable
-            if (!await reader.IsTradeableAsync(item.ItemTypeId))
-                throw new InvalidOperationException($"Item type '{item.ItemTypeId}' is not tradeable.");
+            var baseType = await baseTypeReader.GetAsync(item.BaseTypeId);
+            if (baseType == null || !baseType.IsTradeable)
+                throw new InvalidOperationException($"Item type '{item.BaseTypeId}' is not tradeable.");
         }
 
         // Determine which list to update
         List<Guid> currentItems;
         bool isInitiator = characterId == session.InitiatorCharacterId;
-        
+
         if (isInitiator)
             currentItems = session.InitiatorItemIds.ToList();
         else if (characterId == session.TargetCharacterId)
@@ -233,7 +236,7 @@ public class TradeGrain : Grain, ITradeGrain
         };
 
         await _state.WriteStateAsync();
-        
+
         // Publish events for each item
         foreach (var itemId in itemIdList)
         {
@@ -283,7 +286,7 @@ public class TradeGrain : Grain, ITradeGrain
         };
 
         await _state.WriteStateAsync();
-        
+
         // Publish events for each item
         foreach (var itemId in itemIdList)
         {
@@ -342,35 +345,45 @@ public class TradeGrain : Grain, ITradeGrain
 
         try
         {
-            var initiatorInv = _grainFactory.GetGrain<IInventoryGrain>(session.InitiatorCharacterId, session.SeasonId);
-            var targetInv = _grainFactory.GetGrain<IInventoryGrain>(session.TargetCharacterId, session.SeasonId);
+            var initiatorInv = _grainFactory.GetGrain<ICharacterInventoryGrain>(session.InitiatorCharacterId, session.SeasonId);
+            var targetInv = _grainFactory.GetGrain<ICharacterInventoryGrain>(session.TargetCharacterId, session.SeasonId);
 
             // Transfer initiator items to target (within transaction)
             foreach (var itemId in session.InitiatorItemIds)
             {
-                var item = await initiatorInv.TransferItemOutAsync(itemId);
+                var item = await initiatorInv.TransferOutAsync(itemId);
                 if (item == null)
                     throw new InvalidOperationException($"Initiator item {itemId} no longer available.");
-                
-                await targetInv.TransferItemInAsync(item);
 
-                // Record history (outside transaction, after success)
-                var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
-                await historyGrain.AddEntryAsync("Traded", session.InitiatorCharacterId, session.TargetCharacterId);
+                // Find a spot in target's bag (auto-placing at 0,0 for simplicity - could be improved)
+                var placed = await targetInv.TransferInAsync(item, 0, 0);
+                if (!placed)
+                {
+                    // Try auto-placement
+                    var baseTypeReader = _grainFactory.GetGrain<IBaseTypeReaderGrain>("default");
+                    var (width, height) = await baseTypeReader.GetGridSizeAsync(item.BaseTypeId);
+                    var hasSpace = await targetInv.HasSpaceAsync(width, height);
+                    if (!hasSpace)
+                        throw new InvalidOperationException($"Target inventory full, cannot receive item {itemId}.");
+
+                    // Try auto-add via public method
+                    var pos = await targetInv.AddToBagAutoAsync(item);
+                    if (pos == null)
+                        throw new InvalidOperationException($"Failed to place item {itemId} in target inventory.");
+                }
             }
 
             // Transfer target items to initiator (within transaction)
             foreach (var itemId in session.TargetItemIds)
             {
-                var item = await targetInv.TransferItemOutAsync(itemId);
+                var item = await targetInv.TransferOutAsync(itemId);
                 if (item == null)
                     throw new InvalidOperationException($"Target item {itemId} no longer available.");
-                
-                await initiatorInv.TransferItemInAsync(item);
 
-                // Record history
-                var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
-                await historyGrain.AddEntryAsync("Traded", session.TargetCharacterId, session.InitiatorCharacterId);
+                // Try auto-placement
+                var pos = await initiatorInv.AddToBagAutoAsync(item);
+                if (pos == null)
+                    throw new InvalidOperationException($"Failed to place item {itemId} in initiator inventory.");
             }
 
             _state.State.Session = session with
@@ -378,6 +391,17 @@ public class TradeGrain : Grain, ITradeGrain
                 Status = TradeStatus.Completed,
                 CompletedAt = DateTimeOffset.UtcNow
             };
+
+            // Record history for all traded items (outside transaction to avoid blocking)
+            var tradeId = this.GetPrimaryKey();
+            foreach (var itemId in session.InitiatorItemIds)
+            {
+                await RecordItemHistoryAsync(itemId, session.InitiatorCharacterId, session.TargetCharacterId, tradeId);
+            }
+            foreach (var itemId in session.TargetItemIds)
+            {
+                await RecordItemHistoryAsync(itemId, session.TargetCharacterId, session.InitiatorCharacterId, tradeId);
+            }
         }
         catch (Exception)
         {
@@ -386,5 +410,19 @@ public class TradeGrain : Grain, ITradeGrain
             await PublishEventAsync("TradeFailed");
             throw;
         }
+    }
+
+    private Task RecordItemHistoryAsync(Guid itemId, Guid fromCharacterId, Guid toCharacterId, Guid tradeId)
+    {
+        var historyGrain = _grainFactory.GetGrain<IItemHistoryGrain>(itemId);
+        return historyGrain.RecordEventAsync(
+            ItemEventTypes.Traded,
+            actorCharacterId: fromCharacterId,
+            details: new Dictionary<string, string>
+            {
+                ["tradeId"] = tradeId.ToString(),
+                ["fromCharacter"] = fromCharacterId.ToString(),
+                ["toCharacter"] = toCharacterId.ToString()
+            });
     }
 }
