@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Titan.Abstractions.Models;
+using Titan.Abstractions.Models.Items;
 
 namespace Titan.AppHost.Tests;
 
@@ -83,23 +84,23 @@ public class AccountTests : IntegrationTestBase
             "CreateCharacter", "standard", "OnboardingHero", CharacterRestrictions.None);
         Assert.NotNull(character);
 
-        // Step 3: Access inventory (reuses connection)
+        // Step 3: Access inventory (new grid-based system)
         var inventoryHub = await user.GetInventoryHubAsync();
-        var inventory = await inventoryHub.InvokeAsync<IReadOnlyList<Item>>(
-            "GetInventory", character.CharacterId, "standard");
-        Assert.NotNull(inventory);
-        Assert.Empty(inventory);  // New character has empty inventory
+        var bagGrid = await inventoryHub.InvokeAsync<InventoryGrid>(
+            "GetBagGrid", character.CharacterId, "standard");
+        Assert.NotNull(bagGrid);
+        Assert.Equal(12, bagGrid.Width); // Default bag size
 
-        // Step 4: Add an item
-        var newItem = await inventoryHub.InvokeAsync<Item>(
-            "AddItem", character.CharacterId, "standard", "starter_sword", 1, (Dictionary<string, object>?)null);
-        Assert.NotNull(newItem);
-        Assert.Equal("starter_sword", newItem.ItemTypeId);
+        // Step 4: Get bag items (should be empty for new character)
+        var bagItems = await inventoryHub.InvokeAsync<IReadOnlyDictionary<Guid, Item>>(
+            "GetBagItems", character.CharacterId, "standard");
+        Assert.NotNull(bagItems);
+        Assert.Empty(bagItems);  // New character has empty inventory
 
-        // Step 5: Verify item in inventory
-        inventory = await inventoryHub.InvokeAsync<IReadOnlyList<Item>>(
-            "GetInventory", character.CharacterId, "standard");
-        Assert.Single(inventory);
-        Assert.Equal(newItem.Id, inventory[0].Id);
+        // Step 5: Get character stats
+        var stats = await inventoryHub.InvokeAsync<CharacterStats>(
+            "GetStats", character.CharacterId, "standard");
+        Assert.NotNull(stats);
+        Assert.Equal(1, stats.Level); // Default level
     }
 }

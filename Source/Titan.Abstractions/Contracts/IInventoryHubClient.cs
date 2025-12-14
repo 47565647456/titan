@@ -1,4 +1,4 @@
-using Titan.Abstractions.Models;
+using Titan.Abstractions.Models.Items;
 
 namespace Titan.Abstractions.Contracts;
 
@@ -9,32 +9,42 @@ namespace Titan.Abstractions.Contracts;
 public interface IInventoryHubClient
 {
     /// <summary>
-    /// Get all items for a character in a season (verifies ownership).
+    /// Get bag grid state for a character.
     /// </summary>
-    Task<IReadOnlyList<Item>> GetInventory(Guid characterId, string seasonId);
+    Task<InventoryGrid> GetBagGrid(Guid characterId, string seasonId);
 
     /// <summary>
-    /// Add a new item to a character's inventory (verifies ownership).
+    /// Get all items in a character's bag.
     /// </summary>
-    Task<Item> AddItem(Guid characterId, string seasonId, string itemTypeId, int quantity, Dictionary<string, string>? metadata);
+    Task<IReadOnlyDictionary<Guid, Item>> GetBagItems(Guid characterId, string seasonId);
 
     /// <summary>
-    /// Get item history. Available to all authenticated users for provenance verification.
+    /// Get equipped items for a character.
     /// </summary>
-    Task<IReadOnlyList<ItemHistoryEntry>> GetItemHistory(Guid itemId);
+    Task<IReadOnlyDictionary<EquipmentSlot, Item>> GetEquipped(Guid characterId, string seasonId);
 
     /// <summary>
-    /// Get a specific item by ID (verifies ownership).
+    /// Add a new item to a character's bag at a specific position.
     /// </summary>
-    Task<Item?> GetItem(Guid characterId, string seasonId, Guid itemId);
+    Task<bool> AddToBag(Guid characterId, string seasonId, Item item, int x, int y);
 
     /// <summary>
-    /// Remove an item from inventory (verifies ownership).
+    /// Move an item within the bag.
     /// </summary>
-    Task<bool> RemoveItem(Guid characterId, string seasonId, Guid itemId);
+    Task<bool> MoveBagItem(Guid characterId, string seasonId, Guid itemId, int newX, int newY);
 
     /// <summary>
-    /// Check if character has a specific item (verifies ownership).
+    /// Equip an item from the bag.
     /// </summary>
-    Task<bool> HasItem(Guid characterId, string seasonId, Guid itemId);
+    Task<EquipResult> Equip(Guid characterId, string seasonId, Guid bagItemId, EquipmentSlot slot);
+
+    /// <summary>
+    /// Unequip an item to the bag.
+    /// </summary>
+    Task<Item?> Unequip(Guid characterId, string seasonId, EquipmentSlot slot);
+
+    /// <summary>
+    /// Get character stats.
+    /// </summary>
+    Task<CharacterStats> GetStats(Guid characterId, string seasonId);
 }

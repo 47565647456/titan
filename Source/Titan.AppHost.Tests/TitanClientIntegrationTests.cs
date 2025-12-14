@@ -1,4 +1,5 @@
 using Titan.Abstractions.Models;
+using Titan.Abstractions.Models.Items;
 using Titan.Client;
 
 namespace Titan.AppHost.Tests;
@@ -74,7 +75,7 @@ public class TitanClientIntegrationTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task TitanClient_GetInventory_ViaInventoryClient()
+    public async Task TitanClient_GetBagItems_ViaInventoryClient()
     {
         // Arrange
         await using var client = new TitanClientBuilder()
@@ -89,24 +90,24 @@ public class TitanClientIntegrationTests : IntegrationTestBase
             $"TestChar_{Guid.NewGuid():N}",
             CharacterRestrictions.None);
 
-        // Act
+        // Act - Use new grid-based inventory methods
         var inventoryClient = await client.GetInventoryClientAsync();
-        var inventory = await inventoryClient.GetInventory(character.CharacterId, "standard");
+        var bagItems = await inventoryClient.GetBagItems(character.CharacterId, "standard");
 
         // Assert
-        Assert.NotNull(inventory);
-        Assert.Empty(inventory);
+        Assert.NotNull(bagItems);
+        Assert.Empty(bagItems); // New character has empty inventory
     }
 
     [Fact]
-    public async Task TitanClient_AddItem_ViaInventoryClient()
+    public async Task TitanClient_GetBagGrid_ViaInventoryClient()
     {
-        // Arrange - Login as admin for item creation
+        // Arrange
         await using var client = new TitanClientBuilder()
             .WithBaseUrl(ApiBaseUrl)
             .Build();
 
-        await client.Auth.LoginAsync($"mock:admin:{Guid.NewGuid()}", "Mock");
+        await client.Auth.LoginAsync($"mock:{Guid.NewGuid()}", "Mock");
 
         var accountClient = await client.GetAccountClientAsync();
         var character = await accountClient.CreateCharacter(
@@ -114,20 +115,14 @@ public class TitanClientIntegrationTests : IntegrationTestBase
             $"TestChar_{Guid.NewGuid():N}",
             CharacterRestrictions.None);
 
+        // Act - Use new grid-based inventory methods
         var inventoryClient = await client.GetInventoryClientAsync();
-
-        // Act
-        var item = await inventoryClient.AddItem(
-            character.CharacterId,
-            "standard",
-            "test_sword",
-            1,
-            null);
+        var bagGrid = await inventoryClient.GetBagGrid(character.CharacterId, "standard");
 
         // Assert
-        Assert.NotNull(item);
-        Assert.Equal("test_sword", item.ItemTypeId);
-        Assert.Equal(1, item.Quantity);
+        Assert.NotNull(bagGrid);
+        Assert.Equal(12, bagGrid.Width); // Default bag size
+        Assert.Equal(5, bagGrid.Height);
     }
 
     [Fact]
@@ -215,22 +210,19 @@ public class TitanClientIntegrationTests : IntegrationTestBase
             CharacterRestrictions.None);
         Assert.NotNull(character);
 
-        // Step 4: Access inventory
+        // Step 4: Access inventory (new grid-based system)
         var inventoryClient = await client.GetInventoryClientAsync();
-        var inventory = await inventoryClient.GetInventory(character.CharacterId, "standard");
-        Assert.Empty(inventory);
+        var bagGrid = await inventoryClient.GetBagGrid(character.CharacterId, "standard");
+        Assert.NotNull(bagGrid);
+        Assert.Equal(12, bagGrid.Width);
 
-        // Step 5: Add item (as admin would normally register item types first)
-        var item = await inventoryClient.AddItem(
-            character.CharacterId,
-            "standard",
-            "starter_sword",
-            1,
-            null);
-        Assert.NotNull(item);
+        // Step 5: Get bag items (empty for new character)
+        var bagItems = await inventoryClient.GetBagItems(character.CharacterId, "standard");
+        Assert.Empty(bagItems);
 
-        // Step 6: Verify inventory has item
-        var finalInventory = await inventoryClient.GetInventory(character.CharacterId, "standard");
-        Assert.Single(finalInventory);
+        // Step 6: Get character stats
+        var stats = await inventoryClient.GetStats(character.CharacterId, "standard");
+        Assert.NotNull(stats);
+        Assert.Equal(1, stats.Level); // Default level
     }
 }

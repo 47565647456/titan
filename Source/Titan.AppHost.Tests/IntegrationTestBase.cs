@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
 using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Models;
+using Titan.Abstractions.Models.Items;
 
 namespace Titan.AppHost.Tests;
 
@@ -137,62 +138,68 @@ public abstract class IntegrationTestBase
     }
 
     /// <summary>
-    /// Ensures a test item type exists in the registry. Requires admin token.
+    /// Ensures a test base type exists in the registry. Requires admin token.
     /// </summary>
-    protected async Task EnsureItemTypeExistsAsync(string adminToken, string itemTypeId, bool isTradeable = true)
+    protected async Task EnsureBaseTypeExistsAsync(string adminToken, string baseTypeId, bool isTradeable = true)
     {
-        var hub = await ConnectToHubAsync("/itemTypeHub", adminToken);
+        var hub = await ConnectToHubAsync("/baseTypeHub", adminToken);
         try
         {
             // Try to get it first
-            var existing = await hub.InvokeAsync<ItemTypeDefinition?>("Get", itemTypeId);
+            var existing = await hub.InvokeAsync<BaseType?>("Get", baseTypeId);
             if (existing != null) return;
         }
         catch
         {
-            // Item type doesn't exist, create it
+            // Base type doesn't exist, create it
         }
         
-        var definition = new ItemTypeDefinition
+        var baseType = new BaseType
         {
-            ItemTypeId = itemTypeId,
-            Name = itemTypeId.Replace("_", " "),
-            MaxStackSize = 1,
-            IsTradeable = isTradeable,
-            Category = "test"
+            BaseTypeId = baseTypeId,
+            Name = baseTypeId.Replace("_", " "),
+            Category = ItemCategory.Currency,
+            Slot = EquipmentSlot.None,
+            Width = 1,
+            Height = 1,
+            MaxStackSize = 20,
+            IsTradeable = isTradeable
         };
         
-        await hub.InvokeAsync<ItemTypeDefinition>("Create", definition);
+        await hub.InvokeAsync<BaseType>("Create", baseType);
         await hub.DisposeAsync();
     }
 
     /// <summary>
-    /// Ensures a test item type exists in the registry using a UserSession.
+    /// Ensures a test base type exists in the registry using a UserSession.
     /// </summary>
-    protected async Task EnsureItemTypeExistsAsync(UserSession adminSession, string itemTypeId, bool isTradeable = true)
+    protected async Task EnsureBaseTypeExistsAsync(UserSession adminSession, string baseTypeId, bool isTradeable = true)
     {
-        var hub = await adminSession.GetItemTypeHubAsync();
+        var hub = await adminSession.GetBaseTypeHubAsync();
         try
         {
             // Try to get it first
-            var existing = await hub.InvokeAsync<ItemTypeDefinition?>("Get", itemTypeId);
+            var existing = await hub.InvokeAsync<BaseType?>("Get", baseTypeId);
             if (existing != null) return;
         }
         catch
         {
-            // Item type doesn't exist, create it
+            // Base type doesn't exist, create it
         }
         
-        var definition = new ItemTypeDefinition
+        var baseType = new BaseType
         {
-            ItemTypeId = itemTypeId,
-            Name = itemTypeId.Replace("_", " "),
-            MaxStackSize = 1,
-            IsTradeable = isTradeable,
-            Category = "test"
+            BaseTypeId = baseTypeId,
+            Name = baseTypeId.Replace("_", " "),
+            Category = ItemCategory.Currency,
+            Slot = EquipmentSlot.None,
+            Width = 1,
+            Height = 1,
+            MaxStackSize = 20,
+            IsTradeable = isTradeable
         };
         
-        await hub.InvokeAsync<ItemTypeDefinition>("Create", definition);
+        await hub.InvokeAsync<BaseType>("Create", baseType);
     }
 
     #endregion

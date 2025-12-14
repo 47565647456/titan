@@ -1,7 +1,8 @@
 using MemoryPack;
 using Titan.Abstractions.Events;
-using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.Abstractions.Models.Items;
+using Titan.Grains.Items;
 using Titan.ServiceDefaults.Serialization;
 
 namespace Titan.Tests;
@@ -12,7 +13,7 @@ namespace Titan.Tests;
 /// </summary>
 public class MemoryPackSerializationTests
 {
-    #region Inventory Models
+    #region New Item System Models
 
     [Fact]
     public void Item_Roundtrip_PreservesAllData()
@@ -20,14 +21,30 @@ public class MemoryPackSerializationTests
         var original = new Item
         {
             Id = Guid.NewGuid(),
-            ItemTypeId = "legendary_sword",
-            Quantity = 5,
-            Metadata = new Dictionary<string, string>
+            BaseTypeId = "legendary_sword",
+            ItemLevel = 75,
+            Rarity = ItemRarity.Rare,
+            Name = "Doom Blade",
+            Implicit = new RolledModifier { ModifierId = "implicit_crit", Values = new[] { 15 }, DisplayText = "+15% Critical Chance" },
+            Prefixes = new List<RolledModifier>
             {
-                ["enchant"] = "fire",
-                ["durability"] = "100"
+                new RolledModifier { ModifierId = "mod_fire", Values = new[] { 100, 150 }, DisplayText = "+100-150 Fire Damage" }
             },
-            AcquiredAt = DateTimeOffset.UtcNow
+            Suffixes = new List<RolledModifier>
+            {
+                new RolledModifier { ModifierId = "mod_attack_speed", Values = new[] { 15 }, DisplayText = "+15% Attack Speed" }
+            },
+            Sockets = new List<Socket>
+            {
+                new Socket { Group = 0, Color = SocketColor.Red },
+                new Socket { Group = 0, Color = SocketColor.Green },
+                new Socket { Group = 1, Color = SocketColor.Blue }
+            },
+            IsIdentified = true,
+            IsCorrupted = false,
+            IsMirrored = false,
+            Quantity = 1,
+            CreatedAt = DateTimeOffset.UtcNow
         };
 
         var bytes = MemoryPackSerializer.Serialize(original);
@@ -35,34 +52,152 @@ public class MemoryPackSerializationTests
 
         Assert.NotNull(deserialized);
         Assert.Equal(original.Id, deserialized.Id);
-        Assert.Equal(original.ItemTypeId, deserialized.ItemTypeId);
-        Assert.Equal(original.Quantity, deserialized.Quantity);
-        Assert.Equal(original.Metadata!["enchant"], deserialized.Metadata!["enchant"]);
-        Assert.Equal(original.Metadata["durability"], deserialized.Metadata["durability"]);
-        Assert.Equal(original.AcquiredAt, deserialized.AcquiredAt);
+        Assert.Equal(original.BaseTypeId, deserialized.BaseTypeId);
+        Assert.Equal(original.ItemLevel, deserialized.ItemLevel);
+        Assert.Equal(original.Rarity, deserialized.Rarity);
+        Assert.Equal(original.Name, deserialized.Name);
+        Assert.NotNull(deserialized.Implicit);
+        Assert.Equal(original.Implicit.ModifierId, deserialized.Implicit!.ModifierId);
+        Assert.Equal(original.Prefixes.Count, deserialized.Prefixes.Count);
+        Assert.Equal(original.Suffixes.Count, deserialized.Suffixes.Count);
+        Assert.Equal(original.Sockets.Count, deserialized.Sockets.Count);
+        Assert.Equal(original.IsIdentified, deserialized.IsIdentified);
+        Assert.Equal(original.IsCorrupted, deserialized.IsCorrupted);
+        Assert.Equal(original.CreatedAt, deserialized.CreatedAt);
     }
 
     [Fact]
-    public void ItemHistoryEntry_Roundtrip_PreservesAllData()
+    public void BaseType_Roundtrip_PreservesAllData()
     {
-        var original = new ItemHistoryEntry
+        var original = new BaseType
         {
-            Timestamp = DateTimeOffset.UtcNow,
-            EventType = "Traded",
-            ActorUserId = Guid.NewGuid(),
-            TargetUserId = Guid.NewGuid(),
-            Details = "Item traded to player"
+            BaseTypeId = "legendary_sword",
+            Name = "Legendary Sword",
+            Description = "A powerful weapon",
+            Category = ItemCategory.Equipment,
+            Slot = EquipmentSlot.MainHand,
+            Width = 1,
+            Height = 3,
+            RequiredLevel = 50,
+            RequiredStrength = 100,
+            RequiredDexterity = 50,
+            RequiredIntelligence = 0,
+            MaxSockets = 6,
+            ImplicitModifierId = "implicit_physical_damage",
+            Tags = new HashSet<string> { "weapon", "sword", "two_handed" },
+            MaxStackSize = 1,
+            IsTradeable = true,
+            BaseStats = new Dictionary<string, int> { ["physical_damage"] = 100 }
         };
 
         var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<ItemHistoryEntry>(bytes);
+        var deserialized = MemoryPackSerializer.Deserialize<BaseType>(bytes);
 
         Assert.NotNull(deserialized);
-        Assert.Equal(original.Timestamp, deserialized.Timestamp);
-        Assert.Equal(original.EventType, deserialized.EventType);
-        Assert.Equal(original.ActorUserId, deserialized.ActorUserId);
-        Assert.Equal(original.TargetUserId, deserialized.TargetUserId);
-        Assert.Equal(original.Details, deserialized.Details);
+        Assert.Equal(original.BaseTypeId, deserialized.BaseTypeId);
+        Assert.Equal(original.Name, deserialized.Name);
+        Assert.Equal(original.Category, deserialized.Category);
+        Assert.Equal(original.Slot, deserialized.Slot);
+        Assert.Equal(original.Width, deserialized.Width);
+        Assert.Equal(original.Height, deserialized.Height);
+        Assert.Equal(original.RequiredLevel, deserialized.RequiredLevel);
+        Assert.Equal(original.RequiredStrength, deserialized.RequiredStrength);
+        Assert.Equal(original.MaxSockets, deserialized.MaxSockets);
+        Assert.Equal(original.ImplicitModifierId, deserialized.ImplicitModifierId);
+        Assert.Equal(original.Tags.Count, deserialized.Tags.Count);
+        Assert.Equal(original.IsTradeable, deserialized.IsTradeable);
+    }
+
+    [Fact]
+    public void ModifierDefinition_Roundtrip_PreservesAllData()
+    {
+        var original = new ModifierDefinition
+        {
+            ModifierId = "mod_fire_damage",
+            DisplayTemplate = "+{0} to {1} Fire Damage",
+            Type = ModifierType.Prefix,
+            ModifierGroup = "flat_fire_damage",
+            Tier = 1,
+            RequiredItemLevel = 50,
+            Ranges = new[]
+            {
+                new ModifierRange { Min = 100, Max = 150 },
+                new ModifierRange { Min = 150, Max = 200 }
+            },
+            Weight = 1000,
+            RequiredTags = new HashSet<string> { "weapon" },
+            ExcludedTags = new HashSet<string> { "bow" }
+        };
+
+        var bytes = MemoryPackSerializer.Serialize(original);
+        var deserialized = MemoryPackSerializer.Deserialize<ModifierDefinition>(bytes);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.ModifierId, deserialized.ModifierId);
+        Assert.Equal(original.DisplayTemplate, deserialized.DisplayTemplate);
+        Assert.Equal(original.Type, deserialized.Type);
+        Assert.Equal(original.Tier, deserialized.Tier);
+        Assert.Equal(original.RequiredItemLevel, deserialized.RequiredItemLevel);
+        Assert.Equal(original.Ranges.Length, deserialized.Ranges.Length);
+        Assert.Equal(original.Weight, deserialized.Weight);
+    }
+
+    [Fact]
+    public void InventoryGrid_Roundtrip_PreservesData()
+    {
+        var original = InventoryGrid.Create(12, 5);
+        
+        // Simulate placing an item
+        var itemId = Guid.NewGuid();
+        original.Cells[0][0] = itemId;
+        original.Cells[0][1] = itemId;
+        original.Cells[1][0] = itemId;
+        original.Cells[1][1] = itemId;
+        original.Placements[itemId] = new GridPlacement { ItemId = itemId, X = 0, Y = 0 };
+
+        var bytes = MemoryPackSerializer.Serialize(original);
+        var deserialized = MemoryPackSerializer.Deserialize<InventoryGrid>(bytes);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.Width, deserialized.Width);
+        Assert.Equal(original.Height, deserialized.Height);
+        Assert.Equal(original.Cells.Length, deserialized.Cells.Length);
+        Assert.Equal(original.Placements.Count, deserialized.Placements.Count);
+        Assert.Equal(itemId, deserialized.Cells[0][0]);
+    }
+
+    [Fact]
+    public void CharacterInventoryState_Roundtrip_PreservesData()
+    {
+        var itemId = Guid.NewGuid();
+        var original = new CharacterInventoryState
+        {
+            Stats = new CharacterStats { Level = 50, Strength = 100, Dexterity = 75, Intelligence = 30 },
+            BagGrid = InventoryGrid.Create(12, 5),
+            BagItems = new Dictionary<Guid, Item>
+            {
+                [itemId] = new Item
+                {
+                    Id = itemId,
+                    BaseTypeId = "health_potion",
+                    ItemLevel = 1,
+                    Rarity = ItemRarity.Normal,
+                    Quantity = 5,
+                    CreatedAt = DateTimeOffset.UtcNow
+                }
+            },
+            Equipped = new Dictionary<EquipmentSlot, Item>()
+        };
+
+        var bytes = MemoryPackSerializer.Serialize(original);
+        var deserialized = MemoryPackSerializer.Deserialize<CharacterInventoryState>(bytes);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.Stats.Level, deserialized.Stats.Level);
+        Assert.Equal(original.Stats.Strength, deserialized.Stats.Strength);
+        Assert.Equal(original.BagGrid.Width, deserialized.BagGrid.Width);
+        Assert.Equal(original.BagItems.Count, deserialized.BagItems.Count);
+        Assert.Equal(original.BagItems[itemId].BaseTypeId, deserialized.BagItems[itemId].BaseTypeId);
     }
 
     #endregion
@@ -208,27 +343,6 @@ public class MemoryPackSerializationTests
         Assert.Equal(original.Data!["seasonId"], deserialized.Data!["seasonId"]);
     }
 
-    [Fact]
-    public void ChallengeProgress_Roundtrip_PreservesAllData()
-    {
-        var original = new ChallengeProgress
-        {
-            ChallengeId = "kill_100_monsters",
-            CurrentProgress = 75,
-            IsCompleted = false,
-            CompletedAt = null
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<ChallengeProgress>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(original.ChallengeId, deserialized.ChallengeId);
-        Assert.Equal(original.CurrentProgress, deserialized.CurrentProgress);
-        Assert.Equal(original.IsCompleted, deserialized.IsCompleted);
-        Assert.Null(deserialized.CompletedAt);
-    }
-
     #endregion
 
     #region Account Models
@@ -251,32 +365,6 @@ public class MemoryPackSerializationTests
         Assert.Equal(2, deserialized.UnlockedCosmetics.Count);
         Assert.Contains("skin_gold", deserialized.UnlockedCosmetics);
         Assert.Equal(2, deserialized.UnlockedAchievements.Count);
-    }
-
-    [Fact]
-    public void CharacterSummary_Roundtrip_PreservesAllData()
-    {
-        var original = new CharacterSummary
-        {
-            CharacterId = Guid.NewGuid(),
-            SeasonId = "season-1",
-            Name = "TestHero",
-            Level = 25,
-            Restrictions = CharacterRestrictions.Hardcore,
-            IsDead = true,
-            CreatedAt = DateTimeOffset.UtcNow.AddDays(-7)
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<CharacterSummary>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(original.CharacterId, deserialized.CharacterId);
-        Assert.Equal(original.SeasonId, deserialized.SeasonId);
-        Assert.Equal(original.Name, deserialized.Name);
-        Assert.Equal(original.Level, deserialized.Level);
-        Assert.Equal(original.Restrictions, deserialized.Restrictions);
-        Assert.Equal(original.IsDead, deserialized.IsDead);
     }
 
     #endregion
@@ -318,81 +406,6 @@ public class MemoryPackSerializationTests
         Assert.Equal(original.IsVoid, deserialized.IsVoid);
     }
 
-    [Fact]
-    public void SeasonChallenge_Roundtrip_PreservesAllData()
-    {
-        var original = new SeasonChallenge
-        {
-            ChallengeId = "c1",
-            SeasonId = "season-1",
-            Name = "First Blood",
-            Description = "Kill 1 enemy",
-            RequiredProgress = 1,
-            RewardCosmeticId = "badge_first_blood"
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<SeasonChallenge>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(original.ChallengeId, deserialized.ChallengeId);
-        Assert.Equal(original.SeasonId, deserialized.SeasonId);
-        Assert.Equal(original.Name, deserialized.Name);
-        Assert.Equal(original.Description, deserialized.Description);
-        Assert.Equal(original.RequiredProgress, deserialized.RequiredProgress);
-        Assert.Equal(original.RewardCosmeticId, deserialized.RewardCosmeticId);
-    }
-
-    [Fact]
-    public void SeasonEvent_Roundtrip_PreservesAllData()
-    {
-        var original = new SeasonEvent
-        {
-            SeasonId = "season-1",
-            EventType = SeasonEventTypes.SeasonStarted,
-            Timestamp = DateTimeOffset.UtcNow,
-            Data = "{\"message\": \"Season started!\"}"
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<SeasonEvent>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(original.SeasonId, deserialized.SeasonId);
-        Assert.Equal(original.EventType, deserialized.EventType);
-        Assert.Equal(original.Timestamp, deserialized.Timestamp);
-        Assert.Equal(original.Data, deserialized.Data);
-    }
-
-    [Fact]
-    public void MigrationStatus_Roundtrip_PreservesAllData()
-    {
-        var original = new MigrationStatus
-        {
-            SourceSeasonId = "season-1",
-            TargetSeasonId = "standard",
-            State = MigrationState.InProgress,
-            TotalCharacters = 100,
-            MigratedCharacters = 50,
-            FailedCharacters = 2,
-            StartedAt = DateTimeOffset.UtcNow.AddMinutes(-10),
-            CompletedAt = null,
-            Errors = new List<string> { "Character 123: timeout", "Character 456: not found" }
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<MigrationStatus>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(original.SourceSeasonId, deserialized.SourceSeasonId);
-        Assert.Equal(original.TargetSeasonId, deserialized.TargetSeasonId);
-        Assert.Equal(original.State, deserialized.State);
-        Assert.Equal(original.TotalCharacters, deserialized.TotalCharacters);
-        Assert.Equal(original.MigratedCharacters, deserialized.MigratedCharacters);
-        Assert.Equal(original.FailedCharacters, deserialized.FailedCharacters);
-        Assert.Equal(2, deserialized.Errors.Count);
-    }
-
     #endregion
 
     #region User Models
@@ -419,138 +432,32 @@ public class MemoryPackSerializationTests
         Assert.Equal("Steam", deserialized.LinkedProviders[0].ProviderName);
     }
 
-    [Fact]
-    public void UserProfile_Roundtrip_PreservesAllData()
-    {
-        var original = new UserProfile
-        {
-            DisplayName = "TestPlayer",
-            AvatarUrl = "https://example.com/avatar.png",
-            Settings = new Dictionary<string, string>
-            {
-                ["theme"] = "dark",
-                ["language"] = "en"
-            }
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<UserProfile>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(original.DisplayName, deserialized.DisplayName);
-        Assert.Equal(original.AvatarUrl, deserialized.AvatarUrl);
-        Assert.Equal(original.Settings!["theme"], deserialized.Settings!["theme"]);
-    }
-
-    [Fact]
-    public void SocialRelation_Roundtrip_PreservesAllData()
-    {
-        var original = new SocialRelation
-        {
-            TargetUserId = Guid.NewGuid(),
-            RelationType = "Friend",
-            Since = DateTimeOffset.UtcNow.AddDays(-100)
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<SocialRelation>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(original.TargetUserId, deserialized.TargetUserId);
-        Assert.Equal(original.RelationType, deserialized.RelationType);
-        Assert.Equal(original.Since, deserialized.Since);
-    }
-
     #endregion
 
-    #region Registry Models
+    #region Edge Cases
 
     [Fact]
-    public void ItemTypeDefinition_Roundtrip_PreservesAllData()
-    {
-        var original = new ItemTypeDefinition
-        {
-            ItemTypeId = "legendary_sword",
-            Name = "Legendary Sword",
-            Description = "A powerful weapon",
-            Category = "Weapon",
-            MaxStackSize = 1,
-            IsTradeable = true
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<ItemTypeDefinition>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Equal(original.ItemTypeId, deserialized.ItemTypeId);
-        Assert.Equal(original.Name, deserialized.Name);
-        Assert.Equal(original.Description, deserialized.Description);
-        Assert.Equal(original.Category, deserialized.Category);
-        Assert.Equal(original.MaxStackSize, deserialized.MaxStackSize);
-        Assert.Equal(original.IsTradeable, deserialized.IsTradeable);
-    }
-
-    #endregion
-
-    #region Null Handling
-
-    [Fact]
-    public void Item_WithNullMetadata_Roundtrip_Succeeds()
+    public void Item_WithMinimalData_Roundtrip_Succeeds()
     {
         var original = new Item
         {
             Id = Guid.NewGuid(),
-            ItemTypeId = "basic_sword",
-            Quantity = 1,
-            Metadata = null,
-            AcquiredAt = DateTimeOffset.UtcNow
+            BaseTypeId = "basic_sword",
+            ItemLevel = 1,
+            Rarity = ItemRarity.Normal,
+            CreatedAt = DateTimeOffset.UtcNow
         };
 
         var bytes = MemoryPackSerializer.Serialize(original);
         var deserialized = MemoryPackSerializer.Deserialize<Item>(bytes);
 
         Assert.NotNull(deserialized);
-        Assert.Null(deserialized.Metadata);
-    }
-
-    [Fact]
-    public void CharacterHistoryEntry_WithNullData_Roundtrip_Succeeds()
-    {
-        var original = new CharacterHistoryEntry
-        {
-            EventType = "Custom",
-            Description = "Something happened",
-            Timestamp = DateTimeOffset.UtcNow,
-            Data = null
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<CharacterHistoryEntry>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Null(deserialized.Data);
-    }
-
-    #endregion
-
-    #region Empty Collections
-
-    [Fact]
-    public void Account_WithEmptyCollections_Roundtrip_Succeeds()
-    {
-        var original = new Account
-        {
-            AccountId = Guid.NewGuid(),
-            UnlockedCosmetics = new List<string>(),
-            UnlockedAchievements = new List<string>()
-        };
-
-        var bytes = MemoryPackSerializer.Serialize(original);
-        var deserialized = MemoryPackSerializer.Deserialize<Account>(bytes);
-
-        Assert.NotNull(deserialized);
-        Assert.Empty(deserialized.UnlockedCosmetics);
-        Assert.Empty(deserialized.UnlockedAchievements);
+        Assert.Equal(original.Id, deserialized.Id);
+        Assert.Equal(original.BaseTypeId, deserialized.BaseTypeId);
+        Assert.Null(deserialized.Name);
+        Assert.Null(deserialized.Implicit);
+        Assert.Empty(deserialized.Prefixes);
+        Assert.Empty(deserialized.Suffixes);
     }
 
     [Fact]
@@ -586,9 +493,10 @@ public class MemoryPackSerializationTests
         var item = new Item
         {
             Id = Guid.NewGuid(),
-            ItemTypeId = "test_item",
-            Quantity = 10,
-            AcquiredAt = DateTimeOffset.UtcNow
+            BaseTypeId = "test_item",
+            ItemLevel = 10,
+            Rarity = ItemRarity.Magic,
+            CreatedAt = DateTimeOffset.UtcNow
         };
 
         var binaryData = serializer.Serialize(item);

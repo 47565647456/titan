@@ -1,21 +1,21 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Titan.Abstractions.Grains;
-using Titan.Abstractions.Models;
+using Titan.Abstractions.Grains.Items;
+using Titan.Abstractions.Models.Items;
 
 namespace Titan.API.Hubs;
 
 /// <summary>
-/// WebSocket hub for item type registry operations.
+/// WebSocket hub for base type registry operations.
 /// Read operations available to all authenticated users.
 /// Write operations (Create/Update/Delete) require Admin role.
 /// </summary>
 [Authorize]
-public class ItemTypeHub : TitanHubBase
+public class BaseTypeHub : TitanHubBase
 {
-    private readonly ILogger<ItemTypeHub> _logger;
+    private readonly ILogger<BaseTypeHub> _logger;
 
-    public ItemTypeHub(IClusterClient clusterClient, ILogger<ItemTypeHub> logger)
+    public BaseTypeHub(IClusterClient clusterClient, ILogger<BaseTypeHub> logger)
         : base(clusterClient, logger)
     {
         _logger = logger;
@@ -24,19 +24,19 @@ public class ItemTypeHub : TitanHubBase
     #region Subscriptions
 
     /// <summary>
-    /// Join the item-types group to receive updates.
+    /// Join the base-types group to receive updates.
     /// </summary>
-    public async Task JoinItemTypesGroup()
+    public async Task JoinBaseTypesGroup()
     {
-        await Groups.AddToGroupAsync(Context.ConnectionId, "item-types");
+        await Groups.AddToGroupAsync(Context.ConnectionId, "base-types");
     }
 
     /// <summary>
-    /// Leave the item-types group.
+    /// Leave the base-types group.
     /// </summary>
-    public async Task LeaveItemTypesGroup()
+    public async Task LeaveBaseTypesGroup()
     {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, "item-types");
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, "base-types");
     }
 
     #endregion
@@ -44,100 +44,118 @@ public class ItemTypeHub : TitanHubBase
     #region CRUD Operations
 
     /// <summary>
-    /// Get all registered item types.
+    /// Get all registered base types.
     /// </summary>
-    public async Task<IReadOnlyList<ItemTypeDefinition>> GetAll()
+    public async Task<IReadOnlyList<BaseType>> GetAll()
     {
-        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
         return await registry.GetAllAsync();
     }
 
     /// <summary>
-    /// Get a specific item type by ID.
+    /// Get a specific base type by ID.
     /// </summary>
-    public async Task<ItemTypeDefinition?> Get(string itemTypeId)
+    public async Task<BaseType?> Get(string baseTypeId)
     {
-        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
-        return await registry.GetAsync(itemTypeId);
+        var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
+        return await registry.GetAsync(baseTypeId);
     }
 
     /// <summary>
-    /// Check if an item type exists.
+    /// Get base types by category.
     /// </summary>
-    public async Task<bool> Exists(string itemTypeId)
+    public async Task<IReadOnlyList<BaseType>> GetByCategory(ItemCategory category)
     {
-        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
-        return await registry.ExistsAsync(itemTypeId);
+        var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
+        return await registry.GetByCategoryAsync(category);
     }
 
     /// <summary>
-    /// Create a new item type. Broadcasts to all subscribed clients.
+    /// Get base types by equipment slot.
+    /// </summary>
+    public async Task<IReadOnlyList<BaseType>> GetBySlot(EquipmentSlot slot)
+    {
+        var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
+        return await registry.GetBySlotAsync(slot);
+    }
+
+    /// <summary>
+    /// Check if a base type exists.
+    /// </summary>
+    public async Task<bool> Exists(string baseTypeId)
+    {
+        var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
+        return await registry.ExistsAsync(baseTypeId);
+    }
+
+    /// <summary>
+    /// Create a new base type. Broadcasts to all subscribed clients.
     /// Requires Admin role.
     /// </summary>
     [Authorize(Roles = "Admin")]
-    public async Task<ItemTypeDefinition> Create(ItemTypeDefinition definition)
+    public async Task<BaseType> Create(BaseType baseType)
     {
-        if (string.IsNullOrWhiteSpace(definition.ItemTypeId))
-            throw new HubException("ItemTypeId is required.");
+        if (string.IsNullOrWhiteSpace(baseType.BaseTypeId))
+            throw new HubException("BaseTypeId is required.");
 
-        if (string.IsNullOrWhiteSpace(definition.Name))
+        if (string.IsNullOrWhiteSpace(baseType.Name))
             throw new HubException("Name is required.");
 
-        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
 
-        if (await registry.ExistsAsync(definition.ItemTypeId))
-            throw new HubException($"Item type '{definition.ItemTypeId}' already exists.");
+        if (await registry.ExistsAsync(baseType.BaseTypeId))
+            throw new HubException($"Base type '{baseType.BaseTypeId}' already exists.");
 
-        await registry.RegisterAsync(definition);
-        _logger.LogInformation("Item type '{ItemTypeId}' created via WebSocket", definition.ItemTypeId);
+        await registry.RegisterAsync(baseType);
+        _logger.LogInformation("Base type '{BaseTypeId}' created via WebSocket", baseType.BaseTypeId);
 
         // Notify all subscribed clients
-        await Clients.Group("item-types").SendAsync("ItemTypeCreated", definition);
+        await Clients.Group("base-types").SendAsync("BaseTypeCreated", baseType);
 
-        return definition;
+        return baseType;
     }
 
     /// <summary>
-    /// Update an existing item type. Broadcasts to all subscribed clients.
+    /// Update an existing base type. Broadcasts to all subscribed clients.
     /// Requires Admin role.
     /// </summary>
     [Authorize(Roles = "Admin")]
-    public async Task<ItemTypeDefinition> Update(string itemTypeId, ItemTypeDefinition definition)
+    public async Task<BaseType> Update(string baseTypeId, BaseType baseType)
     {
-        if (definition.ItemTypeId != itemTypeId)
-            throw new HubException("ItemTypeId in request must match.");
+        if (baseType.BaseTypeId != baseTypeId)
+            throw new HubException("BaseTypeId in request must match.");
 
-        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
 
-        if (!await registry.ExistsAsync(itemTypeId))
-            throw new HubException($"Item type '{itemTypeId}' not found.");
+        if (!await registry.ExistsAsync(baseTypeId))
+            throw new HubException($"Base type '{baseTypeId}' not found.");
 
-        await registry.UpdateAsync(definition);
-        _logger.LogInformation("Item type '{ItemTypeId}' updated via WebSocket", itemTypeId);
+        await registry.UpdateAsync(baseType);
+        _logger.LogInformation("Base type '{BaseTypeId}' updated via WebSocket", baseTypeId);
 
         // Notify all subscribed clients
-        await Clients.Group("item-types").SendAsync("ItemTypeUpdated", definition);
+        await Clients.Group("base-types").SendAsync("BaseTypeUpdated", baseType);
 
-        return definition;
+        return baseType;
     }
 
     /// <summary>
-    /// Delete an item type. Broadcasts to all subscribed clients.
+    /// Delete a base type. Broadcasts to all subscribed clients.
     /// Requires Admin role.
     /// </summary>
     [Authorize(Roles = "Admin")]
-    public async Task Delete(string itemTypeId)
+    public async Task Delete(string baseTypeId)
     {
-        var registry = ClusterClient.GetGrain<IItemTypeRegistryGrain>("default");
+        var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
 
-        if (!await registry.ExistsAsync(itemTypeId))
-            throw new HubException($"Item type '{itemTypeId}' not found.");
+        if (!await registry.ExistsAsync(baseTypeId))
+            throw new HubException($"Base type '{baseTypeId}' not found.");
 
-        await registry.DeleteAsync(itemTypeId);
-        _logger.LogInformation("Item type '{ItemTypeId}' deleted via WebSocket", itemTypeId);
+        await registry.DeleteAsync(baseTypeId);
+        _logger.LogInformation("Base type '{BaseTypeId}' deleted via WebSocket", baseTypeId);
 
         // Notify all subscribed clients
-        await Clients.Group("item-types").SendAsync("ItemTypeDeleted", itemTypeId);
+        await Clients.Group("base-types").SendAsync("BaseTypeDeleted", baseTypeId);
     }
 
     #endregion
@@ -145,27 +163,27 @@ public class ItemTypeHub : TitanHubBase
     #region Server Push Helpers
 
     /// <summary>
-    /// Broadcast item type created event (for server-side use).
+    /// Broadcast base type created event (for server-side use).
     /// </summary>
-    public static async Task NotifyItemTypeCreated(IHubContext<ItemTypeHub> hubContext, ItemTypeDefinition definition)
+    public static async Task NotifyBaseTypeCreated(IHubContext<BaseTypeHub> hubContext, BaseType baseType)
     {
-        await hubContext.Clients.Group("item-types").SendAsync("ItemTypeCreated", definition);
+        await hubContext.Clients.Group("base-types").SendAsync("BaseTypeCreated", baseType);
     }
 
     /// <summary>
-    /// Broadcast item type updated event (for server-side use).
+    /// Broadcast base type updated event (for server-side use).
     /// </summary>
-    public static async Task NotifyItemTypeUpdated(IHubContext<ItemTypeHub> hubContext, ItemTypeDefinition definition)
+    public static async Task NotifyBaseTypeUpdated(IHubContext<BaseTypeHub> hubContext, BaseType baseType)
     {
-        await hubContext.Clients.Group("item-types").SendAsync("ItemTypeUpdated", definition);
+        await hubContext.Clients.Group("base-types").SendAsync("BaseTypeUpdated", baseType);
     }
 
     /// <summary>
-    /// Broadcast item type deleted event (for server-side use).
+    /// Broadcast base type deleted event (for server-side use).
     /// </summary>
-    public static async Task NotifyItemTypeDeleted(IHubContext<ItemTypeHub> hubContext, string itemTypeId)
+    public static async Task NotifyBaseTypeDeleted(IHubContext<BaseTypeHub> hubContext, string baseTypeId)
     {
-        await hubContext.Clients.Group("item-types").SendAsync("ItemTypeDeleted", itemTypeId);
+        await hubContext.Clients.Group("base-types").SendAsync("BaseTypeDeleted", baseTypeId);
     }
 
     #endregion

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Titan.Abstractions.Grains;
-using Titan.Abstractions.Models;
+using Titan.Abstractions.Grains.Items;
+using Titan.Abstractions.Models.Items;
 
 namespace Titan.API.Hubs;
 
@@ -17,70 +17,80 @@ public class InventoryHub : TitanHubBase
     {
     }
 
-    // VerifyCharacterOwnershipAsync is inherited from TitanHubBase
-
     /// <summary>
-    /// Get all items for a character in a season (verifies ownership).
+    /// Get bag grid state for a character.
     /// </summary>
-    public async Task<IReadOnlyList<Item>> GetInventory(Guid characterId, string seasonId)
+    public async Task<InventoryGrid> GetBagGrid(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        
-        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
-        return await grain.GetItemsAsync();
+
+        var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
+        return await grain.GetBagGridAsync();
     }
 
     /// <summary>
-    /// Add a new item to a character's inventory (verifies ownership).
+    /// Get all items in a character's bag.
     /// </summary>
-    public async Task<Item> AddItem(Guid characterId, string seasonId, string itemTypeId, int quantity = 1, Dictionary<string, string>? metadata = null)
+    public async Task<IReadOnlyDictionary<Guid, Item>> GetBagItems(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        
-        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
-        return await grain.AddItemAsync(itemTypeId, quantity, metadata);
+
+        var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
+        return await grain.GetBagItemsAsync();
     }
 
     /// <summary>
-    /// Get item history. Available to all authenticated users for provenance verification.
+    /// Get equipped items for a character.
     /// </summary>
-    public async Task<IReadOnlyList<ItemHistoryEntry>> GetItemHistory(Guid itemId)
+    public async Task<IReadOnlyDictionary<EquipmentSlot, Item>> GetEquipped(Guid characterId, string seasonId)
     {
-        var grain = ClusterClient.GetGrain<IItemHistoryGrain>(itemId);
-        return await grain.GetHistoryAsync();
+        await VerifyCharacterOwnershipAsync(characterId);
+
+        var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
+        return await grain.GetEquippedAsync();
     }
 
     /// <summary>
-    /// Get a specific item by ID (verifies ownership).
+    /// Move an item within the bag.
     /// </summary>
-    public async Task<Item?> GetItem(Guid characterId, string seasonId, Guid itemId)
+    public async Task<bool> MoveBagItem(Guid characterId, string seasonId, Guid itemId, int newX, int newY)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        
-        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
-        return await grain.GetItemAsync(itemId);
+
+        var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
+        return await grain.MoveBagItemAsync(itemId, newX, newY);
     }
 
     /// <summary>
-    /// Remove an item from inventory (verifies ownership).
+    /// Equip an item from the bag.
     /// </summary>
-    public async Task<bool> RemoveItem(Guid characterId, string seasonId, Guid itemId)
+    public async Task<EquipResult> Equip(Guid characterId, string seasonId, Guid bagItemId, EquipmentSlot slot)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        
-        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
-        return await grain.RemoveItemAsync(itemId);
+
+        var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
+        return await grain.EquipAsync(bagItemId, slot);
     }
 
     /// <summary>
-    /// Check if character has a specific item (verifies ownership).
+    /// Unequip an item to the bag.
     /// </summary>
-    public async Task<bool> HasItem(Guid characterId, string seasonId, Guid itemId)
+    public async Task<Item?> Unequip(Guid characterId, string seasonId, EquipmentSlot slot)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        
-        var grain = ClusterClient.GetGrain<IInventoryGrain>(characterId, seasonId);
-        return await grain.HasItemAsync(itemId);
+
+        var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
+        return await grain.UnequipAsync(slot);
+    }
+
+    /// <summary>
+    /// Get character stats.
+    /// </summary>
+    public async Task<CharacterStats> GetStats(Guid characterId, string seasonId)
+    {
+        await VerifyCharacterOwnershipAsync(characterId);
+
+        var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
+        return await grain.GetStatsAsync();
     }
 }
-

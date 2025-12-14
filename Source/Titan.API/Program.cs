@@ -123,7 +123,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var hubPaths = new[] 
                 { 
                     "/accountHub", "/authHub", "/characterHub", 
-                    "/inventoryHub", "/itemTypeHub", "/seasonHub", "/tradeHub" 
+                    "/inventoryHub", "/baseTypeHub", "/seasonHub", "/tradeHub" 
                 };
                 
                 if (!string.IsNullOrEmpty(accessToken) && 
@@ -218,7 +218,7 @@ app.MapHub<AccountHub>("/accountHub");
 app.MapHub<AuthHub>("/authHub");
 app.MapHub<CharacterHub>("/characterHub");
 app.MapHub<InventoryHub>("/inventoryHub");
-app.MapHub<ItemTypeHub>("/itemTypeHub");
+app.MapHub<BaseTypeHub>("/baseTypeHub");
 app.MapHub<SeasonHub>("/seasonHub");
 app.MapHub<TradeHub>("/tradeHub");
 
