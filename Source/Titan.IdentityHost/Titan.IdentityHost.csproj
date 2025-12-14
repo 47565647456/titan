@@ -19,4 +19,9 @@
     <ProjectReference Include="..\Titan.Grains\Titan.Grains.csproj" />
     <ProjectReference Include="..\Titan.ServiceDefaults\Titan.ServiceDefaults.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ensure data files are copied to output directory for seeding -->
+    <None Update="data\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

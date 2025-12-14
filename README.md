@@ -30,20 +30,11 @@ We recommend using **.NET Aspire** to run the solution. It automatically provisi
 
 Your browser will open the **Aspire Dashboard**, allowing you to view running services, logs, and metrics.
 
-### Legacy Scripts
-Alternatively, use our automation scripts to start the database and run services manually:
-
-```powershell
-# Start CockroachDB
-.\scripts\docker-up.ps1
-
-# Start all services
-.\scripts\run-all.ps1
-```
 
 ## Testing
 
 Titan includes a full integration test suite.
+Make sure to trust the .ASP NET HTTPS Development Certificate.
 
 ```powershell
 # Run In-Memory Tests (Grain Logic)
@@ -100,7 +91,7 @@ dotnet test Source/Titan.AppHost.Tests
 
 ### Client Integration
 - [x] **Typed Client SDK** - Compile-time safe SignalR hub access via `TypedSignalR.Client`
-- [x] **HTTP Authentication** - Industry-standard REST endpoints for login/logout/refresh
+- [x] **HTTP Authentication** - REST endpoints for login/logout/refresh
 - [ ] **Unreal Plugin** - C++ and Blueprint client library for Unreal Engine
 
 ## Documentation

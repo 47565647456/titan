@@ -17,8 +17,9 @@ public static class DatabaseResources
 
     /// <summary>
     /// Adds the configured database resource to the Aspire application.
+    /// Returns both the main database connection and admin database connection.
     /// </summary>
-    public static (IResourceBuilder<IResourceWithConnectionString> Database, IResourceBuilder<ContainerResource>? Container) AddDatabase(
+    public static (IResourceBuilder<IResourceWithConnectionString> Database, IResourceBuilder<IResourceWithConnectionString> AdminDatabase, IResourceBuilder<ContainerResource>? Container) AddDatabase(
         IDistributedApplicationBuilder builder,
         IResourceBuilder<ParameterResource> password,
         IResourceBuilder<ParameterResource> username,
@@ -29,6 +30,7 @@ public static class DatabaseResources
 
     /// <summary>
     /// Adds a wait dependency on a custom database container if applicable.
+    /// Uses WaitForCompletion for init containers that run once and exit.
     /// </summary>
     public static void AddDbWait<T>(
         IResourceBuilder<T> project,
@@ -37,7 +39,8 @@ public static class DatabaseResources
     {
         if (dbContainer != null)
         {
-            project.WaitFor(dbContainer);
+            // Wait for the init container to complete (not just start)
+            project.WaitForCompletion(dbContainer);
         }
     }
 
@@ -47,7 +50,7 @@ public static class DatabaseResources
     /// 2. Starts CockroachDB with --certs-dir.
     /// 3. Initializes the cluster and sets the root password.
     /// </summary>
-    public static (IResourceBuilder<IResourceWithConnectionString> ConnectionString, IResourceBuilder<ContainerResource> Container) AddCockroachDB(
+    public static (IResourceBuilder<IResourceWithConnectionString> ConnectionString, IResourceBuilder<IResourceWithConnectionString> AdminConnectionString, IResourceBuilder<ContainerResource> Container) AddCockroachDB(
         IDistributedApplicationBuilder builder,
         IResourceBuilder<ParameterResource> password,
         IResourceBuilder<ParameterResource> username,
@@ -122,18 +125,21 @@ public static class DatabaseResources
         }
 
         // 3. Cluster/Schema Initialization & Password Setup
-        // Uses client.root certs to connect, creates user with password, then runs init.sql
+        // Uses client.root certs to connect, creates user with password, then runs both init scripts
         var setupScript = 
             $"echo 'Waiting for DB...'; " +
             $"until ./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --execute='SELECT 1'; do sleep 1; done; " +
             $"echo 'DB Ready. Setting up user...'; " +
             $"./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --execute=\"CREATE USER IF NOT EXISTS $DB_USER WITH PASSWORD '$DB_PASSWORD'; GRANT ADMIN TO $DB_USER;\"; " +
-            $"echo 'Running init.sql...'; " +
+            $"echo 'Running Orleans init.sql...'; " +
             $"./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --file=/init.sql; " +
+            $"echo 'Running Admin init_admin.sql...'; " +
+            $"./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --file=/init_admin.sql; " +
             $"echo 'Initialization Complete.';";
 
         var orleansInit = builder.AddContainer("cockroachdb-init", cockroachImage, cockroachTag)
             .WithBindMount("../../scripts/cockroachdb/init.sql", "/init.sql")
+            .WithBindMount("../../scripts/cockroachdb/init_admin.sql", "/init_admin.sql")
             .WithEnvironment("DB_PASSWORD", password)
             .WithEnvironment("DB_USER", username)
             .WithEntrypoint("/bin/bash")
@@ -145,8 +151,7 @@ public static class DatabaseResources
 
         if (clusterInit != null) orleansInit.WaitFor(clusterInit);
 
-        // 4. Connection String (Secure) with Configurable Pooling
-        // Uses Configured User + Password + Trust Server Certificate + Connection Pool Settings
+        // 4. Connection Strings (Secure) with Configurable Pooling
         var endpoint = primaryNode.GetEndpoint("sql");
         
         // Read pool settings from configuration with CockroachDB-recommended defaults
@@ -157,19 +162,24 @@ public static class DatabaseResources
         var connectionIdleLifetime = poolConfig["ConnectionIdleLifetimeSeconds"] ?? "300";
         
         // Follower reads: Add Options parameter to enable for read-heavy connections
-        // This sets 'default_transaction_use_follower_reads = on' at session level
-        // Trades ~4.8s staleness for reduced read latency in multi-region clusters
         var followerReadsEnabled = builder.Configuration.GetValue("Database:FollowerReads", false);
         var options = followerReadsEnabled 
             ? ";Options=--default_transaction_use_follower_reads=on"
             : "";
         
+        // Main Orleans/game database connection string
         var connectionString = builder.AddConnectionString(
             "titan",
             ReferenceExpression.Create(
                 $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan;Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;ApplicationName=Titan;MaxPoolSize={maxPoolSize};MinPoolSize={minPoolSize};ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime}{options}"));
 
-        return (connectionString, orleansInit);
+        // Admin Identity database connection string (separate database)
+        var adminConnectionString = builder.AddConnectionString(
+            "titan-admin",
+            ReferenceExpression.Create(
+                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan_admin;Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;ApplicationName=TitanAdmin;MaxPoolSize=10;MinPoolSize=5;ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime}"));
+
+        return (connectionString, adminConnectionString, orleansInit);
     }
 
     /// <summary>

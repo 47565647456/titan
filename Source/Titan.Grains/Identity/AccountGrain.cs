@@ -29,7 +29,7 @@ public class AccountGrain : Grain, IAccountGrain
         _grainFactory = grainFactory;
     }
 
-    public Task<Account> GetAccountAsync()
+    public async Task<Account> GetAccountAsync()
     {
         if (_state.State.Account == null)
         {
@@ -37,8 +37,10 @@ public class AccountGrain : Grain, IAccountGrain
             {
                 AccountId = this.GetPrimaryKey()
             };
+            // Persist new accounts so they appear in the database
+            await _state.WriteStateAsync();
         }
-        return Task.FromResult(_state.State.Account);
+        return _state.State.Account;
     }
 
     public Task<IReadOnlyList<CharacterSummary>> GetCharactersAsync()

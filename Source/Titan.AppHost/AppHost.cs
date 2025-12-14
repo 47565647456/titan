@@ -25,8 +25,8 @@ var redis = builder.AddRedis("orleans-clustering")
 var dbPassword = builder.AddParameter("cockroachdb-password");
 var dbUsername = builder.AddParameter("cockroachdb-username");
 
-// Database resource - exclusively CockroachDB
-var (titanDb, dbContainer) = DatabaseResources.AddDatabase(builder, dbPassword, dbUsername, env);
+// Database resource - exclusively CockroachDB (returns both titan and titan-admin connections)
+var (titanDb, titanAdminDb, dbContainer) = DatabaseResources.AddDatabase(builder, dbPassword, dbUsername, env);
 
 // =============================================================================
 // Orleans Cluster Configuration
@@ -81,4 +81,18 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment)
     .WithEnvironment("Jwt__Key", builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is missing in AppHost configuration"));
 
+// =============================================================================
+// Admin Dashboard (Orleans Client + Identity)
+// =============================================================================
+
+var dashboard = builder.AddProject<Projects.Titan_Dashboard>("dashboard")
+    .WithReference(orleans.AsClient())
+    .WithReference(titanDb)       // Orleans storage database (for account queries)
+    .WithReference(titanAdminDb)  // Admin Identity database (titan_admin)
+    .WaitFor(identityHost)  // Wait for at least one silo to be running
+    .WithExternalHttpEndpoints()
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment);
+DatabaseResources.AddDbWait(dashboard, dbContainer);  // Wait for admin db init
+
 builder.Build().Run();
+

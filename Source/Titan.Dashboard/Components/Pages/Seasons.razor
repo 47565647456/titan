@@ -1,0 +1,351 @@
+@page "/seasons"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Authorization
+@using Orleans
+@using Titan.Abstractions.Grains
+@using Titan.Abstractions.Models
+@attribute [Authorize(Policy = "Viewer")]
+@inject IClusterClient ClusterClient
+@inject ILogger<Seasons> Logger
+
+<PageTitle>Seasons - Titan Admin</PageTitle>
+
+<div class="page-container">
+    <div class="page-header">
+        <h1>🗓️ Seasons</h1>
+        <p class="subtitle">Manage leagues and seasonal content</p>
+    </div>
+
+    <AuthorizeView Policy="Admin">
+        <Authorized>
+            <div class="actions-bar">
+                <button class="btn btn-primary" @onclick="ShowCreateDialog">
+                    ➕ Create Season
+                </button>
+            </div>
+        </Authorized>
+    </AuthorizeView>
+
+    @if (IsLoading)
+    {
+        <div class="loading">Loading seasons...</div>
+    }
+    else if (SeasonList == null || SeasonList.Count == 0)
+    {
+        <div class="empty-state">
+            <p>No seasons found.</p>
+        </div>
+    }
+    else
+    {
+        <div class="table-container">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Void</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var season in SeasonList)
+                    {
+                        <tr>
+                            <td><code>@season.SeasonId</code></td>
+                            <td>@season.Name</td>
+                            <td>
+                                <span class="badge @(season.Type == SeasonType.Permanent ? "badge-permanent" : "badge-temporary")">
+                                    @season.Type
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge badge-status-@season.Status.ToString().ToLower()">
+                                    @season.Status
+                                </span>
+                            </td>
+                            <td>@season.StartDate.ToString("MMM d, yyyy")</td>
+                            <td>@(season.EndDate?.ToString("MMM d, yyyy") ?? "—")</td>
+                            <td>@(season.IsVoid ? "⚠️" : "—")</td>
+                            <td>
+                                <AuthorizeView Policy="Admin">
+                                    <Authorized>
+                                        @if (season.Status == SeasonStatus.Upcoming)
+                                        {
+                                            <button class="btn btn-small btn-secondary" @onclick="() => UpdateStatusAsync(season, SeasonStatus.Active)">Start</button>
+                                        }
+                                        @if (season.Status == SeasonStatus.Active && season.Type == SeasonType.Temporary)
+                                        {
+                                            <button class="btn btn-small btn-danger" @onclick="() => ShowEndDialog(season)">End</button>
+                                        }
+                                    </Authorized>
+                                </AuthorizeView>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (ShowDialog)
+    {
+        <div class="modal-overlay" @onclick="CloseDialog">
+            <div class="modal-content" @onclick:stopPropagation="true">
+                <h2>Create Season</h2>
+                
+                <EditForm Model="EditModel" OnValidSubmit="CreateSeasonAsync">
+                    <DataAnnotationsValidator />
+                    
+                    <div class="form-group">
+                        <label>Season ID</label>
+                        <InputText @bind-Value="EditModel!.SeasonId" class="form-control" placeholder="e.g., s1, league-2024" />
+                        <ValidationMessage For="() => EditModel!.SeasonId" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Name</label>
+                        <InputText @bind-Value="EditModel!.Name" class="form-control" placeholder="e.g., Season 1: The Awakening" />
+                        <ValidationMessage For="() => EditModel!.Name" />
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Type</label>
+                            <InputSelect @bind-Value="EditModel!.Type" class="form-control">
+                                <option value="@SeasonType.Temporary">Temporary</option>
+                                <option value="@SeasonType.Permanent">Permanent</option>
+                            </InputSelect>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Status</label>
+                            <InputSelect @bind-Value="EditModel!.Status" class="form-control">
+                                <option value="@SeasonStatus.Upcoming">Upcoming</option>
+                                <option value="@SeasonStatus.Active">Active</option>
+                            </InputSelect>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <InputDate @bind-Value="EditModel!.StartDate" class="form-control" />
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>End Date</label>
+                            <InputDate @bind-Value="EditModel!.EndDate" class="form-control" />
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Migration Target</label>
+                        <InputText @bind-Value="EditModel!.MigrationTargetId" class="form-control" placeholder="standard" />
+                    </div>
+                    
+                    <div class="form-group checkbox-group">
+                        <InputCheckbox @bind-Value="EditModel!.IsVoid" />
+                        <label>Void League (no migration on end)</label>
+                    </div>
+                    
+                    @if (!string.IsNullOrEmpty(ErrorMessage))
+                    {
+                        <div class="alert alert-danger">@ErrorMessage</div>
+                    }
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" @onclick="CloseDialog">Cancel</button>
+                        <button type="submit" class="btn btn-primary" disabled="@IsSaving">
+                            @(IsSaving ? "Creating..." : "Create")
+                        </button>
+                    </div>
+                </EditForm>
+            </div>
+        </div>
+    }
+
+    @if (ShowEndConfirm)
+    {
+        <div class="modal-overlay" @onclick="CloseEndDialog">
+            <div class="modal-content modal-small" @onclick:stopPropagation="true">
+                <h2>⚠️ End Season</h2>
+                <p>Are you sure you want to end <strong>@EndTarget?.Name</strong>?</p>
+                <p class="text-muted">This will trigger character migration to @(EndTarget?.MigrationTargetId ?? "standard").</p>
+                
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" @onclick="CloseEndDialog">Cancel</button>
+                    <button type="button" class="btn btn-danger" @onclick="EndSeasonAsync" disabled="@IsEnding">
+                        @(IsEnding ? "Ending..." : "End Season")
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<Season>? SeasonList { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool ShowDialog { get; set; }
+    private bool ShowEndConfirm { get; set; }
+    private bool IsSaving { get; set; }
+    private bool IsEnding { get; set; }
+    private string? ErrorMessage { get; set; }
+    private SeasonEditModel? EditModel { get; set; }
+    private Season? EndTarget { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSeasonsAsync();
+    }
+
+    private async Task LoadSeasonsAsync()
+    {
+        IsLoading = true;
+        try
+        {
+            var grain = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
+            SeasonList = await grain.GetAllSeasonsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load seasons");
+            ErrorMessage = "Failed to load seasons";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void ShowCreateDialog()
+    {
+        EditModel = new SeasonEditModel
+        {
+            StartDate = DateTimeOffset.UtcNow.Date,
+            EndDate = DateTimeOffset.UtcNow.AddDays(30).Date
+        };
+        ErrorMessage = null;
+        ShowDialog = true;
+    }
+
+    private void CloseDialog()
+    {
+        ShowDialog = false;
+        EditModel = null;
+    }
+
+    private void ShowEndDialog(Season season)
+    {
+        EndTarget = season;
+        ShowEndConfirm = true;
+    }
+
+    private void CloseEndDialog()
+    {
+        ShowEndConfirm = false;
+        EndTarget = null;
+    }
+
+    private async Task CreateSeasonAsync()
+    {
+        if (EditModel == null) return;
+        
+        IsSaving = true;
+        ErrorMessage = null;
+        
+        try
+        {
+            var grain = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
+            var season = new Season
+            {
+                SeasonId = EditModel.SeasonId,
+                Name = EditModel.Name,
+                Type = EditModel.Type,
+                Status = EditModel.Status,
+                StartDate = EditModel.StartDate,
+                EndDate = EditModel.EndDate,
+                MigrationTargetId = EditModel.MigrationTargetId,
+                IsVoid = EditModel.IsVoid
+            };
+
+            await grain.CreateSeasonAsync(season);
+            Logger.LogInformation("Created season: {SeasonId}", season.SeasonId);
+
+            CloseDialog();
+            await LoadSeasonsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to create season");
+            ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task UpdateStatusAsync(Season season, SeasonStatus newStatus)
+    {
+        try
+        {
+            var grain = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
+            await grain.UpdateSeasonStatusAsync(season.SeasonId, newStatus);
+            Logger.LogInformation("Updated season {SeasonId} status to {Status}", season.SeasonId, newStatus);
+            await LoadSeasonsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to update season status");
+        }
+    }
+
+    private async Task EndSeasonAsync()
+    {
+        if (EndTarget == null) return;
+        
+        IsEnding = true;
+        
+        try
+        {
+            var grain = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
+            await grain.EndSeasonAsync(EndTarget.SeasonId);
+            Logger.LogInformation("Ended season: {SeasonId}", EndTarget.SeasonId);
+            
+            CloseEndDialog();
+            await LoadSeasonsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to end season");
+        }
+        finally
+        {
+            IsEnding = false;
+        }
+    }
+
+    private sealed class SeasonEditModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(50, MinimumLength = 1)]
+        public string SeasonId { get; set; } = "";
+
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.StringLength(200, MinimumLength = 1)]
+        public string Name { get; set; } = "";
+
+        public SeasonType Type { get; set; } = SeasonType.Temporary;
+        public SeasonStatus Status { get; set; } = SeasonStatus.Upcoming;
+        public DateTimeOffset StartDate { get; set; }
+        public DateTimeOffset? EndDate { get; set; }
+        public string MigrationTargetId { get; set; } = "standard";
+        public bool IsVoid { get; set; }
+    }
+}

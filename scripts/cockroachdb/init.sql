@@ -1,6 +1,6 @@
 -- Orleans ADO.NET CockroachDB Schema (Persistence & Reminders)
 -- CockroachDB is PostgreSQL-compatible but doesn't support all PL/pgSQL features
--- This simplified schema works with Orleans' ADO.NET grain storage
+-- NOTE: Orleans ADO.NET uses specific table names internally - do not rename
 
 -- ============================================================
 -- Create Database
@@ -9,7 +9,7 @@ CREATE DATABASE IF NOT EXISTS titan;
 USE titan;
 
 -- ============================================================
--- OrleansQuery - Base Query Table (Required)
+-- OrleansQuery - Base Query Table (Required by Orleans ADO.NET)
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS OrleansQuery
@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS OrleansStorage
 
 CREATE INDEX IF NOT EXISTS ix_orleansstorage
     ON orleansstorage (grainidhash, graintypehash);
+
+-- Add unique constraint for upsert via index (idempotent)
+CREATE UNIQUE INDEX IF NOT EXISTS uk_orleansstorage 
+    ON OrleansStorage (GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString, ServiceId);
 
 -- Start of Orleans Queries
 INSERT INTO OrleansQuery(QueryKey, QueryText)
@@ -109,10 +113,6 @@ VALUES
     RETURNING Version AS NewGrainStateVersion
 ')
 ON CONFLICT (QueryKey) DO NOTHING;
-
--- Add unique constraint for upsert via index (idempotent)
-CREATE UNIQUE INDEX IF NOT EXISTS uk_orleansstorage 
-    ON OrleansStorage (GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString, ServiceId);
 
 -- ============================================================
 -- OrleansRemindersTable - Reminders Persistence
@@ -247,9 +247,7 @@ VALUES
         AND GrainId = @GrainId
         AND ReminderName = @ReminderName
         AND Version = @Version;
-    SELECT 1; -- Expected by Orleans ADO Net wrapper to confirm execution? (Actually row count usually returned via ExecuteNonQuery but Orleans uses scalar/reader sometimes). 
-              -- Standard ADO provider for Orleans usually checks row count. 
-              -- This is simplified for text query access. The C# wrapper often expects row count.
+    SELECT 1;
 ')
 ON CONFLICT (QueryKey) DO NOTHING;
 
