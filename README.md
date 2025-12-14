@@ -12,7 +12,7 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 - **Trading**: Secure peer-to-peer item trading.
 - **Identity**: User profiles and social provider linking (Steam, EOS).
 - **Security**: JWT Authentication and Role-based Access Control (RBAC).
-- **CockroachDB Persistence**: Distributed SQL storage with TLS encryption.
+- **CockroachDB Persistence**: Distributed SQL storage.
 - **.NET Aspire**: Cloud-native orchestration for local development and deployment.
 
 ## Quick Start

@@ -93,6 +93,9 @@ public class TradeGrain : Grain, ITradeGrain
 
     private async Task CheckExpirationAsync(CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested)
+            return;
+
         if (_state.State.Session == null)
             return;
 

@@ -146,7 +146,8 @@ public class TitanClientTests
             .Build();
 
         // Act & Assert - Should not throw
-        await client.DisposeAsync();
+        var exception = await Record.ExceptionAsync(() => client.DisposeAsync().AsTask());
+        Assert.Null(exception);
     }
 
     [Fact]
