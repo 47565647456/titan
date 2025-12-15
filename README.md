@@ -97,6 +97,7 @@ dotnet test Source/Titan.AppHost.Tests
 
 ### Persistence & Operations
 - [x] **CockroachDB Persistence** - Distributed SQL storage with TLS encryption
+- [x] **Backup & Restore** - Automated scheduled backups with point-in-time restore support
 - [x] **Integration Tests** - Comprehensive test suite with database and clustering tests
 - [x] **Metrics/Observability** - OpenTelemetry + Aspire Dashboard
 - [x] **MemoryPack Wire Serialization** - High-performance binary serialization for Orleans RPC

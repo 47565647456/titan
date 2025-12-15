@@ -64,4 +64,80 @@ Override these if you need specific versions.
 
 ## Running the Project
 Set this project as the **Startup Project** in Visual Studio or run `dotnet run` to launch the Aspire Dashboard.
+<<<<<<< HEAD:src/Titan.AppHost/README.md
 The AppHost will handle starting PostgreSQL, Redis, and Silos in the correct order.
+=======
+The AppHost will handle the complexity of:
+1. Generating Certificates.
+2. Waiting for DB initialization.
+3. Starting Redis and Silos in the correct order.
+
+## Backup and Restore
+
+### Configuration
+Backup settings in `appsettings.json`:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `Backup:Provider` | Storage: `userfile`, `s3`, `gcs`, `azure` | `userfile` |
+| `Backup:RevisionHistory` | Enable point-in-time restore | `true` |
+| `Backup:Schedule:Enabled` | Enable automated backups | `false` |
+| `Backup:Schedule:IncrementalCron` | Incremental backup schedule | `0 * * * *` (hourly) |
+| `Backup:Schedule:FullBackupFrequency` | Full backup frequency | `@daily` |
+| `Backup:S3:*` | AWS S3 credentials | *(empty)* |
+| `Backup:GCS:*` | Google Cloud Storage credentials | *(empty)* |
+| `Backup:Azure:*` | Azure Blob Storage credentials | *(empty)* |
+
+### Running Backups
+
+**Using PowerShell script:**
+```powershell
+# Local backup (userfile)
+.\scripts\cockroachdb\backup.ps1
+
+# Backup to S3
+.\scripts\cockroachdb\backup.ps1 -Provider s3 -S3Bucket "my-bucket" -S3AccessKey "XXX" -S3SecretKey "YYY"
+
+# Backup without revision history (smaller, faster)
+.\scripts\cockroachdb\backup.ps1 -RevisionHistory:$false
+```
+
+**Using SQL directly:**
+```sql
+BACKUP DATABASE titan INTO 'userfile:///titan-backup' AS OF SYSTEM TIME '-10s' WITH revision_history;
+```
+
+### Restoring from Backup
+
+**Latest backup:**
+```sql
+RESTORE DATABASE titan FROM LATEST IN 'userfile:///titan-backup';
+```
+
+**Point-in-time restore** (requires `revision_history`):
+```sql
+RESTORE DATABASE titan FROM LATEST IN 'userfile:///titan-backup' 
+  AS OF SYSTEM TIME '2025-12-15 10:00:00';
+```
+
+> **Note**: You must drop the existing database before restoring: `DROP DATABASE titan CASCADE;`
+
+### Automated Backups
+
+Enable automated backups by setting `Backup:Schedule:Enabled` to `true` in `appsettings.json`. Schedules are created when the AppHost initializes.
+
+**Managing schedules:**
+```sql
+-- View all backup schedules
+SHOW SCHEDULES FOR BACKUP;
+
+-- Pause a schedule
+PAUSE SCHEDULE <schedule_id>;
+
+-- Resume a schedule
+RESUME SCHEDULE <schedule_id>;
+
+-- Check backup job status
+SHOW JOBS WHERE job_type = 'BACKUP';
+```
+>>>>>>> 9c360f2f4a645a202c012e878c444d65b81649ee:Source/Titan.AppHost/README.md
