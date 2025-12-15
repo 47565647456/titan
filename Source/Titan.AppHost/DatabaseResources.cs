@@ -102,7 +102,7 @@ public static class DatabaseResources
                 .WithHttpEndpoint(port: 8080, targetPort: 8080, name: "http")
                 .WithHttpHealthCheck("/health?ready=1", endpointName: "http")
                 .WithExternalHttpEndpoints()
-                .WaitFor(certsGen);
+                .WaitForCompletion(certsGen);
 
             if (isBindMount) cockroach.WithBindMount(certsSource, CertsMountPath);
             else cockroach.WithVolume(certsSource, CertsMountPath);
@@ -125,7 +125,12 @@ public static class DatabaseResources
         }
 
         // 3. Cluster/Schema Initialization & Password Setup
-        // Uses client.root certs to connect, creates user with password, then runs both init scripts
+        // Uses client.root certs to connect, creates user with password, then runs init scripts
+        var scheduleEnabled = builder.Configuration.GetValue("Backup:Schedule:Enabled", false);
+        var scheduleScript = scheduleEnabled
+            ? $"echo 'Setting up backup schedules...'; ./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --file=/backup_schedule.sql; "
+            : "";
+            
         var setupScript = 
             $"echo 'Waiting for DB...'; " +
             $"until ./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --execute='SELECT 1'; do sleep 1; done; " +
@@ -135,11 +140,13 @@ public static class DatabaseResources
             $"./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --file=/init.sql; " +
             $"echo 'Running Admin init_admin.sql...'; " +
             $"./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --file=/init_admin.sql; " +
+            scheduleScript +
             $"echo 'Initialization Complete.';";
 
         var orleansInit = builder.AddContainer("cockroachdb-init", cockroachImage, cockroachTag)
             .WithBindMount("../../scripts/cockroachdb/init.sql", "/init.sql")
             .WithBindMount("../../scripts/cockroachdb/init_admin.sql", "/init_admin.sql")
+            .WithBindMount("../../scripts/cockroachdb/backup_schedule.sql", "/backup_schedule.sql")
             .WithEnvironment("DB_PASSWORD", password)
             .WithEnvironment("DB_USER", username)
             .WithEntrypoint("/bin/bash")
@@ -212,7 +219,7 @@ public static class DatabaseResources
             $"fi; " +
             $"chmod 700 {CertsMountPath}/*.key; " + // Secure permissions
             $"ls -la {CertsMountPath}; " +
-            $"sleep infinity;"; // Keep container running so dependencies can wait for it
+            $"echo 'Certificate setup complete.'"; // Container exits after certs are ready
 
         var resource = builder.AddContainer("cockroach-certs", image, tag)
             .WithEntrypoint("/bin/bash")
@@ -254,7 +261,7 @@ public static class DatabaseResources
             .WithHttpEndpoint(port: 8080, targetPort: 8080, name: "http")
             .WithHttpHealthCheck("/health", endpointName: "http")
             .WithExternalHttpEndpoints()
-            .WaitFor(certs);
+            .WaitForCompletion(certs);
             
         if (isBindMount) node1.WithBindMount(certsSource, CertsMountPath);
         else node1.WithVolume(certsSource, CertsMountPath);
@@ -267,7 +274,7 @@ public static class DatabaseResources
             .WithEndpoint(targetPort: 26257, name: "sql")
             .WithHttpEndpoint(targetPort: 8080, name: "http")
             .WithHttpHealthCheck("/health", endpointName: "http")
-            .WaitFor(certs);
+            .WaitForCompletion(certs);
 
         if (isBindMount) node2.WithBindMount(certsSource, CertsMountPath);
         else node2.WithVolume(certsSource, CertsMountPath);
@@ -280,7 +287,7 @@ public static class DatabaseResources
             .WithEndpoint(targetPort: 26257, name: "sql")
             .WithHttpEndpoint(targetPort: 8080, name: "http")
             .WithHttpHealthCheck("/health", endpointName: "http")
-            .WaitFor(certs);
+            .WaitForCompletion(certs);
 
         if (isBindMount) node3.WithBindMount(certsSource, CertsMountPath);
         else node3.WithVolume(certsSource, CertsMountPath);
