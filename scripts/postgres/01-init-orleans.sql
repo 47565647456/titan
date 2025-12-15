@@ -1,6 +1,7 @@
 -- Orleans ADO.NET PostgreSQL Schema (Persistence & Reminders)
+-- Based on official Orleans PostgreSQL scripts from:
+-- https://github.com/dotnet/orleans/tree/main/src/AdoNet/Orleans.Persistence.AdoNet
 -- This script initializes the Orleans storage tables for PostgreSQL.
--- NOTE: Orleans ADO.NET uses specific table names internally - do not rename
 
 -- ============================================================
 -- Create Database and Connect
@@ -30,42 +31,149 @@ CREATE TABLE IF NOT EXISTS OrleansStorage
     grainidn0 bigint NOT NULL,
     grainidn1 bigint NOT NULL,
     graintypehash integer NOT NULL,
-    graintypestring varchar(512) NOT NULL,
-    grainidextensionstring varchar(512),
-    serviceid varchar(150) NOT NULL,
+    graintypestring character varying(512) NOT NULL,
+    grainidextensionstring character varying(512),
+    serviceid character varying(150) NOT NULL,
     payloadbinary bytea,
-    modifiedon timestamp NOT NULL DEFAULT now(),
+    modifiedon timestamp without time zone NOT NULL,
     version integer
 );
 
 CREATE INDEX IF NOT EXISTS ix_orleansstorage
-    ON orleansstorage (grainidhash, graintypehash);
+    ON orleansstorage USING btree
+    (grainidhash, graintypehash);
 
--- Add unique constraint for upsert via index (idempotent)
-CREATE UNIQUE INDEX IF NOT EXISTS uk_orleansstorage 
-    ON OrleansStorage (GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString, ServiceId);
+-- ============================================================
+-- WriteToStorage - Official Orleans PL/pgSQL Function
+-- Handles both INSERT and UPDATE with proper concurrency control
+-- ============================================================
 
--- Start of Orleans Queries
+CREATE OR REPLACE FUNCTION writetostorage(
+    _grainidhash integer,
+    _grainidn0 bigint,
+    _grainidn1 bigint,
+    _graintypehash integer,
+    _graintypestring character varying,
+    _grainidextensionstring character varying,
+    _serviceid character varying,
+    _grainstateversion integer,
+    _payloadbinary bytea)
+    RETURNS TABLE(newgrainstateversion integer)
+    LANGUAGE 'plpgsql'
+AS $function$
+    DECLARE
+     _newGrainStateVersion integer := _GrainStateVersion;
+     RowCountVar integer := 0;
+
+    BEGIN
+
+    -- Grain state is not null, so the state must have been read from the storage before.
+    -- Let's try to update it.
+    --
+    -- When Orleans is running in normal, non-split state, there will
+    -- be only one grain with the given ID and type combination only. This
+    -- grain saves states mostly serially if Orleans guarantees are upheld. Even
+    -- if not, the updates should work correctly due to version number.
+    --
+    -- In split brain situations there can be a situation where there are two or more
+    -- grains with the given ID and type combination. When they try to INSERT
+    -- concurrently, the table needs to be locked pessimistically before one of
+    -- the grains gets @GrainStateVersion = 1 in return and the other grains will fail
+    -- to update storage. The following arrangement is made to reduce locking in normal operation.
+    --
+    -- If the version number explicitly returned is still the same, Orleans interprets it so the update did not succeed
+    -- and throws an InconsistentStateException.
+    --
+    -- See further information at https://learn.microsoft.com/dotnet/orleans/grains/grain-persistence.
+    IF _GrainStateVersion IS NOT NULL
+    THEN
+        UPDATE OrleansStorage
+        SET
+            PayloadBinary = _PayloadBinary,
+            ModifiedOn = (now() at time zone 'utc'),
+            Version = Version + 1
+
+        WHERE
+            GrainIdHash = _GrainIdHash AND _GrainIdHash IS NOT NULL
+            AND GrainTypeHash = _GrainTypeHash AND _GrainTypeHash IS NOT NULL
+            AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
+            AND GrainIdN1 = _GrainIdN1 AND _GrainIdN1 IS NOT NULL
+            AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
+            AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) OR _GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL)
+            AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
+            AND Version IS NOT NULL AND Version = _GrainStateVersion AND _GrainStateVersion IS NOT NULL;
+
+        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
+        IF RowCountVar > 0
+        THEN
+            _newGrainStateVersion := _GrainStateVersion + 1;
+        END IF;
+    END IF;
+
+    -- The grain state has not been read. The following locks rather pessimistically
+    -- to ensure only one INSERT succeeds.
+    IF _GrainStateVersion IS NULL
+    THEN
+        INSERT INTO OrleansStorage
+        (
+            GrainIdHash,
+            GrainIdN0,
+            GrainIdN1,
+            GrainTypeHash,
+            GrainTypeString,
+            GrainIdExtensionString,
+            ServiceId,
+            PayloadBinary,
+            ModifiedOn,
+            Version
+        )
+        SELECT
+            _GrainIdHash,
+            _GrainIdN0,
+            _GrainIdN1,
+            _GrainTypeHash,
+            _GrainTypeString,
+            _GrainIdExtensionString,
+            _ServiceId,
+            _PayloadBinary,
+           (now() at time zone 'utc'),
+            1
+        WHERE NOT EXISTS
+         (
+            -- There should not be any version of this grain state.
+            SELECT 1
+            FROM OrleansStorage
+            WHERE
+                GrainIdHash = _GrainIdHash AND _GrainIdHash IS NOT NULL
+                AND GrainTypeHash = _GrainTypeHash AND _GrainTypeHash IS NOT NULL
+                AND GrainIdN0 = _GrainIdN0 AND _GrainIdN0 IS NOT NULL
+                AND GrainIdN1 = _GrainIdN1 AND _GrainIdN1 IS NOT NULL
+                AND GrainTypeString = _GrainTypeString AND _GrainTypeString IS NOT NULL
+                AND ((_GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = _GrainIdExtensionString) OR _GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL)
+                AND ServiceId = _ServiceId AND _ServiceId IS NOT NULL
+         );
+
+        GET DIAGNOSTICS RowCountVar = ROW_COUNT;
+        IF RowCountVar > 0
+        THEN
+            _newGrainStateVersion := 1;
+        END IF;
+    END IF;
+
+    RETURN QUERY SELECT _newGrainStateVersion AS NewGrainStateVersion;
+END
+
+$function$;
+
+-- ============================================================
+-- Orleans Query Registrations
+-- ============================================================
+
 INSERT INTO OrleansQuery(QueryKey, QueryText)
 VALUES
 (
     'WriteToStorageKey','
-    INSERT INTO OrleansStorage
-    (
-        GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString,
-        GrainIdExtensionString, ServiceId, PayloadBinary, ModifiedOn, Version
-    )
-    VALUES
-    (
-        @GrainIdHash, @GrainIdN0, @GrainIdN1, @GrainTypeHash, @GrainTypeString,
-        @GrainIdExtensionString, @ServiceId, @PayloadBinary, now(), 1
-    )
-    ON CONFLICT (GrainIdHash, GrainIdN0, GrainIdN1, GrainTypeHash, GrainTypeString, ServiceId) 
-    DO UPDATE SET
-        PayloadBinary = EXCLUDED.PayloadBinary,
-        ModifiedOn = now(),
-        Version = OrleansStorage.Version + 1
-    RETURNING Version AS NewGrainStateVersion;
+        select * from WriteToStorage(@GrainIdHash, @GrainIdN0, @GrainIdN1, @GrainTypeHash, @GrainTypeString, @GrainIdExtensionString, @ServiceId, @GrainStateVersion, @PayloadBinary);
 ')
 ON CONFLICT (QueryKey) DO NOTHING;
 
@@ -75,19 +183,18 @@ VALUES
     'ReadFromStorageKey','
     SELECT
         PayloadBinary,
-        now(),
+        (now() at time zone ''utc''),
         Version
     FROM
         OrleansStorage
     WHERE
         GrainIdHash = @GrainIdHash
-        AND GrainTypeHash = @GrainTypeHash
-        AND GrainIdN0 = @GrainIdN0
-        AND GrainIdN1 = @GrainIdN1
-        AND GrainTypeString = @GrainTypeString
-        AND ((@GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = @GrainIdExtensionString) 
-             OR (@GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL))
-        AND ServiceId = @ServiceId
+        AND GrainTypeHash = @GrainTypeHash AND @GrainTypeHash IS NOT NULL
+        AND GrainIdN0 = @GrainIdN0 AND @GrainIdN0 IS NOT NULL
+        AND GrainIdN1 = @GrainIdN1 AND @GrainIdN1 IS NOT NULL
+        AND GrainTypeString = @GrainTypeString AND GrainTypeString IS NOT NULL
+        AND ((@GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = @GrainIdExtensionString) OR @GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL)
+        AND ServiceId = @ServiceId AND @ServiceId IS NOT NULL
 ')
 ON CONFLICT (QueryKey) DO NOTHING;
 
@@ -98,19 +205,17 @@ VALUES
     UPDATE OrleansStorage
     SET
         PayloadBinary = NULL,
-        ModifiedOn = now(),
         Version = Version + 1
     WHERE
-        GrainIdHash = @GrainIdHash
-        AND GrainTypeHash = @GrainTypeHash
-        AND GrainIdN0 = @GrainIdN0
-        AND GrainIdN1 = @GrainIdN1
-        AND GrainTypeString = @GrainTypeString
-        AND ((@GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = @GrainIdExtensionString) 
-             OR (@GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL))
-        AND ServiceId = @ServiceId
-        AND Version = @GrainStateVersion
-    RETURNING Version AS NewGrainStateVersion
+        GrainIdHash = @GrainIdHash AND @GrainIdHash IS NOT NULL
+        AND GrainTypeHash = @GrainTypeHash AND @GrainTypeHash IS NOT NULL
+        AND GrainIdN0 = @GrainIdN0 AND @GrainIdN0 IS NOT NULL
+        AND GrainIdN1 = @GrainIdN1 AND @GrainIdN1 IS NOT NULL
+        AND GrainTypeString = @GrainTypeString AND @GrainTypeString IS NOT NULL
+        AND ((@GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString IS NOT NULL AND GrainIdExtensionString = @GrainIdExtensionString) OR @GrainIdExtensionString IS NULL AND GrainIdExtensionString IS NULL)
+        AND ServiceId = @ServiceId AND @ServiceId IS NOT NULL
+        AND Version IS NOT NULL AND Version = @GrainStateVersion AND @GrainStateVersion IS NOT NULL
+    Returning Version as NewGrainStateVersion
 ')
 ON CONFLICT (QueryKey) DO NOTHING;
 
@@ -162,7 +267,7 @@ VALUES
         GrainHash = excluded.GrainHash,
         Version = OrleansRemindersTable.Version + 1
     RETURNING
-        OrleansRemindersTable.Version AS versionr;
+        OrleansRemindersTable.Version AS version;
 ')
 ON CONFLICT (QueryKey) DO NOTHING;
 
