@@ -26,6 +26,7 @@ Thumbs.db
 
 # Test results
 TestResults/
+coverage/
 
 # Docusaurus (has its own repo)
 docs/
@@ -89,6 +90,8 @@ Generated\ Files/
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
+
+coveragereport/
 
 # NUnit
 *.VisualState.xml
