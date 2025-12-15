@@ -70,10 +70,16 @@ public static class DatabaseResources
 
         // Configure PostgreSQL to use SSL via command-line args
         // These args are passed to the postgres server process
+        // Server settings can be configured in appsettings.json Database:Server section
+        var maxConnections = builder.Configuration.GetValue("Database:Server:MaxConnections", 500);
+        var sharedBuffersMb = builder.Configuration.GetValue("Database:Server:SharedBuffersMB", 256);
+        
         postgres.WithArgs(
             "-c", "ssl=on",
             "-c", $"ssl_cert_file={CertsMountPath}/server.crt",
-            "-c", $"ssl_key_file={CertsMountPath}/server.key"
+            "-c", $"ssl_key_file={CertsMountPath}/server.key",
+            "-c", $"max_connections={maxConnections}",
+            "-c", $"shared_buffers={sharedBuffersMb}MB"
         );
 
         // Configure data persistence
@@ -101,9 +107,11 @@ public static class DatabaseResources
     }
 
     /// <summary>
-    /// Creates a helper container that generates self-signed SSL certificates for PostgreSQL.
+    /// Creates a helper container that generates SSL certificates for PostgreSQL.
+    /// Generates a proper CA certificate chain:
+    /// - ca.key / ca.crt: Certificate Authority (for client verification)
+    /// - server.key / server.crt: Server certificate signed by the CA
     /// The certificates are stored in a shared volume/bind mount and mounted into the PostgreSQL container.
-    /// Uses OpenSSL to generate a self-signed certificate valid for 365 days.
     /// </summary>
     private static IResourceBuilder<ContainerResource> AddPostgresCerts(
         IDistributedApplicationBuilder builder,
@@ -113,24 +121,35 @@ public static class DatabaseResources
         var opensslImage = builder.Configuration["ContainerImages:OpenSSL:Image"] ?? "alpine/openssl";
         var opensslTag = builder.Configuration["ContainerImages:OpenSSL:Tag"] ?? "latest";
 
-        // Script to generate self-signed certificates using OpenSSL
-        // - Creates server.crt and server.key
-        // - Sets permissions to 600 (required by PostgreSQL)
-        // - Changes ownership to postgres user (UID 999 in official image)
+        // Script to generate CA certificate chain using OpenSSL
+        // Step 1: Generate CA private key and self-signed CA certificate
+        // Step 2: Generate server private key and CSR
+        // Step 3: Sign server certificate with CA
+        // Sets permissions to 600 (required by PostgreSQL) and ownership to postgres user (UID 999)
         var genScript =
             $"mkdir -p {CertsMountPath} && " +
             $"if [ ! -f {CertsMountPath}/server.crt ]; then " +
-            $"  echo 'Generating PostgreSQL SSL certificates...' && " +
-            $"  openssl req -new -x509 -days 365 -nodes -text " +
-            $"    -out {CertsMountPath}/server.crt " +
-            $"    -keyout {CertsMountPath}/server.key " +
-            $"    -subj '/CN=postgres' && " +
-            $"  chmod 600 {CertsMountPath}/server.key && " +
-            $"  chown 999:999 {CertsMountPath}/server.key {CertsMountPath}/server.crt && " +
-            $"  echo 'SSL certificates generated successfully.' && " +
-            $"  ls -la {CertsMountPath}; " +
+            $"echo 'Generating PostgreSQL CA and server certificates...' && " +
+            // Generate CA private key
+            $"openssl genrsa -out {CertsMountPath}/ca.key 4096 && " +
+            // Generate self-signed CA certificate
+            $"openssl req -new -x509 -days 3650 -key {CertsMountPath}/ca.key -out {CertsMountPath}/ca.crt -subj '/CN=TitanPostgresCA/O=Titan/C=AU' && " +
+            // Generate server private key
+            $"openssl genrsa -out {CertsMountPath}/server.key 4096 && " +
+            // Generate server CSR
+            $"openssl req -new -key {CertsMountPath}/server.key -out {CertsMountPath}/server.csr -subj '/CN=postgres/O=Titan/C=AU' && " +
+            // Sign server certificate with CA (valid for 365 days)
+            $"openssl x509 -req -days 365 -in {CertsMountPath}/server.csr -CA {CertsMountPath}/ca.crt -CAkey {CertsMountPath}/ca.key -CAcreateserial -out {CertsMountPath}/server.crt && " +
+            // Set permissions (600 for keys, 644 for certs)
+            $"chmod 600 {CertsMountPath}/ca.key {CertsMountPath}/server.key && " +
+            $"chmod 644 {CertsMountPath}/ca.crt {CertsMountPath}/server.crt && " +
+            $"chown 999:999 {CertsMountPath}/server.key {CertsMountPath}/server.crt {CertsMountPath}/ca.key {CertsMountPath}/ca.crt && " +
+            // Cleanup CSR
+            $"rm -f {CertsMountPath}/server.csr && " +
+            $"echo 'SSL certificate chain generated successfully:' && " +
+            $"ls -la {CertsMountPath}; " +
             $"else " +
-            $"  echo 'SSL certificates already exist.'; " +
+            $"echo 'SSL certificates already exist.'; " +
             $"fi";
 
         var resource = builder.AddContainer("postgres-certs", opensslImage, opensslTag)
