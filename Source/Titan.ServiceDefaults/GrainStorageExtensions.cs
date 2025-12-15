@@ -14,8 +14,9 @@ namespace Microsoft.Extensions.Hosting;
 public static class GrainStorageExtensions
 {
     /// <summary>
-    /// Configures Orleans grain storage providers backed by CockroachDB.
-    /// All providers use the same connection with retry logic for serialization conflicts.
+    /// Configures Orleans grain storage providers backed by PostgreSQL-compatible database.
+    /// All providers use the same connection with retry logic for transient errors.
+    /// Supports both PostgreSQL and CockroachDB (PostgreSQL wire protocol compatible).
     /// </summary>
     public static ISiloBuilder AddTitanGrainStorage(this ISiloBuilder silo, IConfiguration config)
     {
@@ -50,7 +51,7 @@ public static class GrainStorageExtensions
         var innerStorageName = $"{name}_Inner";
         silo.AddAdoNetGrainStorage(innerStorageName, options =>
         {
-            options.Invariant = "Npgsql";  // CockroachDB uses PostgreSQL wire protocol
+            options.Invariant = "Npgsql";  // PostgreSQL wire protocol (works with PostgreSQL and CockroachDB)
             options.ConnectionString = connectionString;
             
             // Use MemoryPack for faster binary serialization, or System.Text.Json for fallback
@@ -60,7 +61,7 @@ public static class GrainStorageExtensions
                 : MemoryPackSerializerExtensions.CreateSystemTextJsonGrainStorageSerializer();
         });
 
-        // Wrap with retry logic for CockroachDB SQLSTATE 40001 (serialization conflicts)
+        // Wrap with retry logic for PostgreSQL/CockroachDB transient errors (serialization conflicts, connection failures)
         silo.Services.AddKeyedSingleton<IGrainStorage>(name, (sp, key) =>
         {
             var innerStorage = sp.GetRequiredKeyedService<IGrainStorage>(innerStorageName);

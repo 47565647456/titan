@@ -13,7 +13,7 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 - **Seasons & Leagues**: Path of Exile-style seasons with "Void League" support (no migration on death).
 - **Identity**: User profiles and social provider linking (Steam, EOS).
 - **Security**: JWT Authentication and Role-based Access Control (RBAC).
-- **CockroachDB Persistence**: Distributed SQL storage with retrying logic for serializable transactions.
+- **Database Persistence**: PostgreSQL or CockroachDB support with retrying logic for transient errors.
 - **High Performance**: **MemoryPack** serialization for wire and storage (~40% smaller payloads).
 - **.NET Aspire**: Cloud-native orchestration for local development and deployment.
 
@@ -23,7 +23,7 @@ The solution is split into specialized micro-services and libraries:
 
 | Project | Description |
 |---------|-------------|
-| **Titan.AppHost** | .NET Aspire orchestrator. Validates configuration and manages containers (Redis, CockroachDB). |
+| **Titan.AppHost** | .NET Aspire orchestrator. Validates configuration and manages containers (Redis, PostgreSQL/CockroachDB). |
 | **Titan.API** | The public gateway. Hosts SignalR Hubs and HTTP endpoints. Acts as an Orleans Client. |
 | **Titan.Grains** | Core business logic (Inventory, Trading, Identity) implemented as Orleans Grains. |
 | **Titan.Abstractions** | Shared contracts, interfaces, and models used by Clients and Grains. |
@@ -40,7 +40,7 @@ The solution is split into specialized micro-services and libraries:
 - [Docker](https://www.docker.com/) (Desktop or Engine)
 
 ### 1-Click Environment Setup (Aspire)
-We recommend using **.NET Aspire** to run the solution. It automatically provisions Redis, CockroachDB, and starts all services (API + All Silos) with the correct configuration.
+We recommend using **.NET Aspire** to run the solution. It automatically provisions Redis, PostgreSQL (or CockroachDB), and starts all services (API + All Silos) with the correct configuration.
 
 1. Open `Titan.sln` in Visual Studio or Rider.
 2. Set **`Titan.AppHost`** as the Startup Project.
@@ -96,7 +96,7 @@ dotnet test Source/Titan.AppHost.Tests
 - [x] **Rate Limiting** - API throttling, service shielding
 
 ### Persistence & Operations
-- [x] **CockroachDB Persistence** - Distributed SQL storage with TLS encryption
+- [x] **PostgreSQL/CockroachDB Persistence** - Flexible database backend with retry logic for transient errors
 - [x] **Integration Tests** - Comprehensive test suite with database and clustering tests
 - [x] **Metrics/Observability** - OpenTelemetry + Aspire Dashboard
 - [x] **MemoryPack Wire Serialization** - High-performance binary serialization for Orleans RPC

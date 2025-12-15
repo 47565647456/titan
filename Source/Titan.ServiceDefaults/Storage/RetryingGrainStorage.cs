@@ -8,9 +8,10 @@ using Polly.Timeout;
 namespace Titan.ServiceDefaults.Storage;
 
 /// <summary>
-/// Wraps an IGrainStorage with retry logic for CockroachDB transient errors.
-/// CockroachDB signals retry errors with SQLSTATE 40001 and message starting with "restart transaction".
-/// See: https://www.cockroachlabs.com/docs/stable/transaction-retry-error-reference
+/// Wraps an IGrainStorage with retry logic for PostgreSQL/CockroachDB transient errors.
+/// Both databases signal retry errors with SQLSTATE 40001 for serialization conflicts.
+/// CockroachDB: https://www.cockroachlabs.com/docs/stable/transaction-retry-error-reference
+/// PostgreSQL: https://www.postgresql.org/docs/current/errcodes-appendix.html
 /// </summary>
 public class RetryingGrainStorage : IGrainStorage
 {
@@ -18,12 +19,13 @@ public class RetryingGrainStorage : IGrainStorage
     private readonly ILogger<RetryingGrainStorage> _logger;
     private readonly ResiliencePipeline _writePipeline;
 
-    // CockroachDB transient error SQL states
-    // Note: Per CockroachDB docs, ALL transaction retry errors use SQLSTATE 40001
-    // Error types like RETRY_WRITE_TOO_OLD, RETRY_SERIALIZABLE, etc. share this code
+    // PostgreSQL/CockroachDB transient error SQL states
+    // SQLSTATE 40001: Serialization failure / transaction retry
+    // SQLSTATE 08006: Connection failure
+    // SQLSTATE 57P01: Admin shutdown
     private static readonly HashSet<string> RetryableSqlStates = new(StringComparer.OrdinalIgnoreCase)
     {
-        "40001", // Serialization failure / transaction retry (all RETRY_* errors)
+        "40001", // Serialization failure / transaction retry (PostgreSQL and CockroachDB)
         "08006", // Connection failure
         "57P01", // Admin shutdown
     };
@@ -54,7 +56,7 @@ public class RetryingGrainStorage : IGrainStorage
                     var sqlState = (exception as PostgresException)?.SqlState ?? "timeout";
                     
                     _logger.LogWarning(
-                        "CockroachDB retry {Attempt}/{MaxAttempts} for {SqlState} after {Delay}ms",
+                        "Database retry {Attempt}/{MaxAttempts} for {SqlState} after {Delay}ms",
                         args.AttemptNumber,
                         options.MaxRetries,
                         sqlState,
@@ -98,7 +100,7 @@ public class RetryingGrainStorage : IGrainStorage
 }
 
 /// <summary>
-/// Configuration options for CockroachDB transaction retry.
+/// Configuration options for database transaction retry (PostgreSQL/CockroachDB).
 /// Can be configured via appsettings.json under Database:Retry section.
 /// </summary>
 public class RetryOptions
