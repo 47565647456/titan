@@ -4,7 +4,7 @@ $root = "$PSScriptRoot\.."
 
 # Restore .NET packages
 Write-Host "Restoring NuGet packages..." -ForegroundColor Yellow
-Set-Location -Path "$root\Source"
+Set-Location -Path "$root\src"
 dotnet restore
 
 # Restore npm packages for docs

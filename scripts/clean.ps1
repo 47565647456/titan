@@ -3,7 +3,7 @@ Write-Host "Cleaning Titan..." -ForegroundColor Cyan
 $root = "$PSScriptRoot\.."
 
 # Clean .NET build artifacts
-Get-ChildItem -Path "$root\Source" -Include "obj", "bin" -Directory -Recurse | 
+Get-ChildItem -Path "$root\src" -Include "obj", "bin" -Directory -Recurse | 
     ForEach-Object {
         Write-Host "  Removing $_" -ForegroundColor Yellow
         Remove-Item $_ -Recurse -Force
@@ -20,9 +20,9 @@ foreach ($artifact in $docsArtifacts) {
 }
 
 # Clean log files
-if (Test-Path "$root\Source\logs") {
+if (Test-Path "$root\src\logs") {
     Write-Host "  Removing logs" -ForegroundColor Yellow
-    Remove-Item "$root\Source\logs" -Recurse -Force
+    Remove-Item "$root\src\logs" -Recurse -Force
 }
 
 Write-Host "Clean complete!" -ForegroundColor Green

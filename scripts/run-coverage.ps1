@@ -32,7 +32,7 @@ if (-not $ReportGeneratorPath) {
     # Try PATH first
     $rgCmd = Get-Command "reportgenerator" -ErrorAction SilentlyContinue
     if ($rgCmd) {
-        $ReportGeneratorPath = $rgCmd.Source
+        $ReportGeneratorPath = $rgCmd.src
     }
     # Try common .NET tools location
     elseif (Test-Path "$env:USERPROFILE\.dotnet\tools\reportgenerator.exe") {
@@ -53,7 +53,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $coverageDir = Join-Path $repoRoot "coverage"
 $testResultsDir = Join-Path $coverageDir "TestResults"
 $reportDir = Join-Path $coverageDir "report"
-$runsettings = Join-Path $repoRoot "Source/coverage.runsettings"
+$runsettings = Join-Path $repoRoot "src/coverage.runsettings"
 
 Write-Host "=== Titan Code Coverage ===" -ForegroundColor Cyan
 
@@ -68,7 +68,7 @@ New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
 
 # Run tests with coverage
 Write-Host "`nRunning tests with coverage collection..." -ForegroundColor Cyan
-dotnet test "$repoRoot/Source/Titan.sln" `
+dotnet test "$repoRoot/src/Titan.sln" `
     --collect:"XPlat Code Coverage" `
     --settings $runsettings `
     --results-directory $testResultsDir

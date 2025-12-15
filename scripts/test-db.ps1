@@ -1,7 +1,7 @@
 # test-db.ps1 - Run only database persistence tests
 Write-Host "Running Database Persistence Tests..." -ForegroundColor Cyan
 
-Set-Location -Path $PSScriptRoot\..\Source
+Set-Location -Path $PSScriptRoot\..\src
 
 # Set environment to use database
 $env:USE_DATABASE = "true"

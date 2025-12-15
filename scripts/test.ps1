@@ -5,8 +5,7 @@ param (
 # test.ps1 - Run all tests
 Write-Host "Running Titan Tests..." -ForegroundColor Cyan
 
-Set-Location -Path $PSScriptRoot\..\Source
-
+Set-Location -Path $PSScriptRoot\..\src
 # Always run in-memory tests first
 Write-Host "`n=== Running In-Memory Tests ===" -ForegroundColor Yellow
 $env:USE_DATABASE = $null

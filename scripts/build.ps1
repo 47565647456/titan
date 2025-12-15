@@ -1,6 +1,6 @@
 # build.ps1 - Build all projects
 Write-Host "Building Titan..." -ForegroundColor Cyan
-Set-Location -Path $PSScriptRoot\..\Source
+Set-Location -Path $PSScriptRoot\..\src
 dotnet build
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Build succeeded!" -ForegroundColor Green
