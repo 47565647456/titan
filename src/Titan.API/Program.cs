@@ -176,24 +176,24 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Rate limiting to prevent abuse
-builder.Services.AddRateLimiter(options =>
+// Rate limiting to prevent abuse (can be disabled for load testing)
+var rateLimitConfig = builder.Configuration.GetSection(RateLimitingOptions.SectionName).Get<RateLimitingOptions>() ?? new RateLimitingOptions();
+if (rateLimitConfig.Enabled)
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    
-    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: context.User?.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-            factory: _ => 
-            {
-                var rateLimitOptions = builder.Configuration.GetSection(RateLimitingOptions.SectionName).Get<RateLimitingOptions>() ?? new RateLimitingOptions();
-                return new FixedWindowRateLimiterOptions
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: context.User?.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+                factory: _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = rateLimitOptions.PermitLimit,
-                    Window = TimeSpan.FromMinutes(rateLimitOptions.WindowMinutes)
-                };
-            }));
-});
+                    PermitLimit = rateLimitConfig.PermitLimit,
+                    Window = TimeSpan.FromMinutes(rateLimitConfig.WindowMinutes)
+                }));
+    });
+}
 
 var app = builder.Build();
 
@@ -209,7 +209,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors();
-app.UseRateLimiter();
+if (rateLimitConfig.Enabled)
+{
+    app.UseRateLimiter();
+}
 app.UseAuthentication();
 app.UseAuthorization();
 

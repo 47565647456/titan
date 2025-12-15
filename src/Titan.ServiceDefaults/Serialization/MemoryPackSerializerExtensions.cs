@@ -35,11 +35,14 @@ public static class MemoryPackSerializerExtensions
             services.Configure<MemoryPackCodecOptions>(_ => { });
         }
 
-        // Configure ExceptionSerializationOptions to allow MemoryPack exceptions to be serialized
+        // Configure ExceptionSerializationOptions to allow exceptions to be serialized
         // by Orleans' built-in ExceptionCodec (fix for GitHub issue dotnet/orleans#8201)
         services.Configure<ExceptionSerializationOptions>(options =>
         {
             options.SupportedNamespacePrefixes.Add("MemoryPack");
+            options.SupportedNamespacePrefixes.Add("Npgsql");        // PostgreSQL driver exceptions
+            options.SupportedNamespacePrefixes.Add("System.Net");    // Network exceptions
+            options.SupportedNamespacePrefixes.Add("System.IO");     // IO exceptions
         });
 
         // Register the codec as a singleton and expose it through all required interfaces
