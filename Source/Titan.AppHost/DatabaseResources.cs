@@ -96,7 +96,9 @@ public static class DatabaseResources
         var initScript = 
             $"echo 'Waiting for PostgreSQL...'; " +
             $"until PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d postgres -c 'SELECT 1' > /dev/null 2>&1; do sleep 1; done; " +
-            $"echo 'PostgreSQL Ready. Running init scripts...'; " +
+            $"echo 'PostgreSQL Ready. Creating databases...'; " +
+            $"PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d postgres -c 'CREATE DATABASE titan' 2>/dev/null || echo 'Database titan already exists'; " +
+            $"PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d postgres -c 'CREATE DATABASE titan_admin' 2>/dev/null || echo 'Database titan_admin already exists'; " +
             $"echo 'Running Orleans init.sql on titan database...'; " +
             $"PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d titan -f /init.sql; " +
             $"echo 'Running Admin init_admin.sql on titan_admin database...'; " +
