@@ -18,6 +18,7 @@
   <ItemGroup>
     <!-- Aspire.Hosting.AppHost is automatically included by the SDK in 13.0 -->
     <PackageReference Include="Aspire.Hosting.Orleans" />
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" />
     <PackageReference Include="Aspire.Hosting.Redis" />
 
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />

@@ -73,42 +73,33 @@ public static class DatabaseResources
         var isEphemeral = volumeConfig?.Equals("ephemeral", StringComparison.OrdinalIgnoreCase) == true ||
                           volumeConfig?.Equals("none", StringComparison.OrdinalIgnoreCase) == true;
         
-        // 1. PostgreSQL Container
-        var postgres = builder.AddPostgres("titan-db", password: password, port: 5432)
-            .WithImage(postgresImage, postgresTag)
-            .WithEnvironment("POSTGRES_USER", username)
-            .WithHealthCheck();
+        // 1. PostgreSQL Container with Aspire's AddPostgres
+        var postgres = builder.AddPostgres("titan-db", userName: username, password: password, port: 5432)
+            .WithImage(postgresImage, postgresTag);
         
-        // Volume configuration
+        // Volume configuration using WithDataVolume or WithDataBindMount
         if (isEphemeral)
         {
-            // Use anonymous volume for ephemeral storage
-            postgres.WithVolume(name: null!, "/var/lib/postgresql/data");
+            // Aspire handles ephemeral volumes automatically
         }
         else if (!string.IsNullOrEmpty(volumeConfig))
         {
-            postgres.WithVolume(volumeConfig, "/var/lib/postgresql/data");
+            postgres.WithDataVolume(volumeConfig);
         }
         else
         {
-            postgres.WithVolume($"titan-postgres-data-{env}", "/var/lib/postgresql/data");
+            postgres.WithDataVolume($"titan-postgres-data-{env}");
         }
         
-        // 2. Create databases and run initialization scripts
-        var titanDb = postgres.AddDatabase("titan");
-        var titanAdminDb = postgres.AddDatabase("titan_admin");
-        
-        // 3. Database Initialization Container
+        // 2. Database Initialization Container
         // Runs after PostgreSQL is ready, executes init scripts for both databases
         var initScript = 
             $"echo 'Waiting for PostgreSQL...'; " +
             $"until PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d postgres -c 'SELECT 1' > /dev/null 2>&1; do sleep 1; done; " +
-            $"echo 'PostgreSQL Ready. Creating databases...'; " +
-            $"PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d postgres -c 'CREATE DATABASE titan' || echo 'Database titan already exists'; " +
-            $"PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d postgres -c 'CREATE DATABASE titan_admin' || echo 'Database titan_admin already exists'; " +
-            $"echo 'Running Orleans init.sql...'; " +
+            $"echo 'PostgreSQL Ready. Running init scripts...'; " +
+            $"echo 'Running Orleans init.sql on titan database...'; " +
             $"PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d titan -f /init.sql; " +
-            $"echo 'Running Admin init_admin.sql...'; " +
+            $"echo 'Running Admin init_admin.sql on titan_admin database...'; " +
             $"PGPASSWORD=$DB_PASSWORD psql -h titan-db -U $DB_USER -d titan_admin -f /init_admin.sql; " +
             $"echo 'Initialization Complete.';";
         
@@ -119,7 +110,7 @@ public static class DatabaseResources
             .WithEnvironment("DB_USER", username)
             .WithEntrypoint("/bin/bash")
             .WithArgs("-c", initScript)
-            .WaitFor(postgres.Resource);
+            .WaitFor(postgres);
         
         // 4. Connection Strings with Configurable Pooling
         // Read pool settings from configuration with PostgreSQL-recommended defaults
@@ -129,17 +120,20 @@ public static class DatabaseResources
         var connectionLifetime = poolConfig["ConnectionLifetimeSeconds"] ?? "300";
         var connectionIdleLifetime = poolConfig["ConnectionIdleLifetimeSeconds"] ?? "300";
         
+        // Get the endpoint for connection string building
+        var endpoint = postgres.Resource.GetEndpoint("tcp");
+        
         // Main Orleans/game database connection string
         var connectionString = builder.AddConnectionString(
             "titan",
             ReferenceExpression.Create(
-                $"{titanDb.Resource.ConnectionStringExpression};MaxPoolSize={maxPoolSize};MinPoolSize={minPoolSize};ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime};ApplicationName=Titan"));
+                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan;Username={username};Password={password};MaxPoolSize={maxPoolSize};MinPoolSize={minPoolSize};ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime};ApplicationName=Titan"));
         
         // Admin Identity database connection string (separate database)
         var adminConnectionString = builder.AddConnectionString(
             "titan-admin",
             ReferenceExpression.Create(
-                $"{titanAdminDb.Resource.ConnectionStringExpression};MaxPoolSize=10;MinPoolSize=5;ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime};ApplicationName=TitanAdmin"));
+                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan_admin;Username={username};Password={password};MaxPoolSize=10;MinPoolSize=5;ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime};ApplicationName=TitanAdmin"));
         
         return (connectionString, adminConnectionString, postgresInit);
     }
