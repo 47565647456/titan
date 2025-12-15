@@ -23,23 +23,10 @@ Automatically configures metrics and tracing.
 - `ValidateTitanConfiguration`: A helper to fail-fast on startup if critical config (like JWT Keys or Database passwords) is missing.
 
 ### Grain Storage
-- `AddTitanGrainStorage(IConfiguration)`: Configures Orleans grain persistence.
+- `AddTitanGrainStorage(IConfiguration)`: Configures Orleans grain persistence backed by PostgreSQL.
   - **OrleansStorage**: Default grain storage for most grains.
   - **TransactionStore**: For Orleans transaction state.
   - **GlobalStorage**: Shared state (seasons, trades, migrations).
-- **RetryingGrainStorage**: A wrapper that adds exponential backoff retry logic to handle transient CockroachDB errors (SQLSTATE 40001).
-
-#### Retry Configuration
-Configure via `Database:Retry` section in appsettings.json:
-```json
-"Database": {
-  "Retry": {
-    "MaxRetries": 5,
-    "InitialDelayMs": 50,
-    "OperationTimeoutSeconds": 30
-  }
-}
-```
 
 Silo hosts use this extension:
 ```csharp
@@ -70,4 +57,3 @@ options.GrainStorageSerializer = MemoryPackSerializerExtensions.CreateMemoryPack
 // For transaction storage (Orleans internal compatibility)
 options.GrainStorageSerializer = MemoryPackSerializerExtensions.CreateSystemTextJsonGrainStorageSerializer();
 ```
-

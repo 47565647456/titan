@@ -23,7 +23,7 @@ The Dashboard is an Orleans **Client** that connects to the Titan cluster, allow
 │   └── Login, Home, ItemTypes, Seasons...    │
 ├─────────────────────────────────────────────┤
 │  ASP.NET Core Identity                      │
-│   └── AdminUsers, AdminRoles (CockroachDB)  │
+│   └── AdminUsers, AdminRoles (PostgreSQL)   │
 ├─────────────────────────────────────────────┤
 │  Orleans Client                             │
 │   └── IItemTypeRegistryGrain, ISeasonGrain  │
@@ -36,7 +36,7 @@ The Dashboard is configured via Aspire orchestration. Required configuration:
 
 | Setting | Source | Description |
 |---------|--------|-------------|
-| `ConnectionStrings:titan-admin` | Aspire | CockroachDB connection for Identity (Admin DB) |
+| `ConnectionStrings:titan-admin` | Aspire | PostgreSQL connection for Identity (Admin DB) |
 | `ConnectionStrings:orleans-clustering` | Aspire | Redis for Orleans clustering |
 
 ## Running
@@ -93,4 +93,4 @@ Titan.Dashboard/
 - **Titan.ServiceDefaults** - Aspire defaults, logging, OpenTelemetry
 - **Microsoft.Orleans.Client** - Orleans cluster client
 - **ASP.NET Core Identity** - Authentication/authorization
-- **Npgsql.EntityFrameworkCore.PostgreSQL** - EF Core provider for CockroachDB
+- **Npgsql.EntityFrameworkCore.PostgreSQL** - EF Core provider for PostgreSQL

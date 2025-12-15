@@ -20,7 +20,7 @@ builder.UseOrleansClient();
 // Register AccountQueryService for direct database queries (account listing)
 builder.Services.AddSingleton<Titan.Dashboard.Services.AccountQueryService>();
 
-// Configure EF Core with CockroachDB/PostgreSQL for Identity (separate database)
+// Configure EF Core with PostgreSQL for Identity (separate database)
 var connectionString = builder.Configuration.GetConnectionString("titan-admin") 
     ?? throw new InvalidOperationException("Connection string 'titan-admin' not found. Ensure the Dashboard is started via Aspire.");
 builder.Services.AddDbContext<AdminDbContext>(options =>

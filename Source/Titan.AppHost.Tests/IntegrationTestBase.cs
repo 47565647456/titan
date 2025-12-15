@@ -29,7 +29,7 @@ public class AppHostFixture : IAsyncLifetime
             [
                 "--environment=Development",
                 "Database:Volume=ephemeral",
-                "Parameters:cockroachdb-password=TestPassword123!"
+                "Parameters:postgres-password=TestPassword123!"
             ]);
         
         // Add resilience to HTTP clients

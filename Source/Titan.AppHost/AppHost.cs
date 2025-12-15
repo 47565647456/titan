@@ -21,12 +21,11 @@ var redis = builder.AddRedis("orleans-clustering")
     .WithImage(redisImage, redisTag)
     .WithRedisInsight();
 
-// Database password - using a stable password for local dev
-var dbPassword = builder.AddParameter("cockroachdb-password");
-var dbUsername = builder.AddParameter("cockroachdb-username");
+// Database password
+var dbPassword = builder.AddParameter("postgres-password");
 
-// Database resource - exclusively CockroachDB (returns both titan and titan-admin connections)
-var (titanDb, titanAdminDb, dbContainer) = DatabaseResources.AddDatabase(builder, dbPassword, dbUsername, env);
+// Database resource - PostgreSQL (returns both titan and titan-admin connections)
+var (titanDb, titanAdminDb) = DatabaseResources.AddDatabase(builder, dbPassword, env);
 
 // =============================================================================
 // Orleans Cluster Configuration
@@ -51,7 +50,6 @@ var identityHost = builder.AddProject<Projects.Titan_IdentityHost>("identity-hos
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
     .WithReplicas(replicas);
-DatabaseResources.AddDbWait(identityHost, dbContainer);
 
 var inventoryHost = builder.AddProject<Projects.Titan_InventoryHost>("inventory-host")
     .WithReference(orleans)
@@ -59,7 +57,6 @@ var inventoryHost = builder.AddProject<Projects.Titan_InventoryHost>("inventory-
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
     .WithReplicas(replicas);
-DatabaseResources.AddDbWait(inventoryHost, dbContainer);
 
 var tradingHost = builder.AddProject<Projects.Titan_TradingHost>("trading-host")
     .WithReference(orleans)
@@ -67,7 +64,6 @@ var tradingHost = builder.AddProject<Projects.Titan_TradingHost>("trading-host")
     .WaitFor(titanDb)
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
     .WithReplicas(replicas);
-DatabaseResources.AddDbWait(tradingHost, dbContainer);
 
 // =============================================================================
 // API Gateway (Orleans Client)
@@ -92,7 +88,5 @@ var dashboard = builder.AddProject<Projects.Titan_Dashboard>("dashboard")
     .WaitFor(identityHost)  // Wait for at least one silo to be running
     .WithExternalHttpEndpoints()
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment);
-DatabaseResources.AddDbWait(dashboard, dbContainer);  // Wait for admin db init
 
 builder.Build().Run();
-

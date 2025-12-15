@@ -37,5 +37,5 @@ Item management and generation system.
 
 ## Persistence
 This project uses Orleans 'State' and 'TransactionalState' features.
-- **Production**: Maps to CockroachDB (ADO.NET) via `Titan.Abstractions` configuration.
+- **Production**: Maps to PostgreSQL (ADO.NET) via `Titan.Abstractions` configuration.
 - **Development**: Supports Memory storage fallback (if configured).

@@ -1,77 +1,44 @@
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 
 namespace Titan.AppHost;
 
 /// <summary>
 /// Helper class for database resource configuration in the Aspire AppHost.
-/// New database backends can be added by implementing new static methods following the pattern.
+/// Configures PostgreSQL with SSL for secure connections.
 /// </summary>
 public static class DatabaseResources
 {
-    private const string CertsVolumeName = "titan-cockroachdb-certs";
-    private const string CertsMountPath = "/cockroach/certs";
-    private const string SafeDir = "/cockroach/safe";
+    private const string CertsVolumeName = "titan-postgres-certs";
+    private const string CertsMountPath = "/etc/postgresql/certs";
 
     /// <summary>
-    /// Adds the configured database resource to the Aspire application.
+    /// Adds PostgreSQL database resources to the Aspire application.
     /// Returns both the main database connection and admin database connection.
+    /// Configures SSL/TLS for encrypted connections.
     /// </summary>
-    public static (IResourceBuilder<IResourceWithConnectionString> Database, IResourceBuilder<IResourceWithConnectionString> AdminDatabase, IResourceBuilder<ContainerResource>? Container) AddDatabase(
+    public static (IResourceBuilder<PostgresDatabaseResource> Database,
+                   IResourceBuilder<PostgresDatabaseResource> AdminDatabase) AddDatabase(
         IDistributedApplicationBuilder builder,
         IResourceBuilder<ParameterResource> password,
-        IResourceBuilder<ParameterResource> username,
         string env)
     {
-        return AddCockroachDB(builder, password, username, env);
-    }
-
-    /// <summary>
-    /// Adds a wait dependency on a custom database container if applicable.
-    /// Uses WaitForCompletion for init containers that run once and exit.
-    /// </summary>
-    public static void AddDbWait<T>(
-        IResourceBuilder<T> project,
-        IResourceBuilder<ContainerResource>? dbContainer)
-        where T : IResourceWithWaitSupport
-    {
-        if (dbContainer != null)
-        {
-            // Wait for the init container to complete (not just start)
-            project.WaitForCompletion(dbContainer);
-        }
-    }
-
-    /// <summary>
-    /// Adds a CockroachDB cluster (single or multi-node) in SECURE mode.
-    /// 1. Generates CA, Node, and Client certs in a helper container.
-    /// 2. Starts CockroachDB with --certs-dir.
-    /// 3. Initializes the cluster and sets the root password.
-    /// </summary>
-    public static (IResourceBuilder<IResourceWithConnectionString> ConnectionString, IResourceBuilder<IResourceWithConnectionString> AdminConnectionString, IResourceBuilder<ContainerResource> Container) AddCockroachDB(
-        IDistributedApplicationBuilder builder,
-        IResourceBuilder<ParameterResource> password,
-        IResourceBuilder<ParameterResource> username,
-        string env)
-    {
-        var cockroachImage = builder.Configuration["ContainerImages:CockroachDB:Image"] ?? "cockroachdb/cockroach";
-        var cockroachTag = builder.Configuration["ContainerImages:CockroachDB:Tag"] ?? "latest-v24.3";
-        var clusterMode = builder.Configuration["Database:CockroachCluster"]?.ToLowerInvariant() ?? "single";
+        var postgresImage = builder.Configuration["ContainerImages:Postgres:Image"] ?? "postgres";
+        var postgresTag = builder.Configuration["ContainerImages:Postgres:Tag"] ?? "17";
 
         var volumeConfig = builder.Configuration["Database:Volume"];
         var isEphemeral = volumeConfig?.Equals("ephemeral", StringComparison.OrdinalIgnoreCase) == true ||
                           volumeConfig?.Equals("none", StringComparison.OrdinalIgnoreCase) == true;
 
+        // For ephemeral mode, use a temp directory with bind mount so certs are shared between containers
+        // For persistent mode, use a named Docker volume
         string certsSource;
         bool isBindMount;
 
         if (isEphemeral)
         {
-            // Use a temporary directory for certs in ephemeral mode to avoid polluting Docker volumes
-            // and ensure cleanup (OS handles temp, or it's just files)
-            certsSource = Path.Combine(Path.GetTempPath(), $"titan-certs-{Guid.NewGuid():N}");
+            certsSource = Path.Combine(Path.GetTempPath(), $"titan-postgres-certs-{Guid.NewGuid():N}");
             Directory.CreateDirectory(certsSource);
             isBindMount = true;
         }
@@ -81,222 +48,104 @@ public static class DatabaseResources
             isBindMount = false;
         }
 
-        // 1. Certificate Generator
-        var certsGen = AddCockroachCerts(builder, cockroachImage, cockroachTag, isEphemeral, certsSource, isBindMount);
+        Console.WriteLine("📦 Using PostgreSQL (SSL enabled) as database backend");
 
-        IResourceBuilder<ContainerResource> primaryNode;
-        IResourceBuilder<ContainerResource>? clusterInit = null;
+        // Certificate generator container - creates self-signed certs for PostgreSQL
+        var certsGen = AddPostgresCerts(builder, certsSource, isBindMount);
 
-        // 2. Database Nodes
-        if (clusterMode == "cluster")
+        var postgres = builder.AddPostgres("postgres", password: password)
+            .WithImage(postgresImage, postgresTag)
+            .WithPgAdmin()
+            .WaitForCompletion(certsGen);  // Wait for cert generation to complete (not just start)
+
+        // Mount the certificates volume/bind mount
+        if (isBindMount)
         {
-            Console.WriteLine("📦 Using CockroachDB 3-node cluster (SECURE) as database backend");
-            (primaryNode, clusterInit) = AddCockroachDBCluster(builder, cockroachImage, cockroachTag, env, volumeConfig, certsGen, certsSource, isBindMount);
+            postgres.WithBindMount(certsSource, CertsMountPath);
         }
         else
         {
-            Console.WriteLine("📦 Using CockroachDB single-node (SECURE) as database backend");
-            var cockroach = builder.AddContainer("titan-db", cockroachImage, cockroachTag)
-                .WithArgs("start-single-node", $"--certs-dir={CertsMountPath}", "--advertise-addr=localhost")
-                .WithEndpoint(port: 26257, targetPort: 26257, name: "sql")
-                .WithHttpEndpoint(port: 8080, targetPort: 8080, name: "http")
-                .WithHttpHealthCheck("/health?ready=1", endpointName: "http")
-                .WithExternalHttpEndpoints()
-                .WaitFor(certsGen);
-
-            if (isBindMount) cockroach.WithBindMount(certsSource, CertsMountPath);
-            else cockroach.WithVolume(certsSource, CertsMountPath);
-
-            // Volume configuration
-            if (isEphemeral)
-            {
-                cockroach.WithVolume(name: null!, "/cockroach/cockroach-data");
-            }
-            else if (string.IsNullOrEmpty(volumeConfig))
-            {
-                cockroach.WithVolume($"titan-cockroachdb-data-{env}", "/cockroach/cockroach-data");
-            }
-            else
-            {
-                cockroach.WithVolume(volumeConfig, "/cockroach/cockroach-data");
-            }
-
-            primaryNode = cockroach;
+            postgres.WithVolume(certsSource, CertsMountPath);
         }
 
-        // 3. Cluster/Schema Initialization & Password Setup
-        // Uses client.root certs to connect, creates user with password, then runs both init scripts
-        var setupScript = 
-            $"echo 'Waiting for DB...'; " +
-            $"until ./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --execute='SELECT 1'; do sleep 1; done; " +
-            $"echo 'DB Ready. Setting up user...'; " +
-            $"./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --execute=\"CREATE USER IF NOT EXISTS $DB_USER WITH PASSWORD '$DB_PASSWORD'; GRANT ADMIN TO $DB_USER;\"; " +
-            $"echo 'Running Orleans init.sql...'; " +
-            $"./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --file=/init.sql; " +
-            $"echo 'Running Admin init_admin.sql...'; " +
-            $"./cockroach sql --certs-dir={CertsMountPath} --host=titan-db --file=/init_admin.sql; " +
-            $"echo 'Initialization Complete.';";
+        // Configure PostgreSQL to use SSL via command-line args
+        // These args are passed to the postgres server process
+        postgres.WithArgs(
+            "-c", "ssl=on",
+            "-c", $"ssl_cert_file={CertsMountPath}/server.crt",
+            "-c", $"ssl_key_file={CertsMountPath}/server.key"
+        );
 
-        var orleansInit = builder.AddContainer("cockroachdb-init", cockroachImage, cockroachTag)
-            .WithBindMount("../../scripts/cockroachdb/init.sql", "/init.sql")
-            .WithBindMount("../../scripts/cockroachdb/init_admin.sql", "/init_admin.sql")
-            .WithEnvironment("DB_PASSWORD", password)
-            .WithEnvironment("DB_USER", username)
-            .WithEntrypoint("/bin/bash")
-            .WithArgs("-c", setupScript)
-            .WaitFor(primaryNode);
+        // Configure data persistence
+        if (isEphemeral)
+        {
+            // Ephemeral mode - no persistent volume for data
+        }
+        else if (string.IsNullOrEmpty(volumeConfig))
+        {
+            postgres.WithDataVolume($"titan-postgres-data-{env}");
+        }
+        else
+        {
+            postgres.WithDataVolume(volumeConfig);
+        }
 
-        if (isBindMount) orleansInit.WithBindMount(certsSource, CertsMountPath);
-        else orleansInit.WithVolume(certsSource, CertsMountPath);
+        // Run initialization scripts
+        postgres.WithInitFiles("../../scripts/postgres");
 
-        if (clusterInit != null) orleansInit.WaitFor(clusterInit);
+        // Create databases
+        var titanDb = postgres.AddDatabase("titan");
+        var titanAdminDb = postgres.AddDatabase("titan-admin");
 
-        // 4. Connection Strings (Secure) with Configurable Pooling
-        var endpoint = primaryNode.GetEndpoint("sql");
-        
-        // Read pool settings from configuration with CockroachDB-recommended defaults
-        var poolConfig = builder.Configuration.GetSection("Database:Pool");
-        var maxPoolSize = poolConfig["MaxPoolSize"] ?? "50";
-        var minPoolSize = poolConfig["MinPoolSize"] ?? "50";
-        var connectionLifetime = poolConfig["ConnectionLifetimeSeconds"] ?? "300";
-        var connectionIdleLifetime = poolConfig["ConnectionIdleLifetimeSeconds"] ?? "300";
-        
-        // Follower reads: Add Options parameter to enable for read-heavy connections
-        var followerReadsEnabled = builder.Configuration.GetValue("Database:FollowerReads", false);
-        var options = followerReadsEnabled 
-            ? ";Options=--default_transaction_use_follower_reads=on"
-            : "";
-        
-        // Main Orleans/game database connection string
-        var connectionString = builder.AddConnectionString(
-            "titan",
-            ReferenceExpression.Create(
-                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan;Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;ApplicationName=Titan;MaxPoolSize={maxPoolSize};MinPoolSize={minPoolSize};ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime}{options}"));
-
-        // Admin Identity database connection string (separate database)
-        var adminConnectionString = builder.AddConnectionString(
-            "titan-admin",
-            ReferenceExpression.Create(
-                $"Host={endpoint.Property(EndpointProperty.Host)};Port={endpoint.Property(EndpointProperty.Port)};Database=titan_admin;Username={username};Password={password};SSL Mode=Require;Trust Server Certificate=true;ApplicationName=TitanAdmin;MaxPoolSize=10;MinPoolSize=5;ConnectionLifetime={connectionLifetime};ConnectionIdleLifetime={connectionIdleLifetime}"));
-
-        return (connectionString, adminConnectionString, orleansInit);
+        return (titanDb, titanAdminDb);
     }
 
     /// <summary>
-    /// creates a helper container that generates the CA, Node, and Client certificates
-    /// if they don't already exist in the shared volume.
+    /// Creates a helper container that generates self-signed SSL certificates for PostgreSQL.
+    /// The certificates are stored in a shared volume/bind mount and mounted into the PostgreSQL container.
+    /// Uses OpenSSL to generate a self-signed certificate valid for 365 days.
     /// </summary>
-    private static IResourceBuilder<ContainerResource> AddCockroachCerts(
-        IDistributedApplicationBuilder builder, 
-        string image, 
-        string tag,
-        bool isEphemeral,
+    private static IResourceBuilder<ContainerResource> AddPostgresCerts(
+        IDistributedApplicationBuilder builder,
         string certsSource,
         bool isBindMount)
     {
-        // Script to generate certs
-        // 1. Create CA if missing
-        // 2. Create Node certs (valid for all node names + localhost)
-        // 3. Create Client root cert
-        var genScript =
-            $"mkdir -p {CertsMountPath} {SafeDir}; " +
-            $"if [ ! -f {CertsMountPath}/ca.crt ]; then " +
-            $"  echo 'Generating CA...'; " +
-            $"  cockroach cert create-ca --certs-dir={CertsMountPath} --ca-key={SafeDir}/ca.key; " +
-            $"  echo 'Generating Node Certs...'; " +
-            $"  cockroach cert create-node titan-db titan-db-2 titan-db-3 localhost 127.0.0.1 --certs-dir={CertsMountPath} --ca-key={SafeDir}/ca.key; " +
-            $"  echo 'Generating Client Root Cert...'; " +
-            $"  cockroach cert create-client root --certs-dir={CertsMountPath} --ca-key={SafeDir}/ca.key; " +
-            $"else " +
-            $"  echo 'Certificates already exist.'; " +
-            $"fi; " +
-            $"chmod 700 {CertsMountPath}/*.key; " + // Secure permissions
-            $"ls -la {CertsMountPath}; " +
-            $"sleep infinity;"; // Keep container running so dependencies can wait for it
+        var opensslImage = builder.Configuration["ContainerImages:OpenSSL:Image"] ?? "alpine/openssl";
+        var opensslTag = builder.Configuration["ContainerImages:OpenSSL:Tag"] ?? "latest";
 
-        var resource = builder.AddContainer("cockroach-certs", image, tag)
-            .WithEntrypoint("/bin/bash")
+        // Script to generate self-signed certificates using OpenSSL
+        // - Creates server.crt and server.key
+        // - Sets permissions to 600 (required by PostgreSQL)
+        // - Changes ownership to postgres user (UID 999 in official image)
+        var genScript =
+            $"mkdir -p {CertsMountPath} && " +
+            $"if [ ! -f {CertsMountPath}/server.crt ]; then " +
+            $"  echo 'Generating PostgreSQL SSL certificates...' && " +
+            $"  openssl req -new -x509 -days 365 -nodes -text " +
+            $"    -out {CertsMountPath}/server.crt " +
+            $"    -keyout {CertsMountPath}/server.key " +
+            $"    -subj '/CN=postgres' && " +
+            $"  chmod 600 {CertsMountPath}/server.key && " +
+            $"  chown 999:999 {CertsMountPath}/server.key {CertsMountPath}/server.crt && " +
+            $"  echo 'SSL certificates generated successfully.' && " +
+            $"  ls -la {CertsMountPath}; " +
+            $"else " +
+            $"  echo 'SSL certificates already exist.'; " +
+            $"fi";
+
+        var resource = builder.AddContainer("postgres-certs", opensslImage, opensslTag)
+            .WithEntrypoint("/bin/sh")
             .WithArgs("-c", genScript);
-            
-        if (isBindMount) resource.WithBindMount(certsSource, CertsMountPath);
-        else resource.WithVolume(certsSource, CertsMountPath);
-        
-        if (isEphemeral)
+
+        if (isBindMount)
         {
-            resource.WithVolume(name: null!, target: SafeDir);
+            resource.WithBindMount(certsSource, CertsMountPath);
         }
         else
         {
-            resource.WithVolume("titan-cockroachdb-safe", SafeDir);
+            resource.WithVolume(certsSource, CertsMountPath);
         }
 
         return resource;
-    }
-
-    private static (IResourceBuilder<ContainerResource> Node, IResourceBuilder<ContainerResource> ClusterInit) AddCockroachDBCluster(
-        IDistributedApplicationBuilder builder,
-        string image,
-        string tag,
-        string env,
-        string? volumeConfig,
-        IResourceBuilder<ContainerResource> certs,
-        string certsSource,
-        bool isBindMount)
-    {
-        var joinAddrs = "titan-db:26257,titan-db-2:26257,titan-db-3:26257";
-        var isEphemeral = volumeConfig?.Equals("ephemeral", StringComparison.OrdinalIgnoreCase) == true ||
-                          volumeConfig?.Equals("none", StringComparison.OrdinalIgnoreCase) == true;
-
-        // Node 1
-        var node1 = builder.AddContainer("titan-db", image, tag)
-            .WithArgs("start", $"--certs-dir={CertsMountPath}", "--advertise-addr=titan-db:26257", $"--join={joinAddrs}")
-            .WithEndpoint(port: 26257, targetPort: 26257, name: "sql")
-            .WithHttpEndpoint(port: 8080, targetPort: 8080, name: "http")
-            .WithHttpHealthCheck("/health", endpointName: "http")
-            .WithExternalHttpEndpoints()
-            .WaitFor(certs);
-            
-        if (isBindMount) node1.WithBindMount(certsSource, CertsMountPath);
-        else node1.WithVolume(certsSource, CertsMountPath);
-            
-        node1.WithVolume(isEphemeral ? null! : $"titan-cockroachdb-1-{env}", "/cockroach/cockroach-data");
-
-        // Node 2
-        var node2 = builder.AddContainer("titan-db-2", image, tag)
-            .WithArgs("start", $"--certs-dir={CertsMountPath}", "--advertise-addr=titan-db-2:26257", $"--join={joinAddrs}")
-            .WithEndpoint(targetPort: 26257, name: "sql")
-            .WithHttpEndpoint(targetPort: 8080, name: "http")
-            .WithHttpHealthCheck("/health", endpointName: "http")
-            .WaitFor(certs);
-
-        if (isBindMount) node2.WithBindMount(certsSource, CertsMountPath);
-        else node2.WithVolume(certsSource, CertsMountPath);
-
-        node2.WithVolume(isEphemeral ? null! : $"titan-cockroachdb-2-{env}", "/cockroach/cockroach-data");
-
-        // Node 3
-        var node3 = builder.AddContainer("titan-db-3", image, tag)
-            .WithArgs("start", $"--certs-dir={CertsMountPath}", "--advertise-addr=titan-db-3:26257", $"--join={joinAddrs}")
-            .WithEndpoint(targetPort: 26257, name: "sql")
-            .WithHttpEndpoint(targetPort: 8080, name: "http")
-            .WithHttpHealthCheck("/health", endpointName: "http")
-            .WaitFor(certs);
-
-        if (isBindMount) node3.WithBindMount(certsSource, CertsMountPath);
-        else node3.WithVolume(certsSource, CertsMountPath);
-        
-        node3.WithVolume(isEphemeral ? null! : $"titan-cockroachdb-3-{env}", "/cockroach/cockroach-data");
-
-        // Init cluster
-        var clusterInit = builder.AddContainer("cockroachdb-cluster-init", image, tag)
-            .WithArgs("init", $"--certs-dir={CertsMountPath}", "--host=titan-db:26257")
-            .WaitFor(node1)
-            .WaitFor(node2)
-            .WaitFor(node3);
-            
-        if (isBindMount) clusterInit.WithBindMount(certsSource, CertsMountPath);
-        else clusterInit.WithVolume(certsSource, CertsMountPath);
-
-        return (node1, clusterInit);
     }
 }

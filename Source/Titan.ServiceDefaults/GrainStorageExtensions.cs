@@ -1,9 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using Orleans.Storage;
 using Titan.ServiceDefaults.Serialization;
-using Titan.ServiceDefaults.Storage;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -14,29 +11,28 @@ namespace Microsoft.Extensions.Hosting;
 public static class GrainStorageExtensions
 {
     /// <summary>
-    /// Configures Orleans grain storage providers backed by CockroachDB.
-    /// All providers use the same connection with retry logic for serialization conflicts.
+    /// Configures Orleans grain storage providers backed by PostgreSQL.
+    /// All providers use the same connection string.
     /// </summary>
     public static ISiloBuilder AddTitanGrainStorage(this ISiloBuilder silo, IConfiguration config)
     {
         var connectionString = config.GetConnectionString("titan");
 
         // Use MemoryPack for application grain storage (faster, smaller payloads)
-        AddRetryingAdoNetStorage(silo, "OrleansStorage", connectionString, config, useMemoryPack: true);
-        AddRetryingAdoNetStorage(silo, "GlobalStorage", connectionString, config, useMemoryPack: true);
+        AddAdoNetStorageWithConfig(silo, "OrleansStorage", connectionString, useMemoryPack: true);
+        AddAdoNetStorageWithConfig(silo, "GlobalStorage", connectionString, useMemoryPack: true);
         
         // PubSubStore and TransactionStore use JSON - Orleans internal types are not MemoryPackable
-        AddRetryingAdoNetStorage(silo, "PubSubStore", connectionString, config, useMemoryPack: false);
-        AddRetryingAdoNetStorage(silo, "TransactionStore", connectionString, config, useMemoryPack: false);
+        AddAdoNetStorageWithConfig(silo, "PubSubStore", connectionString, useMemoryPack: false);
+        AddAdoNetStorageWithConfig(silo, "TransactionStore", connectionString, useMemoryPack: false);
 
         return silo;
     }
 
-    private static void AddRetryingAdoNetStorage(
+    private static void AddAdoNetStorageWithConfig(
         ISiloBuilder silo, 
         string name, 
-        string? connectionString, 
-        IConfiguration config,
+        string? connectionString,
         bool useMemoryPack = true)
     {
         if (string.IsNullOrEmpty(connectionString))
@@ -46,11 +42,10 @@ public static class GrainStorageExtensions
             return;
         }
 
-        // Register the underlying ADO.NET storage with a prefixed name
-        var innerStorageName = $"{name}_Inner";
-        silo.AddAdoNetGrainStorage(innerStorageName, options =>
+        // Register ADO.NET storage with PostgreSQL
+        silo.AddAdoNetGrainStorage(name, options =>
         {
-            options.Invariant = "Npgsql";  // CockroachDB uses PostgreSQL wire protocol
+            options.Invariant = "Npgsql";  // PostgreSQL
             options.ConnectionString = connectionString;
             
             // Use MemoryPack for faster binary serialization, or System.Text.Json for fallback
@@ -58,18 +53,6 @@ public static class GrainStorageExtensions
             options.GrainStorageSerializer = useMemoryPack
                 ? MemoryPackSerializerExtensions.CreateMemoryPackGrainStorageSerializer()
                 : MemoryPackSerializerExtensions.CreateSystemTextJsonGrainStorageSerializer();
-        });
-
-        // Wrap with retry logic for CockroachDB SQLSTATE 40001 (serialization conflicts)
-        silo.Services.AddKeyedSingleton<IGrainStorage>(name, (sp, key) =>
-        {
-            var innerStorage = sp.GetRequiredKeyedService<IGrainStorage>(innerStorageName);
-            var logger = sp.GetRequiredService<ILogger<RetryingGrainStorage>>();
-            
-            var retryOptions = new RetryOptions();
-            config.GetSection("Database:Retry").Bind(retryOptions);
-            
-            return new RetryingGrainStorage(innerStorage, logger, retryOptions);
         });
     }
 }

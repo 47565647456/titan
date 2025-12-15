@@ -3,7 +3,7 @@
 End-to-End Integration tests for the full Titan System.
 
 ## Test Strategy
-These tests use `Aspire.Hosting.Testing` to launch the **entire application stack** (AppHost, API, Silos, Redis, CockroachDB) as a real running environment.
+These tests use `Aspire.Hosting.Testing` to launch the **entire application stack** (AppHost, API, Silos, Redis, PostgreSQL) as a real running environment.
 
 The test fixture uses `DistributedApplicationTestingBuilder.CreateAsync<T>()` to build and start the AppHost, with configuration passed via command-line arguments for test isolation.
 

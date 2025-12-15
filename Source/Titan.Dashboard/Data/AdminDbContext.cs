@@ -6,7 +6,7 @@ namespace Titan.Dashboard.Data;
 
 /// <summary>
 /// Entity Framework Core DbContext for ASP.NET Core Identity.
-/// Uses CockroachDB (PostgreSQL-compatible) for admin user management.
+/// Uses PostgreSQL for admin user management.
 /// </summary>
 public class AdminDbContext : IdentityDbContext<AdminUser, AdminRole, Guid>
 {
@@ -19,10 +19,10 @@ public class AdminDbContext : IdentityDbContext<AdminUser, AdminRole, Guid>
     {
         base.OnModelCreating(builder);
 
-        // Set default schema for CockroachDB (PostgreSQL-compatible)
+        // Set default schema for PostgreSQL
         builder.HasDefaultSchema("public");
 
-        // Configure Identity tables for CockroachDB (snake_case naming)
+        // Configure Identity tables (snake_case naming)
         builder.Entity<AdminUser>(entity =>
         {
             entity.ToTable("admin_users", "public");

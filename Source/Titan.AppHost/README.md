@@ -5,30 +5,29 @@ The **Aspire** Orchestrator for the Titan Backend. This project is the entry poi
 ## Responsibilities
 - **Orchestration**: Starts and manages all services (API, IdentityHost, InventoryHost, TradingHost, Dashboard).
 - **Service Discovery**: Injects connection strings and endpoints into child projects.
-- **Infrastructure**: Provisions Docker containers for Redis and CockroachDB.
-- **Security**: Manages TLS certificate generation for secure database communication.
+- **Infrastructure**: Provisions Docker containers for Redis and PostgreSQL.
 
 ## Resources
 
-### Databases
-- **CockroachDB (`titan-db`)**:
-  - Distributed SQL database with PostgreSQL wire protocol.
-  - Runs in **secure mode** with auto-generated TLS certificates.
-  - Initialized with `scripts/cockroachdb/init.sql` and `init_admin.sql`.
-  - **Cluster Mode**: Configurable single-node or 3-node cluster via `Database:CockroachCluster`.
+### Database
+- **PostgreSQL (`postgres`)**:
+  - PostgreSQL database with **SSL/TLS enabled**.
+  - Self-signed certificates auto-generated via `postgres-certs` container.
+  - Includes pgAdmin for web-based database management.
+  - Initialized with `scripts/postgres/01-init-orleans.sql` and `02-init-admin.sql`.
+  - Data persisted in Docker volume.
 
-### Certificates
-The AppHost automatically generates TLS certificates for CockroachDB using a helper container (`cockroach-certs`):
-- **CA Certificate**: Signs all other certs.
-- **Node Certificate**: For database server nodes.
-- **Client Certificate**: For root user connections.
+### SSL/TLS Certificates
+The AppHost automatically generates self-signed SSL certificates for PostgreSQL:
+- **Server Certificate**: `/etc/postgresql/certs/server.crt`
+- **Server Key**: `/etc/postgresql/certs/server.key`
 
-To trust the admin UI in your browser, import the CA cert from the Docker volume (see instructions in root README).
+Certificates are stored in a Docker volume and reused across restarts (unless `Database:Volume=ephemeral`).
 
 ### Caching / Clustering
 - **Redis (`orleans-clustering`)**: 
   - Used by Orleans for Silo membership (Clustering) and Grain Directory.
-  - Includes RedisInsight for data inspection.
+  - Includes RedisInsight.
 
 ## Configuration Parameters
 
@@ -37,8 +36,6 @@ The AppHost orchestrates the following projects:
 - **Silos**: `Titan.IdentityHost`, `Titan.InventoryHost`, `Titan.TradingHost`.
 - **API**: `Titan.API` (Gateway).
 - **Dashboard**: `Titan.Dashboard`.
-
-### Configuration Parameters
 
 ### General
 | Parameter | Description | Default |
@@ -49,13 +46,10 @@ The AppHost orchestrates the following projects:
 ### Database
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `cockroachdb-password` | Password for the database user | `TestPassword123ABC` |
-| `cockroachdb-username` | Database username | `titan_user` |
-| `Database:CockroachCluster` | `single` or `cluster` (3-node) | `cluster` (in appsettings) |
-| `Database:Volume` | Docker volume name. Set to `ephemeral` to wipe DB/Certs. | `(dynamic)` |
-| `Database:FollowerReads` | Enable follower reads (~4.8s stale) for lower latency | `false` |
-| `Database:Pool:MaxPoolSize` | Max connections per silo | `50` |
-| `Database:Pool:MinPoolSize` | Min connections (fixed pool) | `50` |
+| `postgres-password` | Password for the database user | `TestPassword123ABC` |
+| `Database:Volume` | Docker volume name. Set to `ephemeral` to use temporary storage. | `titan-postgres-data-{env}` |
+| `Database:Pool:MaxPoolSize` | Max connections per silo | `100` |
+| `Database:Pool:MinPoolSize` | Min connections | `0` |
 | `Database:Pool:ConnectionLifetimeSeconds` | Max connection age before recycle | `300` |
 | `Database:Pool:ConnectionIdleLifetimeSeconds` | Max idle time before close | `300` |
 
@@ -65,12 +59,9 @@ Override these if you need specific versions.
 |-----------|-------------|---------|
 | `ContainerImages:Redis:Image` | Redis image name | `redis` |
 | `ContainerImages:Redis:Tag` | Redis image tag | `8.4` |
-| `ContainerImages:CockroachDB:Image` | CockroachDB image name | `cockroachdb/cockroach` |
-| `ContainerImages:CockroachDB:Tag` | CockroachDB image tag | `latest-v25.4` |
+| `ContainerImages:Postgres:Image` | PostgreSQL image name | `postgres` |
+| `ContainerImages:Postgres:Tag` | PostgreSQL image tag | `17` |
 
 ## Running the Project
 Set this project as the **Startup Project** in Visual Studio or run `dotnet run` to launch the Aspire Dashboard.
-The AppHost will handle the complexity of:
-1. Generating Certificates.
-2. Waiting for DB initialization.
-3. Starting Redis and Silos in the correct order.
+The AppHost will handle starting PostgreSQL, Redis, and Silos in the correct order.

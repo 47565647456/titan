@@ -1,12 +1,12 @@
--- Orleans ADO.NET CockroachDB Schema (Persistence & Reminders)
--- CockroachDB is PostgreSQL-compatible but doesn't support all PL/pgSQL features
+-- Orleans ADO.NET PostgreSQL Schema (Persistence & Reminders)
+-- This script initializes the Orleans storage tables for PostgreSQL.
 -- NOTE: Orleans ADO.NET uses specific table names internally - do not rename
 
 -- ============================================================
--- Create Database
+-- Create Database and Connect
 -- ============================================================
-CREATE DATABASE IF NOT EXISTS titan;
-USE titan;
+CREATE DATABASE titan;
+\connect titan
 
 -- ============================================================
 -- OrleansQuery - Base Query Table (Required by Orleans ADO.NET)

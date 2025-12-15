@@ -43,7 +43,7 @@ Run via `dotnet test` or the Visual Studio Test Explorer.
 
 ### Database Testing
 By default, tests run using **in-memory** storage providers for speed.
-To run tests against a real CockroachDB instance, set the environment variable:
+To run tests against a real PostgreSQL instance, set the environment variable:
 ```powershell
 $env:USE_DATABASE="true"
 $env:POSTGRES_CONNECTION="Host=localhost;Port=5432;Database=titan;Username=postgres;Password=TitanDevelopmentPassword123!"

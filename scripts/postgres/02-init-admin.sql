@@ -1,12 +1,11 @@
--- Admin Dashboard Identity Schema
--- CockroachDB best practices: snake_case naming, UUIDs for PKs
--- Separate database from Orleans game data
+-- Admin Dashboard Identity Schema for PostgreSQL
+-- Uses snake_case naming convention for consistency
 
 -- ============================================================
--- Create Database
+-- Create Database and Connect
 -- ============================================================
-CREATE DATABASE IF NOT EXISTS titan_admin;
-USE titan_admin;
+CREATE DATABASE "titan-admin";
+\connect "titan-admin"
 
 -- ============================================================
 -- ASP.NET Core Identity Tables
