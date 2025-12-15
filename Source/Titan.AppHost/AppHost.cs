@@ -21,11 +21,12 @@ var redis = builder.AddRedis("orleans-clustering")
     .WithImage(redisImage, redisTag)
     .WithRedisInsight();
 
-// Database password - using a stable password for local dev
-var dbPassword = builder.AddParameter("cockroachdb-password");
-var dbUsername = builder.AddParameter("cockroachdb-username");
+// Database credentials - using a stable password for local dev
+// Parameters support both PostgreSQL and CockroachDB (configured via Database:Type)
+var dbPassword = builder.AddParameter("cockroachdb-password");  // Name kept for backwards compatibility
+var dbUsername = builder.AddParameter("cockroachdb-username");  // Name kept for backwards compatibility
 
-// Database resource - exclusively CockroachDB (returns both titan and titan-admin connections)
+// Database resource - PostgreSQL or CockroachDB (returns both titan and titan-admin connections)
 var (titanDb, titanAdminDb, dbContainer) = DatabaseResources.AddDatabase(builder, dbPassword, dbUsername, env);
 
 // =============================================================================
