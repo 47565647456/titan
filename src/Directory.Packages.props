@@ -70,6 +70,8 @@
     <!-- Testing -->
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageVersion Include="Moq" Version="4.20.72" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.9.32" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
 

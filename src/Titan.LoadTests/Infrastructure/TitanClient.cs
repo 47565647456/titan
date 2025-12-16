@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.SignalR.Client;
 
@@ -164,6 +165,12 @@ public class TitanClient : IAsyncDisposable
     
     public async Task<bool> LoginAsync(string mockToken = "", CancellationToken ct = default)
     {
+        var result = await LoginWithRateLimitInfoAsync(mockToken, ct);
+        return result.Success;
+    }
+    
+    public async Task<LoginRateLimitResult> LoginWithRateLimitInfoAsync(string mockToken = "", CancellationToken ct = default)
+    {
         try
         {
             if (string.IsNullOrEmpty(mockToken))
@@ -176,21 +183,73 @@ public class TitanClient : IAsyncDisposable
             
             var response = await SharedHttpClient.PostAsJsonAsync($"{_baseUrl}/api/auth/login", request, cts.Token);
             
+            // Handle rate limiting
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                var retryAfter = GetRetryAfter(response);
+                return new LoginRateLimitResult(false, true, retryAfter);
+            }
+            
             if (!response.IsSuccessStatusCode)
-                return false;
+                return new LoginRateLimitResult(false, false, null);
             
             var result = await response.Content.ReadFromJsonAsync<LoginResponse>(cts.Token);
             if (result?.Success != true || string.IsNullOrEmpty(result.AccessToken))
-                return false;
+                return new LoginRateLimitResult(false, false, null);
             
             AccessToken = result.AccessToken;
             UserId = result.UserId ?? Guid.Empty;
-            return true;
+            return new LoginRateLimitResult(true, false, null);
         }
         catch
         {
-            return false;
+            return new LoginRateLimitResult(false, false, null);
         }
+    }
+    
+    /// <summary>
+    /// Makes a GET request with rate limit handling.
+    /// </summary>
+    public async Task<RateLimitedResult<T>> GetAsync<T>(string path, CancellationToken ct = default)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(DefaultTimeout);
+            
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}{path}");
+            if (!string.IsNullOrEmpty(AccessToken))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AccessToken);
+            
+            var response = await SharedHttpClient.SendAsync(request, cts.Token);
+            
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                var retryAfter = GetRetryAfter(response);
+                return new RateLimitedResult<T>(default, false, true, retryAfter);
+            }
+            
+            if (!response.IsSuccessStatusCode)
+                return new RateLimitedResult<T>(default, false, false, null);
+            
+            var result = await response.Content.ReadFromJsonAsync<T>(cts.Token);
+            return new RateLimitedResult<T>(result, true, false, null);
+        }
+        catch
+        {
+            return new RateLimitedResult<T>(default, false, false, null);
+        }
+    }
+    
+    private static int? GetRetryAfter(HttpResponseMessage response)
+    {
+        if (response.Headers.TryGetValues("Retry-After", out var values))
+        {
+            var value = values.FirstOrDefault();
+            if (int.TryParse(value, out var seconds))
+                return seconds;
+        }
+        return null;
     }
     
     public async Task<HubConnection> GetHubAsync(string hubPath, CancellationToken ct = default)
@@ -249,4 +308,23 @@ internal record LoginResponse(
     string? RefreshToken, 
     int? AccessTokenExpiresInSeconds, 
     Guid? UserId
+);
+
+/// <summary>
+/// Result of a login attempt with rate limit information.
+/// </summary>
+public record LoginRateLimitResult(
+    bool Success,
+    bool RateLimited,
+    int? RetryAfterSeconds
+);
+
+/// <summary>
+/// Result of an operation that may be rate limited.
+/// </summary>
+public record RateLimitedResult<T>(
+    T? Data,
+    bool Success,
+    bool RateLimited,
+    int? RetryAfterSeconds
 );

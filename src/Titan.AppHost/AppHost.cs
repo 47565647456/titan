@@ -21,6 +21,10 @@ var redis = builder.AddRedis("orleans-clustering")
     .WithImage(redisImage, redisTag)
     .WithRedisInsight();
 
+// Redis for rate limiting state (separate from clustering)
+var rateLimitRedis = builder.AddRedis("rate-limiting")
+    .WithImage(redisImage, redisTag);
+
 // Database password
 var dbPassword = builder.AddParameter("postgres-password");
 
@@ -72,10 +76,12 @@ var tradingHost = builder.AddProject<Projects.Titan_TradingHost>("trading-host")
 var api = builder.AddProject<Projects.Titan_API>("api")
     .WithReference(orleans.AsClient())
     .WithReference(titanDb)
+    .WithReference(rateLimitRedis)
     .WaitFor(identityHost)  // Wait for at least one silo to be running
     .WithExternalHttpEndpoints()
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment)
-    .WithEnvironment("Jwt__Key", builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is missing in AppHost configuration"));
+    .WithEnvironment("Jwt__Key", builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is missing in AppHost configuration"))
+    .WithEnvironment("RateLimiting__Enabled", builder.Configuration["RateLimiting:Enabled"] ?? "true");
 
 // =============================================================================
 // Admin Dashboard (Orleans Client + Identity)
@@ -85,6 +91,7 @@ var dashboard = builder.AddProject<Projects.Titan_Dashboard>("dashboard")
     .WithReference(orleans.AsClient())
     .WithReference(titanDb)       // Orleans storage database (for account queries)
     .WithReference(titanAdminDb)  // Admin Identity database (titan_admin)
+    .WithReference(api)           // API service for admin endpoint calls
     .WaitFor(identityHost)  // Wait for at least one silo to be running
     .WithExternalHttpEndpoints()
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment);

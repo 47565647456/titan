@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
+using Orleans.Configuration;
 using Scalar.AspNetCore;
 using System.Text;
-using System.Threading.RateLimiting;
 using Titan.Abstractions;
 using Titan.API.Hubs;
 using Titan.API.Services;
@@ -12,7 +12,7 @@ using Titan.Abstractions.Rules;
 using Titan.Grains.Trading.Rules;
 using Titan.API.Config;
 using Titan.API.Controllers;
-using Microsoft.Extensions.Options;
+using Titan.API.Services.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +25,9 @@ builder.AddServiceDefaults();
 // Add Redis client for Orleans clustering (keyed service registration)
 // Key must match Redis resource name from AppHost's AddRedis()
 builder.AddKeyedRedisClient("orleans-clustering");
+
+// Add Redis client for rate limiting state
+builder.AddKeyedRedisClient("rate-limiting");
 
 // Configure Sentry SDK for ASP.NET Core (only if DSN is configured)
 var sentryDsn = builder.Configuration["Sentry:Dsn"];
@@ -48,11 +51,14 @@ builder.AddTitanLogging("api");
 // Clustering is auto-configured by Aspire via Redis
 builder.UseOrleansClient(client =>
 {
+    // CRITICAL: Must match ServiceId used by silos for clustering to work
+    client.Configure<ClusterOptions>(options => options.ServiceId = "titan-service");
+    
     // Add stream support for receiving trade events
     client.AddMemoryStreams(TradeStreamConstants.ProviderName);
 });
 
-// Add SignalR for WebSocket hubs
+// Add SignalR for WebSocket hubs with rate limiting filter
 builder.Services.AddSignalR(options =>
 {
     // Enable detailed errors in development/testing for debugging
@@ -60,7 +66,14 @@ builder.Services.AddSignalR(options =>
     {
         options.EnableDetailedErrors = true;
     }
+}).AddHubOptions<Titan.API.Hubs.TitanHubBase>(options =>
+{
+    // Hub-specific options if needed
 });
+
+// Register hub filter for rate limiting (applied to all hubs)
+builder.Services.AddSingleton<IHubFilter, RateLimitHubFilter>();
+
 builder.Services.AddOpenApi();
 
 // Register and Bind Options
@@ -135,7 +148,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             }
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // SuperAdmin policy - requires "admin" or "superadmin" role claim
+    options.AddPolicy("SuperAdmin", policy => 
+        policy.RequireAssertion(context =>
+            context.User.HasClaim(c => 
+                c.Type == System.Security.Claims.ClaimTypes.Role && 
+                (c.Value.Equals("Admin", StringComparison.OrdinalIgnoreCase) ||
+                 c.Value.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase)))));
+});
+
+// Add controllers for admin API endpoints
+builder.Services.AddControllers();
 
 // Register Auth Services
 builder.Services.AddSingleton<ITokenService, TokenService>();
@@ -176,24 +201,10 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Rate limiting to prevent abuse (can be disabled for load testing)
-var rateLimitConfig = builder.Configuration.GetSection(RateLimitingOptions.SectionName).Get<RateLimitingOptions>() ?? new RateLimitingOptions();
-if (rateLimitConfig.Enabled)
-{
-    builder.Services.AddRateLimiter(options =>
-    {
-        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        
-        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: context.User?.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-                factory: _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = rateLimitConfig.PermitLimit,
-                    Window = TimeSpan.FromMinutes(rateLimitConfig.WindowMinutes)
-                }));
-    });
-}
+// Register rate limiting services (Redis-backed)
+builder.Services.AddSingleton<RateLimitService>();
+builder.Services.AddSingleton<RateLimitHubFilter>();
+builder.Services.AddHostedService<RateLimitConfigInitializer>();
 
 var app = builder.Build();
 
@@ -209,10 +220,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors();
-if (rateLimitConfig.Enabled)
-{
-    app.UseRateLimiter();
-}
+
+// Rate limiting middleware (handles HTTP endpoints and adds headers)
+app.UseMiddleware<RateLimitMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -227,5 +238,8 @@ app.MapHub<TradeHub>("/tradeHub");
 
 // Map HTTP Authentication API (industry standard: HTTP for auth, WebSocket for real-time)
 app.MapAuthEndpoints();
+
+// Map controllers for admin API
+app.MapControllers();
 
 app.Run();

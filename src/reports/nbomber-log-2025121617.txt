@@ -1,0 +1,20 @@
+2025-12-16 17:35:20.596 +11:00 [INF] [ThreadId:2] NBomber 6.1.2 started a new session: 2025-12-16_06.35.55_session_82aa357f
+2025-12-16 17:35:20.624 +11:00 [INF] [ThreadId:2] NBomber started as single node
+2025-12-16 17:35:20.625 +11:00 [INF] [ThreadId:2] License validation....
+2025-12-16 17:35:20.626 +11:00 [WRN] [ThreadId:2] THIS VERSION IS FREE ONLY FOR PERSONAL USE. You can't use it for an organization.
+2025-12-16 17:35:20.635 +11:00 [INF] [ThreadId:2] Reports folder: C:\Users\Dan\Documents\Unreal Projects\Titan\src\Titan.LoadTests\bin\Debug\net10.0\./reports
+2025-12-16 17:35:20.635 +11:00 [INF] [ThreadId:2] Plugins: no plugins were loaded
+2025-12-16 17:35:20.637 +11:00 [INF] [ThreadId:2] Reporting sinks: no reporting sinks were loaded
+2025-12-16 17:35:20.637 +11:00 [INF] [ThreadId:2] Starting init...
+2025-12-16 17:35:20.642 +11:00 [INF] [ThreadId:2] Target scenarios: auth_login, character_ops, trading_flow
+2025-12-16 17:35:20.643 +11:00 [INF] [ThreadId:2] Start init scenario: character_ops
+2025-12-16 17:35:20.755 +11:00 [INF] [ThreadId:16] Start init scenario: trading_flow
+2025-12-16 17:35:20.784 +11:00 [INF] [ThreadId:12] Init finished
+2025-12-16 17:35:20.797 +11:00 [INF] [ThreadId:12] Starting bombing...
+2025-12-16 17:35:35.094 +11:00 [INF] [ThreadId:20] Waiting on scenarios completion...
+2025-12-16 17:35:36.095 +11:00 [WRN] [ThreadId:13] Stopping test early: stop command activated by CLI
+2025-12-16 17:35:38.108 +11:00 [INF] [ThreadId:23] Calculating final statistics...
+2025-12-16 17:35:38.108 +11:00 [INF] [ThreadId:11] Start cleaning scenario: character_ops
+2025-12-16 17:35:38.135 +11:00 [INF] [ThreadId:33] Start cleaning scenario: trading_flow
+2025-12-16 17:35:38.417 +11:00 [INF] [ThreadId:10] Reports saved in folder: C:\Users\Dan\Documents\Unreal Projects\Titan\src\reports
+2025-12-16 17:35:38.417 +11:00 [WRN] [ThreadId:10] THIS VERSION IS FREE ONLY FOR PERSONAL USE. You can't use it for an organization.

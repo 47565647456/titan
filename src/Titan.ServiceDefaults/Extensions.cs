@@ -190,10 +190,11 @@ public static class Extensions
         builder.Services.AddOpenTelemetry()
             .WithMetrics(metrics =>
             {
-                metrics.AddAspNetCoreInstrumentation()
+            metrics.AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation()
-                    .AddMeter("Microsoft.Orleans");
+                    .AddMeter("Microsoft.Orleans")
+                    .AddMeter("Titan.RateLimiting");
             })
             .WithTracing(tracing =>
             {

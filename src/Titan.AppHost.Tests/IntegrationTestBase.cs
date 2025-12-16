@@ -29,7 +29,8 @@ public class AppHostFixture : IAsyncLifetime
             [
                 "--environment=Development",
                 "Database:Volume=ephemeral",
-                "Parameters:postgres-password=TestPassword123!"
+                "Parameters:postgres-password=TestPassword123!",
+                "RateLimiting:Enabled=false" // Disable rate limiting for existing tests
             ]);
         
         // Add resilience to HTTP clients

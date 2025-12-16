@@ -16,7 +16,9 @@
     <PackageReference Include="Microsoft.Orleans.Streaming" />
     <PackageReference Include="Microsoft.Orleans.TestingHost" />
     <PackageReference Include="Microsoft.Orleans.Transactions" />
+    <PackageReference Include="Moq" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="StackExchange.Redis" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>

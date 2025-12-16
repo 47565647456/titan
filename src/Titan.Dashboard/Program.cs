@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Orleans.Configuration;
 using Titan.Dashboard.Components;
 using Titan.Dashboard.Data;
 
@@ -15,7 +16,11 @@ builder.AddKeyedRedisClient("orleans-clustering");
 builder.AddTitanLogging("dashboard");
 
 // Configure Orleans Client (connect to the existing cluster)
-builder.UseOrleansClient();
+// CRITICAL: Must match ServiceId used by silos for clustering to work
+builder.UseOrleansClient(client =>
+{
+    client.Configure<ClusterOptions>(options => options.ServiceId = "titan-service");
+});
 
 // Register AccountQueryService for direct database queries (account listing)
 builder.Services.AddSingleton<Titan.Dashboard.Services.AccountQueryService>();
