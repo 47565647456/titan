@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using FluentValidation;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services.Auth;
@@ -36,11 +37,18 @@ public static class AuthController
     
     private static async Task<IResult> LoginAsync(
         LoginRequest request,
+        IValidator<LoginRequest> validator,
         IAuthServiceFactory authServiceFactory,
         IClusterClient clusterClient,
         ITokenService tokenService,
         ILogger<LoginRequest> logger)
     {
+        var validationResult = await validator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return Results.BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         logger.LogInformation("Login attempt via provider: {Provider}", request.Provider);
         
         // Validate provider exists
@@ -99,10 +107,17 @@ public static class AuthController
     
     private static async Task<IResult> RefreshAsync(
         RefreshRequest request,
+        IValidator<RefreshRequest> validator,
         IClusterClient clusterClient,
         ITokenService tokenService,
         ILogger<RefreshRequest> logger)
     {
+        var validationResult = await validator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return Results.BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var grain = clusterClient.GetGrain<IRefreshTokenGrain>(request.UserId);
         var tokenInfo = await grain.ConsumeTokenAsync(request.RefreshToken);
         
@@ -126,10 +141,17 @@ public static class AuthController
     
     private static async Task<IResult> LogoutAsync(
         LogoutRequest request,
+        IValidator<LogoutRequest> validator,
         ClaimsPrincipal user,
         IClusterClient clusterClient,
         ILogger<LogoutRequest> logger)
     {
+        var validationResult = await validator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return Results.BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var userIdClaim = user.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
         {

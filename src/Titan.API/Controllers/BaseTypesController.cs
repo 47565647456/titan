@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Titan.Abstractions.Grains.Items;
@@ -16,13 +17,19 @@ public class BaseTypesController : ControllerBase
 {
     private readonly IClusterClient _clusterClient;
     private readonly ILogger<BaseTypesController> _logger;
+    private readonly IValidator<CreateBaseTypeRequest> _createValidator;
+    private readonly IValidator<UpdateBaseTypeRequest> _updateValidator;
 
     public BaseTypesController(
         IClusterClient clusterClient,
-        ILogger<BaseTypesController> logger)
+        ILogger<BaseTypesController> logger,
+        IValidator<CreateBaseTypeRequest> createValidator,
+        IValidator<UpdateBaseTypeRequest> updateValidator)
     {
         _clusterClient = clusterClient;
         _logger = logger;
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
     }
 
     private IBaseTypeRegistryGrain GetGrain() => _clusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
@@ -43,6 +50,11 @@ public class BaseTypesController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<BaseType>> GetById(string id)
     {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
+        {
+            return BadRequest(new { error = "Invalid base type ID" });
+        }
+
         var type = await GetGrain().GetAsync(id);
         if (type == null)
         {
@@ -57,6 +69,12 @@ public class BaseTypesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<BaseType>> Create([FromBody] CreateBaseTypeRequest request)
     {
+        var validationResult = await _createValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var baseType = new BaseType
         {
             BaseTypeId = request.BaseTypeId,
@@ -82,6 +100,17 @@ public class BaseTypesController : ControllerBase
     [HttpPut("{id}")]
     public async Task<ActionResult<BaseType>> Update(string id, [FromBody] UpdateBaseTypeRequest request)
     {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
+        {
+            return BadRequest(new { error = "Invalid base type ID" });
+        }
+
+        var validationResult = await _updateValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var baseType = new BaseType
         {
             BaseTypeId = id,
@@ -107,6 +136,11 @@ public class BaseTypesController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(string id)
     {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
+        {
+            return BadRequest(new { error = "Invalid base type ID" });
+        }
+
         await GetGrain().DeleteAsync(id);
         _logger.LogInformation("Deleted base type {BaseTypeId}", id);
         return NoContent();

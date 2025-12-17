@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.API.Services;
 
 namespace Titan.API.Hubs;
 
@@ -25,6 +26,7 @@ public class CharacterHub : TitanHubBase
     public async Task<Character> GetCharacter(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.GetCharacterAsync();
@@ -36,6 +38,8 @@ public class CharacterHub : TitanHubBase
     public async Task<Character> AddExperience(Guid characterId, string seasonId, long amount)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        HubValidation.ValidatePositive(amount, nameof(amount));
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.AddExperienceAsync(amount);
@@ -47,6 +51,8 @@ public class CharacterHub : TitanHubBase
     public async Task<Character> SetStat(Guid characterId, string seasonId, string statName, int value)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        HubValidation.ValidateName(statName, nameof(statName), 100);
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.SetStatAsync(statName, value);
@@ -58,6 +64,7 @@ public class CharacterHub : TitanHubBase
     public async Task<IReadOnlyList<ChallengeProgress>> GetChallengeProgress(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.GetChallengeProgressAsync();
@@ -69,6 +76,9 @@ public class CharacterHub : TitanHubBase
     public async Task UpdateChallengeProgress(Guid characterId, string seasonId, string challengeId, int progress)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        HubValidation.ValidateId(challengeId, nameof(challengeId));
+        HubValidation.ValidatePositive(progress, nameof(progress));
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         await grain.UpdateChallengeProgressAsync(challengeId, progress);
@@ -80,6 +90,7 @@ public class CharacterHub : TitanHubBase
     public async Task<DieResult> Die(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         var character = await grain.DieAsync();
@@ -93,6 +104,7 @@ public class CharacterHub : TitanHubBase
     public async Task<IReadOnlyList<CharacterHistoryEntry>> GetHistory(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.GetHistoryAsync();
@@ -100,4 +112,5 @@ public class CharacterHub : TitanHubBase
 }
 
 public record DieResult(Character Character, bool Migrated);
+
 

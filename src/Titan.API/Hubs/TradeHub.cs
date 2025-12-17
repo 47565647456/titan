@@ -85,6 +85,7 @@ public class TradeHub : TitanHubBase
     {
         // Verify the caller owns the initiating character
         await VerifyCharacterOwnershipAsync(myCharacterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
         
         var tradeId = Guid.NewGuid();
         var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
@@ -95,6 +96,7 @@ public class TradeHub : TitanHubBase
         
         return session;
     }
+
 
     /// <summary>
     /// Get trade session details (verifies caller is a participant).

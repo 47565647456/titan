@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -22,17 +23,26 @@ public class RateLimitAdminController : ControllerBase
     private readonly RateLimitService _rateLimitService;
     private readonly IOptions<RateLimitingOptions> _options;
     private readonly ILogger<RateLimitAdminController> _logger;
+    private readonly IValidator<UpsertPolicyRequest> _policyValidator;
+    private readonly IValidator<AddEndpointMappingRequest> _mappingValidator;
+    private readonly IValidator<SetDefaultPolicyRequest> _defaultPolicyValidator;
 
     public RateLimitAdminController(
         IClusterClient clusterClient,
         RateLimitService rateLimitService,
         IOptions<RateLimitingOptions> options,
-        ILogger<RateLimitAdminController> logger)
+        ILogger<RateLimitAdminController> logger,
+        IValidator<UpsertPolicyRequest> policyValidator,
+        IValidator<AddEndpointMappingRequest> mappingValidator,
+        IValidator<SetDefaultPolicyRequest> defaultPolicyValidator)
     {
         _clusterClient = clusterClient;
         _rateLimitService = rateLimitService;
         _options = options;
         _logger = logger;
+        _policyValidator = policyValidator;
+        _mappingValidator = mappingValidator;
+        _defaultPolicyValidator = defaultPolicyValidator;
     }
 
     private IRateLimitConfigGrain GetGrain() => _clusterClient.GetGrain<IRateLimitConfigGrain>("default");
@@ -65,6 +75,12 @@ public class RateLimitAdminController : ControllerBase
     [HttpPost("policies")]
     public async Task<ActionResult<RateLimitPolicy>> UpsertPolicy([FromBody] UpsertPolicyRequest request)
     {
+        var validationResult = await _policyValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var rules = request.Rules.Select(RateLimitRule.Parse).ToList();
         var policy = new RateLimitPolicy(request.Name, rules);
         
@@ -81,6 +97,11 @@ public class RateLimitAdminController : ControllerBase
     [HttpDelete("policies/{name}")]
     public async Task<ActionResult> RemovePolicy(string name)
     {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
+        {
+            return BadRequest(new { error = "Invalid policy name" });
+        }
+
         await GetGrain().RemovePolicyAsync(name);
         _rateLimitService.ClearCache();
         _logger.LogInformation("Removed policy {PolicyName}", name);
@@ -93,6 +114,12 @@ public class RateLimitAdminController : ControllerBase
     [HttpPost("default-policy")]
     public async Task<ActionResult> SetDefaultPolicy([FromBody] SetDefaultPolicyRequest request)
     {
+        var validationResult = await _defaultPolicyValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         await GetGrain().SetDefaultPolicyAsync(request.PolicyName);
         _rateLimitService.ClearCache();
         _logger.LogInformation("Set default policy to {PolicyName}", request.PolicyName);
@@ -105,6 +132,12 @@ public class RateLimitAdminController : ControllerBase
     [HttpPost("mappings")]
     public async Task<ActionResult<EndpointRateLimitConfig>> AddEndpointMapping([FromBody] AddEndpointMappingRequest request)
     {
+        var validationResult = await _mappingValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var mapping = new EndpointRateLimitConfig(request.Pattern, request.PolicyName);
         var result = await GetGrain().AddEndpointMappingAsync(mapping);
         _rateLimitService.ClearCache();
@@ -118,6 +151,11 @@ public class RateLimitAdminController : ControllerBase
     [HttpDelete("mappings/{pattern}")]
     public async Task<ActionResult> RemoveEndpointMapping(string pattern)
     {
+        if (string.IsNullOrWhiteSpace(pattern) || pattern.Length > 500)
+        {
+            return BadRequest(new { error = "Invalid pattern" });
+        }
+
         // URL decode the pattern since it may contain special chars
         var decodedPattern = Uri.UnescapeDataString(pattern);
         await GetGrain().RemoveEndpointMappingAsync(decodedPattern);

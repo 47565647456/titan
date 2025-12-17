@@ -16,8 +16,13 @@ using Titan.Grains.Trading.Rules;
 using Titan.API.Config;
 using Titan.API.Controllers;
 using Titan.API.Services.RateLimiting;
+using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Register all FluentValidation validators from this assembly
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+
 
 // Validate configuration early (fails fast if critical config is missing)
 builder.ValidateTitanConfiguration(requireJwtKey: true, requireEosInProduction: true);

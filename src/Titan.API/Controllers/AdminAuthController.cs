@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,7 @@ public class AdminAuthController : ControllerBase
     private readonly ITokenService _tokenService;
     private readonly IClusterClient _clusterClient;
     private readonly ILogger<AdminAuthController> _logger;
+    private readonly IValidator<AdminLoginRequest> _loginValidator;
 
     // Cookie names for httpOnly auth
     private const string AccessTokenCookie = "admin_access_token";
@@ -38,13 +40,15 @@ public class AdminAuthController : ControllerBase
         SignInManager<AdminUser> signInManager,
         ITokenService tokenService,
         IClusterClient clusterClient,
-        ILogger<AdminAuthController> logger)
+        ILogger<AdminAuthController> logger,
+        IValidator<AdminLoginRequest> loginValidator)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _tokenService = tokenService;
         _clusterClient = clusterClient;
         _logger = logger;
+        _loginValidator = loginValidator;
     }
 
     /// <summary>
@@ -56,12 +60,19 @@ public class AdminAuthController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<AdminLoginResponse>> Login([FromBody] AdminLoginRequest request)
     {
+        var validationResult = await _loginValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var user = await _userManager.FindByEmailAsync(request.Email);
         if (user == null)
         {
             _logger.LogWarning("Login failed: user {Email} not found", request.Email);
             return Unauthorized(new { error = "Invalid email or password" });
         }
+
 
         var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
 

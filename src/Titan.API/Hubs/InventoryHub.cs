@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains.Items;
 using Titan.Abstractions.Models.Items;
+using Titan.API.Services;
 
 namespace Titan.API.Hubs;
 
@@ -23,6 +24,7 @@ public class InventoryHub : TitanHubBase
     public async Task<InventoryGrid> GetBagGrid(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.GetBagGridAsync();
@@ -34,6 +36,7 @@ public class InventoryHub : TitanHubBase
     public async Task<IReadOnlyDictionary<Guid, Item>> GetBagItems(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.GetBagItemsAsync();
@@ -45,6 +48,7 @@ public class InventoryHub : TitanHubBase
     public async Task<IReadOnlyDictionary<EquipmentSlot, Item>> GetEquipped(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.GetEquippedAsync();
@@ -56,6 +60,7 @@ public class InventoryHub : TitanHubBase
     public async Task<bool> MoveBagItem(Guid characterId, string seasonId, Guid itemId, int newX, int newY)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.MoveBagItemAsync(itemId, newX, newY);
@@ -67,6 +72,7 @@ public class InventoryHub : TitanHubBase
     public async Task<EquipResult> Equip(Guid characterId, string seasonId, Guid bagItemId, EquipmentSlot slot)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.EquipAsync(bagItemId, slot);
@@ -78,6 +84,7 @@ public class InventoryHub : TitanHubBase
     public async Task<Item?> Unequip(Guid characterId, string seasonId, EquipmentSlot slot)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.UnequipAsync(slot);
@@ -89,8 +96,10 @@ public class InventoryHub : TitanHubBase
     public async Task<CharacterStats> GetStats(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.GetStatsAsync();
     }
 }
+

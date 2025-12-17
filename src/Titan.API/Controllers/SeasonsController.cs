@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Titan.Abstractions.Grains;
@@ -16,13 +17,19 @@ public class SeasonsController : ControllerBase
 {
     private readonly IClusterClient _clusterClient;
     private readonly ILogger<SeasonsController> _logger;
+    private readonly IValidator<CreateSeasonRequest> _createValidator;
+    private readonly IValidator<UpdateSeasonStatusRequest> _statusValidator;
 
     public SeasonsController(
         IClusterClient clusterClient,
-        ILogger<SeasonsController> logger)
+        ILogger<SeasonsController> logger,
+        IValidator<CreateSeasonRequest> createValidator,
+        IValidator<UpdateSeasonStatusRequest> statusValidator)
     {
         _clusterClient = clusterClient;
         _logger = logger;
+        _createValidator = createValidator;
+        _statusValidator = statusValidator;
     }
 
     private ISeasonRegistryGrain GetGrain() => _clusterClient.GetGrain<ISeasonRegistryGrain>("default");
@@ -43,6 +50,11 @@ public class SeasonsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<Season>> GetById(string id)
     {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
+        {
+            return BadRequest(new { error = "Invalid season ID" });
+        }
+
         var season = await GetGrain().GetSeasonAsync(id);
         if (season == null)
         {
@@ -57,6 +69,12 @@ public class SeasonsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Season>> Create([FromBody] CreateSeasonRequest request)
     {
+        var validationResult = await _createValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var season = new Season
         {
             SeasonId = request.SeasonId,
@@ -81,6 +99,17 @@ public class SeasonsController : ControllerBase
     [HttpPut("{id}/status")]
     public async Task<IActionResult> UpdateStatus(string id, [FromBody] UpdateSeasonStatusRequest request)
     {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
+        {
+            return BadRequest(new { error = "Invalid season ID" });
+        }
+
+        var validationResult = await _statusValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         await GetGrain().UpdateSeasonStatusAsync(id, request.Status);
         _logger.LogInformation("Updated season {SeasonId} status to {Status}", id, request.Status);
         return Ok(new { success = true });
@@ -92,6 +121,11 @@ public class SeasonsController : ControllerBase
     [HttpPost("{id}/end")]
     public async Task<IActionResult> EndSeason(string id)
     {
+        if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
+        {
+            return BadRequest(new { error = "Invalid season ID" });
+        }
+
         await GetGrain().EndSeasonAsync(id);
         _logger.LogInformation("Ended season {SeasonId}", id);
         return Ok(new { success = true });

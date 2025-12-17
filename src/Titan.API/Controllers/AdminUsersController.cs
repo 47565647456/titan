@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -19,16 +20,23 @@ public class AdminUsersController : ControllerBase
     private readonly UserManager<AdminUser> _userManager;
     private readonly RoleManager<AdminRole> _roleManager;
     private readonly ILogger<AdminUsersController> _logger;
+    private readonly IValidator<CreateAdminUserRequest> _createValidator;
+    private readonly IValidator<UpdateAdminUserRequest> _updateValidator;
 
     public AdminUsersController(
         UserManager<AdminUser> userManager,
         RoleManager<AdminRole> roleManager,
-        ILogger<AdminUsersController> logger)
+        ILogger<AdminUsersController> logger,
+        IValidator<CreateAdminUserRequest> createValidator,
+        IValidator<UpdateAdminUserRequest> updateValidator)
     {
         _userManager = userManager;
         _roleManager = roleManager;
         _logger = logger;
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
     }
+
 
     /// <summary>
     /// Get all admin users.
@@ -72,6 +80,12 @@ public class AdminUsersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<AdminUserDto>> Create([FromBody] CreateAdminUserRequest request)
     {
+        var validationResult = await _createValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var user = new AdminUser
         {
             UserName = request.Email,
@@ -135,6 +149,12 @@ public class AdminUsersController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<AdminUserDto>> Update(Guid id, [FromBody] UpdateAdminUserRequest request)
     {
+        var validationResult = await _updateValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
         var user = await _userManager.FindByIdAsync(id.ToString());
         if (user == null)
         {
