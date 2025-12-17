@@ -147,8 +147,8 @@ public class BaseTypeSeedStartupTask : IStartupTask
             return JsonSerializer.Deserialize<SeedData>(json, JsonOptions);
         }
 
-        // Priority 3: Use hard-coded defaults as fallback
-        _logger.LogError("Item Seed Data not found. Please check the seed data file.");
+        // Failure: No seed data found
+        _logger.LogError("Item Seed Data not found. Please check the seed data file at {Path}.", _options.SeedFilePath);
         return null;
     }
 }
