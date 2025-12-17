@@ -272,14 +272,6 @@ public class AdminAuthController : ControllerBase
             "Development",
             StringComparison.OrdinalIgnoreCase);
 
-        var cookieOptions = new CookieOptions
-        {
-            HttpOnly = true,
-            Secure = isProduction, // HTTPS only in production
-            SameSite = SameSiteMode.Strict,
-            Path = "/api/admin"
-        };
-
         // Access token cookie - expires with the token
         Response.Cookies.Append(AccessTokenCookie, accessToken, new CookieOptions
         {
