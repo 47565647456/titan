@@ -13,7 +13,6 @@ Titan is a high-performance, scalable backend solution designed for modern multi
 - **Seasons & Leagues**: Path of Exile-style seasons with "Void League" support (no migration on death).
 - **Identity**: User profiles and social provider linking (Steam, EOS).
 - **Security**: JWT Authentication and Role-based Access Control (RBAC).
-- **CockroachDB Persistence**: Distributed SQL storage with retrying logic for serializable transactions.
 - **High Performance**: **MemoryPack** serialization for wire and storage (~40% smaller payloads).
 - **.NET Aspire**: Cloud-native orchestration for local development and deployment.
 
