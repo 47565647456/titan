@@ -41,7 +41,9 @@ public class AdminUsersController : ControllerBase
     /// <summary>
     /// Get all admin users.
     /// </summary>
+    /// <returns>List of all admin users.</returns>
     [HttpGet]
+    [ProducesResponseType<List<AdminUserDto>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<List<AdminUserDto>>> GetAll()
     {
         var users = await _userManager.Users.ToListAsync();
@@ -67,7 +69,9 @@ public class AdminUsersController : ControllerBase
     /// <summary>
     /// Get available roles.
     /// </summary>
+    /// <returns>List of available role names.</returns>
     [HttpGet("roles")]
+    [ProducesResponseType<List<string>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<List<string>>> GetRoles()
     {
         var roles = await _roleManager.Roles.Select(r => r.Name!).ToListAsync();
@@ -77,7 +81,11 @@ public class AdminUsersController : ControllerBase
     /// <summary>
     /// Create a new admin user.
     /// </summary>
+    /// <param name="request">User creation details including email, password, and roles.</param>
+    /// <returns>The created admin user.</returns>
     [HttpPost]
+    [ProducesResponseType<AdminUserDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<AdminUserDto>> Create([FromBody] CreateAdminUserRequest request)
     {
         var validationResult = await _createValidator.ValidateAsync(request);
@@ -122,7 +130,11 @@ public class AdminUsersController : ControllerBase
     /// <summary>
     /// Get admin user by ID.
     /// </summary>
+    /// <param name="id">The admin user identifier.</param>
+    /// <returns>The requested admin user.</returns>
     [HttpGet("{id:guid}")]
+    [ProducesResponseType<AdminUserDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<AdminUserDto>> GetById(Guid id)
     {
         var user = await _userManager.FindByIdAsync(id.ToString());
@@ -146,7 +158,13 @@ public class AdminUsersController : ControllerBase
     /// <summary>
     /// Update admin user.
     /// </summary>
+    /// <param name="id">The admin user identifier.</param>
+    /// <param name="request">Updated user details including roles.</param>
+    /// <returns>The updated admin user.</returns>
     [HttpPut("{id:guid}")]
+    [ProducesResponseType<AdminUserDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<AdminUserDto>> Update(Guid id, [FromBody] UpdateAdminUserRequest request)
     {
         var validationResult = await _updateValidator.ValidateAsync(request);
@@ -209,7 +227,12 @@ public class AdminUsersController : ControllerBase
     /// <summary>
     /// Delete admin user.
     /// </summary>
+    /// <param name="id">The admin user identifier to delete.</param>
+    /// <returns>No content on success.</returns>
     [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var user = await _userManager.FindByIdAsync(id.ToString());

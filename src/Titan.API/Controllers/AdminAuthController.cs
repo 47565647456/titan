@@ -56,8 +56,12 @@ public class AdminAuthController : ControllerBase
     /// Sets httpOnly cookies for access and refresh tokens.
     /// Also returns tokens in response body for backward compatibility.
     /// </summary>
+    /// <returns>Admin login response with tokens and user info.</returns>
     [HttpPost("login")]
     [AllowAnonymous]
+    [ProducesResponseType<AdminLoginResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<AdminLoginResponse>> Login([FromBody] AdminLoginRequest request)
     {
         var validationResult = await _loginValidator.ValidateAsync(request);
@@ -125,8 +129,11 @@ public class AdminAuthController : ControllerBase
     /// Refresh access token using the refresh token from httpOnly cookie.
     /// Returns new access and refresh tokens (token rotation).
     /// </summary>
+    /// <returns>New access and refresh tokens.</returns>
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [ProducesResponseType<AdminRefreshResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<AdminRefreshResponse>> Refresh()
     {
         // Get refresh token and user ID from httpOnly cookies
@@ -187,8 +194,12 @@ public class AdminAuthController : ControllerBase
     /// <summary>
     /// Get current authenticated admin user info.
     /// </summary>
+    /// <returns>Current admin user information.</returns>
     [HttpGet("me")]
     [Authorize]
+    [ProducesResponseType<AdminUserInfo>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<AdminUserInfo>> GetCurrentUser()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -219,8 +230,11 @@ public class AdminAuthController : ControllerBase
     /// <summary>
     /// Logout: revokes refresh token and clears auth cookies.
     /// </summary>
+    /// <returns>Success status.</returns>
     [HttpPost("logout")]
     [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Logout()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -243,8 +257,11 @@ public class AdminAuthController : ControllerBase
     /// <summary>
     /// Revoke all refresh tokens for the current user (security event).
     /// </summary>
+    /// <returns>Success status.</returns>
     [HttpPost("revoke-all")]
     [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> RevokeAllTokens()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);

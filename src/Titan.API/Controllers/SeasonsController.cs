@@ -37,7 +37,9 @@ public class SeasonsController : ControllerBase
     /// <summary>
     /// Get all seasons.
     /// </summary>
+    /// <returns>List of all seasons (permanent and temporary).</returns>
     [HttpGet]
+    [ProducesResponseType<IReadOnlyList<Season>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<Season>>> GetAll()
     {
         var seasons = await GetGrain().GetAllSeasonsAsync();
@@ -47,7 +49,12 @@ public class SeasonsController : ControllerBase
     /// <summary>
     /// Get season by ID.
     /// </summary>
+    /// <param name="id">The unique season identifier.</param>
+    /// <returns>The requested season.</returns>
     [HttpGet("{id}")]
+    [ProducesResponseType<Season>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<Season>> GetById(string id)
     {
         if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
@@ -66,7 +73,11 @@ public class SeasonsController : ControllerBase
     /// <summary>
     /// Create a new season.
     /// </summary>
+    /// <param name="request">Season creation details.</param>
+    /// <returns>The created season.</returns>
     [HttpPost]
+    [ProducesResponseType<Season>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<Season>> Create([FromBody] CreateSeasonRequest request)
     {
         var validationResult = await _createValidator.ValidateAsync(request);
@@ -96,7 +107,12 @@ public class SeasonsController : ControllerBase
     /// <summary>
     /// Update season status.
     /// </summary>
+    /// <param name="id">The season identifier.</param>
+    /// <param name="request">The new status.</param>
+    /// <returns>Success confirmation.</returns>
     [HttpPut("{id}/status")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UpdateStatus(string id, [FromBody] UpdateSeasonStatusRequest request)
     {
         if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
@@ -118,7 +134,11 @@ public class SeasonsController : ControllerBase
     /// <summary>
     /// End a season (triggers character migration).
     /// </summary>
+    /// <param name="id">The season identifier to end.</param>
+    /// <returns>Success confirmation.</returns>
     [HttpPost("{id}/end")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> EndSeason(string id)
     {
         if (string.IsNullOrWhiteSpace(id) || id.Length > 100)

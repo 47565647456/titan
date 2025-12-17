@@ -16,6 +16,7 @@ namespace Titan.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/rate-limiting")]
+[Tags("Admin - Rate Limiting")]
 [Authorize(Policy = "SuperAdmin")]
 public class RateLimitAdminController : ControllerBase
 {
@@ -50,7 +51,9 @@ public class RateLimitAdminController : ControllerBase
     /// <summary>
     /// Get the current rate limiting configuration.
     /// </summary>
+    /// <returns>Current rate limiting settings, policies, and endpoint mappings.</returns>
     [HttpGet("config")]
+    [ProducesResponseType<RateLimitingConfiguration>(StatusCodes.Status200OK)]
     public async Task<ActionResult<RateLimitingConfiguration>> GetConfiguration()
     {
         var config = await GetGrain().GetConfigurationAsync();
@@ -60,7 +63,10 @@ public class RateLimitAdminController : ControllerBase
     /// <summary>
     /// Enable or disable rate limiting globally.
     /// </summary>
+    /// <param name="request">Enable/disable setting.</param>
+    /// <returns>Confirmation with new enabled status.</returns>
     [HttpPost("enabled")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult> SetEnabled([FromBody] SetEnabledRequest request)
     {
         await GetGrain().SetEnabledAsync(request.Enabled);
@@ -72,7 +78,11 @@ public class RateLimitAdminController : ControllerBase
     /// <summary>
     /// Create or update a rate limit policy.
     /// </summary>
+    /// <param name="request">Policy name and rules.</param>
+    /// <returns>The created or updated policy.</returns>
     [HttpPost("policies")]
+    [ProducesResponseType<RateLimitPolicy>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<RateLimitPolicy>> UpsertPolicy([FromBody] UpsertPolicyRequest request)
     {
         var validationResult = await _policyValidator.ValidateAsync(request);
@@ -94,7 +104,11 @@ public class RateLimitAdminController : ControllerBase
     /// <summary>
     /// Delete a rate limit policy.
     /// </summary>
+    /// <param name="name">Policy name to delete.</param>
+    /// <returns>Success confirmation.</returns>
     [HttpDelete("policies/{name}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> RemovePolicy(string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
@@ -111,7 +125,11 @@ public class RateLimitAdminController : ControllerBase
     /// <summary>
     /// Set the default policy used when no endpoint mapping matches.
     /// </summary>
+    /// <param name="request">The policy name to use as default.</param>
+    /// <returns>Success confirmation.</returns>
     [HttpPost("default-policy")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> SetDefaultPolicy([FromBody] SetDefaultPolicyRequest request)
     {
         var validationResult = await _defaultPolicyValidator.ValidateAsync(request);
@@ -129,7 +147,11 @@ public class RateLimitAdminController : ControllerBase
     /// <summary>
     /// Add or update an endpoint-to-policy mapping.
     /// </summary>
+    /// <param name="request">Endpoint pattern and policy name.</param>
+    /// <returns>The created or updated mapping.</returns>
     [HttpPost("mappings")]
+    [ProducesResponseType<EndpointRateLimitConfig>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<EndpointRateLimitConfig>> AddEndpointMapping([FromBody] AddEndpointMappingRequest request)
     {
         var validationResult = await _mappingValidator.ValidateAsync(request);
@@ -148,7 +170,11 @@ public class RateLimitAdminController : ControllerBase
     /// <summary>
     /// Remove an endpoint-to-policy mapping.
     /// </summary>
+    /// <param name="pattern">URL-encoded endpoint pattern to remove.</param>
+    /// <returns>Success confirmation.</returns>
     [HttpDelete("mappings/{pattern}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> RemoveEndpointMapping(string pattern)
     {
         if (string.IsNullOrWhiteSpace(pattern) || pattern.Length > 500)
@@ -167,7 +193,9 @@ public class RateLimitAdminController : ControllerBase
     /// <summary>
     /// Reset all configuration to defaults from appsettings.
     /// </summary>
+    /// <returns>Confirmation with number of policies restored.</returns>
     [HttpPost("reset")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult> ResetToDefaults()
     {
         return await PerformResetAsync();
@@ -208,7 +236,9 @@ public class RateLimitAdminController : ControllerBase
     /// Get current rate limiting metrics from Redis.
     /// Shows active rate limit buckets, their counts and TTLs.
     /// </summary>
+    /// <returns>Current rate limiting metrics including active buckets and timeouts.</returns>
     [HttpGet("metrics")]
+    [ProducesResponseType<RateLimitMetrics>(StatusCodes.Status200OK)]
     public async Task<ActionResult<RateLimitMetrics>> GetMetrics()
     {
         var (activeBuckets, activeTimeouts, buckets, timeouts) = await _rateLimitService.GetMetricsAsync();
