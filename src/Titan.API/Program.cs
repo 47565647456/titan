@@ -16,6 +16,7 @@ using Titan.Grains.Trading.Rules;
 using Titan.API.Config;
 using Titan.API.Controllers;
 using Titan.API.Services.RateLimiting;
+using Titan.API.OpenApi;
 using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -112,7 +113,21 @@ builder.Services.AddSignalR(options =>
 // Register hub filter for rate limiting (applied to all hubs)
 builder.Services.AddSingleton<IHubFilter, RateLimitHubFilter>();
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddDocumentTransformer((document, context, _) =>
+    {
+        document.Info = new()
+        {
+            Title = "Titan API",
+            Version = "v1",
+            Description = "API Gateway for the Titan game backend. Provides HTTP authentication endpoints and admin management APIs. Real-time game operations use SignalR hubs (see SignalR documentation).",
+            Contact = new() { Name = "Titan Team" }
+        };
+        return Task.CompletedTask;
+    });
+});
 
 // Register and Bind Options
 builder.Services.AddOptions<JwtOptions>()
@@ -332,7 +347,13 @@ async Task SeedAdminUsersAsync(WebApplication app)
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.MapScalarApiReference();
+    app.MapScalarApiReference(options =>
+    {
+        options
+            .WithTitle("Titan API")
+            .WithTheme(ScalarTheme.DeepSpace)
+            .WithDefaultHttpClient(ScalarTarget.CSharp, ScalarClient.HttpClient);
+    });
 }
 
 app.UseHttpsRedirection();

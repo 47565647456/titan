@@ -37,7 +37,9 @@ public class BaseTypesController : ControllerBase
     /// <summary>
     /// Get all base types.
     /// </summary>
+    /// <returns>List of all registered base types.</returns>
     [HttpGet]
+    [ProducesResponseType<IReadOnlyList<BaseType>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<BaseType>>> GetAll()
     {
         var types = await GetGrain().GetAllAsync();
@@ -47,7 +49,12 @@ public class BaseTypesController : ControllerBase
     /// <summary>
     /// Get base type by ID.
     /// </summary>
+    /// <param name="id">The base type identifier.</param>
+    /// <returns>The requested base type.</returns>
     [HttpGet("{id}")]
+    [ProducesResponseType<BaseType>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<BaseType>> GetById(string id)
     {
         if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
@@ -66,7 +73,11 @@ public class BaseTypesController : ControllerBase
     /// <summary>
     /// Create a new base type.
     /// </summary>
+    /// <param name="request">Base type creation details.</param>
+    /// <returns>The created base type.</returns>
     [HttpPost]
+    [ProducesResponseType<BaseType>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<BaseType>> Create([FromBody] CreateBaseTypeRequest request)
     {
         var validationResult = await _createValidator.ValidateAsync(request);
@@ -97,7 +108,12 @@ public class BaseTypesController : ControllerBase
     /// <summary>
     /// Update a base type.
     /// </summary>
+    /// <param name="id">The base type identifier.</param>
+    /// <param name="request">Updated base type details.</param>
+    /// <returns>The updated base type.</returns>
     [HttpPut("{id}")]
+    [ProducesResponseType<BaseType>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<BaseType>> Update(string id, [FromBody] UpdateBaseTypeRequest request)
     {
         if (string.IsNullOrWhiteSpace(id) || id.Length > 100)
@@ -133,7 +149,11 @@ public class BaseTypesController : ControllerBase
     /// <summary>
     /// Delete a base type.
     /// </summary>
+    /// <param name="id">The base type identifier to delete.</param>
+    /// <returns>No content on success.</returns>
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Delete(string id)
     {
         if (string.IsNullOrWhiteSpace(id) || id.Length > 100)

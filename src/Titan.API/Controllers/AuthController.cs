@@ -19,20 +19,28 @@ public static class AuthController
         
         group.MapPost("/login", LoginAsync)
             .WithName("Login")
-            .WithDescription("Authenticate with a provider token");
+            .WithDescription("Authenticate with a provider token. Returns JWT access token and refresh token.")
+            .Produces<LoginResponse>(200)
+            .ProducesProblem(400)
+            .ProducesProblem(401);
         
         group.MapPost("/refresh", RefreshAsync)
             .WithName("RefreshToken")
-            .WithDescription("Refresh access token using a valid refresh token");
+            .WithDescription("Exchange a valid refresh token for new access and refresh tokens (token rotation).")
+            .Produces<RefreshResult>(200)
+            .ProducesProblem(401);
         
         group.MapPost("/logout", LogoutAsync)
             .RequireAuthorization()
             .WithName("Logout")
-            .WithDescription("Logout and revoke refresh token");
+            .WithDescription("Revoke the specified refresh token.")
+            .Produces(200)
+            .ProducesProblem(401);
         
         group.MapGet("/providers", GetProviders)
             .WithName("GetProviders")
-            .WithDescription("Get available authentication providers");
+            .WithDescription("List available authentication providers (e.g., EOS, Mock).")
+            .Produces<IEnumerable<string>>(200);
     }
     
     private static async Task<IResult> LoginAsync(
@@ -205,3 +213,11 @@ public record LoginResponse(
     string? AccessToken,
     string? RefreshToken,
     int? AccessTokenExpiresInSeconds);
+
+/// <summary>
+/// Token refresh response.
+/// </summary>
+/// <param name="AccessToken">New JWT access token.</param>
+/// <param name="RefreshToken">New refresh token (old one is invalidated).</param>
+/// <param name="ExpiresInSeconds">Seconds until the access token expires.</param>
+public record RefreshResult(string AccessToken, string RefreshToken, int ExpiresInSeconds);

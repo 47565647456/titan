@@ -31,7 +31,9 @@ public class AccountsController : ControllerBase
     /// <summary>
     /// Get all accounts (max 1000).
     /// </summary>
+    /// <returns>List of account summaries.</returns>
     [HttpGet]
+    [ProducesResponseType<List<AccountSummary>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<List<AccountSummary>>> GetAll()
     {
         // GetAll still uses DB query as it needs to scan all accounts
@@ -42,7 +44,11 @@ public class AccountsController : ControllerBase
     /// <summary>
     /// Get account details by ID.
     /// </summary>
+    /// <param name="id">The account identifier.</param>
+    /// <returns>Account details including cosmetics and achievements.</returns>
     [HttpGet("{id:guid}")]
+    [ProducesResponseType<AccountDetailDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<AccountDetailDto>> GetById(Guid id)
     {
         var grain = _clusterClient.GetGrain<IAccountGrain>(id);
@@ -67,7 +73,11 @@ public class AccountsController : ControllerBase
     /// <summary>
     /// Get characters for an account.
     /// </summary>
+    /// <param name="id">The account identifier.</param>
+    /// <returns>List of character summaries for the account.</returns>
     [HttpGet("{id:guid}/characters")]
+    [ProducesResponseType<List<CharacterSummaryDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<List<CharacterSummaryDto>>> GetCharacters(Guid id)
     {
         var grain = _clusterClient.GetGrain<IAccountGrain>(id);
@@ -95,7 +105,9 @@ public class AccountsController : ControllerBase
     /// <summary>
     /// Create a new account.
     /// </summary>
+    /// <returns>The newly created account.</returns>
     [HttpPost]
+    [ProducesResponseType<AccountDetailDto>(StatusCodes.Status201Created)]
     public async Task<ActionResult<AccountDetailDto>> Create()
     {
         var accountId = Guid.NewGuid();
@@ -116,7 +128,11 @@ public class AccountsController : ControllerBase
     /// <summary>
     /// Delete an account.
     /// </summary>
+    /// <param name="id">The account identifier to delete.</param>
+    /// <returns>No content on success.</returns>
     [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var grain = _clusterClient.GetGrain<IAccountGrain>(id);
