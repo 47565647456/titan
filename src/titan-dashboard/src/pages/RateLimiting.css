@@ -1,0 +1,245 @@
+/* Rate Limiting Page Styles */
+
+.rate-limiting-page {
+  max-width: 1200px;
+}
+
+/* Config Card */
+.config-card {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-8);
+  border: 1px solid var(--color-border);
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.config-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.config-description {
+  margin-bottom: var(--space-2);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-switch input {
+  display: none;
+}
+
+.toggle-track {
+  width: 48px;
+  height: 26px;
+  background: var(--color-bg-tertiary);
+  border-radius: 13px;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: var(--color-success);
+}
+
+.toggle-thumb {
+  width: 22px;
+  height: 22px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-track .toggle-thumb {
+  left: 24px;
+}
+
+.toggle-label {
+  font-weight: 500;
+}
+
+/* Status Text */
+.status-ok {
+  color: #166534; /* Dark green for contrast */
+  font-weight: 500;
+}
+
+.status-warning {
+  color: #92400e; /* Dark amber for contrast */
+  font-weight: 500;
+}
+
+/* Section Header */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: var(--space-8) 0 var(--space-4);
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+/* Cards Grid */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+/* Policy Card */
+.policy-card {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+}
+
+.policy-card.default-policy {
+  border-color: var(--color-accent);
+}
+
+.policy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.policy-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.badge-default {
+  background: var(--color-accent);
+  color: white;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.policy-rules {
+  margin-bottom: var(--space-4);
+}
+
+.rule-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.rule-limits {
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.rule-period {
+  color: var(--color-text-secondary);
+}
+
+.rule-timeout {
+  color: var(--color-warning);
+}
+
+.policy-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Rule Editor */
+.rule-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.rule-editor .input {
+  width: 80px;
+}
+
+.rule-editor span {
+  color: var(--color-text-secondary);
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border);
+}
+
+/* Alert */
+.alert {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-4);
+}
+
+.alert-danger {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+}
+
+/* Modal Sizes */
+.modal-large {
+  max-width: 700px;
+}
+
+.modal-small {
+  max-width: 400px;
+}
+
+/* Utility Classes */
+.text-muted {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.ml-2 {
+  margin-left: var(--space-2);
+}
+
+code {
+  font-family: var(--font-mono);
+  background: var(--color-bg-tertiary);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}

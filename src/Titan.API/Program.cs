@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Orleans.Configuration;
 using Scalar.AspNetCore;
 using System.Text;
 using Titan.Abstractions;
+using Titan.API.Data;
 using Titan.API.Hubs;
 using Titan.API.Services;
 using Titan.API.Services.Auth;
@@ -28,6 +31,36 @@ builder.AddKeyedRedisClient("orleans-clustering");
 
 // Add Redis client for rate limiting state
 builder.AddKeyedRedisClient("rate-limiting");
+
+// Configure EF Core with PostgreSQL for Admin Identity
+var adminConnectionString = builder.Configuration.GetConnectionString("titan-admin");
+if (!string.IsNullOrEmpty(adminConnectionString))
+{
+    builder.Services.AddDbContext<AdminDbContext>(options =>
+        options.UseNpgsql(adminConnectionString));
+    
+    // Use AddIdentityCore instead of AddIdentity to avoid overriding the default JWT auth scheme
+    // AddIdentity sets up cookie auth as default, which breaks our JWT-based SignalR hubs
+    builder.Services.AddIdentityCore<AdminUser>(options =>
+    {
+        options.Password.RequireDigit = true;
+        options.Password.RequiredLength = 8;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.User.RequireUniqueEmail = true;
+    })
+    .AddRoles<AdminRole>()
+    .AddEntityFrameworkStores<AdminDbContext>()
+    .AddSignInManager()
+    .AddRoleManager<RoleManager<AdminRole>>()
+    .AddDefaultTokenProviders();
+    
+    // Register AccountQueryService for admin dashboard
+    builder.Services.AddSingleton<AccountQueryService>();
+}
 
 // Configure Sentry SDK for ASP.NET Core (only if DSN is configured)
 var sentryDsn = builder.Configuration["Sentry:Dsn"];
@@ -157,6 +190,15 @@ builder.Services.AddAuthorization(options =>
                 c.Type == System.Security.Claims.ClaimTypes.Role && 
                 (c.Value.Equals("Admin", StringComparison.OrdinalIgnoreCase) ||
                  c.Value.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase)))));
+    
+    // AdminDashboard policy - requires any admin role (SuperAdmin, Admin, or Viewer)
+    options.AddPolicy("AdminDashboard", policy => 
+        policy.RequireAssertion(context =>
+            context.User.HasClaim(c => 
+                c.Type == System.Security.Claims.ClaimTypes.Role && 
+                (c.Value.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ||
+                 c.Value.Equals("Admin", StringComparison.OrdinalIgnoreCase) ||
+                 c.Value.Equals("Viewer", StringComparison.OrdinalIgnoreCase)))));
 });
 
 // Add controllers for admin API endpoints
@@ -206,10 +248,80 @@ builder.Services.AddSingleton<RateLimitService>();
 builder.Services.AddSingleton<RateLimitHubFilter>();
 builder.Services.AddHostedService<RateLimitConfigInitializer>();
 
+// Register admin metrics broadcaster for SignalR push updates
+builder.Services.AddSingleton<AdminMetricsBroadcaster>();
+
 var app = builder.Build();
+
+// Seed default admin user if none exists
+await SeedAdminUsersAsync(app);
 
 // Map Aspire default health check endpoints
 app.MapDefaultEndpoints();
+
+async Task SeedAdminUsersAsync(WebApplication app)
+{
+    // Only seed if admin DB is configured
+    if (string.IsNullOrEmpty(adminConnectionString)) return;
+    
+    using var scope = app.Services.CreateScope();
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AdminUser>>();
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<AdminRole>>();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AdminDbContext>();
+    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    try
+    {
+        // Ensure database is created
+        await dbContext.Database.EnsureCreatedAsync();
+        
+        // Create default roles if they don't exist
+        string[] roles = ["SuperAdmin", "Admin", "Viewer"];
+        foreach (var roleName in roles)
+        {
+            if (!await roleManager.RoleExistsAsync(roleName))
+            {
+                await roleManager.CreateAsync(new AdminRole { Name = roleName });
+                logger.LogInformation("Created role: {Role}", roleName);
+            }
+        }
+        
+        // Create default admin user if no users exist
+        if (!await userManager.Users.AnyAsync())
+        {
+            // Get admin credentials from configuration, with fallbacks for development
+            var adminEmail = config["Admin:DefaultEmail"] ?? "admin@titan.local";
+            var adminPassword = config["Admin:DefaultPassword"] ?? "Admin123!";
+            var adminDisplayName = config["Admin:DefaultDisplayName"] ?? "Default Admin";
+            
+            var adminUser = new AdminUser
+            {
+                UserName = adminEmail,
+                Email = adminEmail,
+                DisplayName = adminDisplayName,
+                EmailConfirmed = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            var result = await userManager.CreateAsync(adminUser, adminPassword);
+            if (result.Succeeded)
+            {
+                await userManager.AddToRolesAsync(adminUser, ["SuperAdmin", "Admin"]);
+                logger.LogInformation("Created default admin user: {Email}", adminUser.Email);
+            }
+            else
+            {
+                logger.LogWarning("Failed to create default admin: {Errors}", 
+                    string.Join(", ", result.Errors.Select(e => e.Description)));
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to seed admin users");
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -221,7 +333,12 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors();
 
-// Rate limiting middleware (handles HTTP endpoints and adds headers)
+// Rate limiting middleware - applies to all routes
+// Policy matching is configured in appsettings.json:
+// - /api/admin/auth/* -> "Auth" (strict)
+// - /api/admin/* -> "Admin" (1000/min, defense-in-depth)
+// - /hubs/admin* -> "AdminHub" (5000/min, real-time metrics)
+// - Everything else -> "Global" (default)
 app.UseMiddleware<RateLimitMiddleware>();
 
 app.UseAuthentication();
@@ -235,6 +352,9 @@ app.MapHub<InventoryHub>("/inventoryHub");
 app.MapHub<BaseTypeHub>("/baseTypeHub");
 app.MapHub<SeasonHub>("/seasonHub");
 app.MapHub<TradeHub>("/tradeHub");
+
+// Admin dashboard SignalR hub for real-time metrics
+app.MapHub<AdminMetricsHub>("/hubs/admin-metrics");
 
 // Map HTTP Authentication API (industry standard: HTTP for auth, WebSocket for real-time)
 app.MapAuthEndpoints();

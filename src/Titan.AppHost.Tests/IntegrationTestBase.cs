@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Aspire.Hosting.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Models;
 using Titan.Abstractions.Models.Items;
@@ -19,7 +20,7 @@ public class AppHostFixture : IAsyncLifetime
 
     public DistributedApplication App { get; private set; } = null!;
     public string ApiBaseUrl { get; private set; } = null!;
-    public string DashboardBaseUrl { get; private set; } = null!;
+    private string? _adminDbConnectionString;
 
     public async Task InitializeAsync()
     {
@@ -46,8 +47,7 @@ public class AppHostFixture : IAsyncLifetime
             App.ResourceNotifications.WaitForResourceHealthyAsync("identity-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("inventory-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("trading-host"),
-            App.ResourceNotifications.WaitForResourceHealthyAsync("api"),
-            App.ResourceNotifications.WaitForResourceHealthyAsync("dashboard")
+            App.ResourceNotifications.WaitForResourceHealthyAsync("api")
         ).WaitAsync(DefaultTimeout);
         
         // Give Orleans cluster time to stabilize
@@ -57,9 +57,32 @@ public class AppHostFixture : IAsyncLifetime
         var endpoint = App.GetEndpoint("api", "https");
         ApiBaseUrl = endpoint.ToString().TrimEnd('/');
         
-        // Get Dashboard endpoint (uses http since Dashboard might not have https configured)
-        var dashboardEndpoint = App.GetEndpoint("dashboard", "http");
-        DashboardBaseUrl = dashboardEndpoint.ToString().TrimEnd('/');
+        // Get admin database connection string
+        _adminDbConnectionString = await App.GetConnectionStringAsync("titan-admin");
+    }
+
+    /// <summary>
+    /// Resets the lockout status for the admin user directly in the database.
+    /// Call this before tests that need to authenticate as admin.
+    /// </summary>
+    public async Task ResetAdminLockoutAsync()
+    {
+        if (string.IsNullOrEmpty(_adminDbConnectionString))
+            return;
+        
+        await using var connection = new NpgsqlConnection(_adminDbConnectionString);
+        await connection.OpenAsync();
+        
+        // Reset lockout_end and access_failed_count for the admin user
+        await using var command = new NpgsqlCommand(
+            """
+            UPDATE public.admin_users 
+            SET lockout_end = NULL, access_failed_count = 0 
+            WHERE normalized_email = 'ADMIN@TITAN.LOCAL'
+            """, 
+            connection);
+        
+        await command.ExecuteNonQueryAsync();
     }
 
     public async Task DisposeAsync()

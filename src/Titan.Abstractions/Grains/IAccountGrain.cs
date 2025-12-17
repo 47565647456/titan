@@ -48,4 +48,16 @@ public interface IAccountGrain : IGrainWithGuidKey
     /// Checks if an achievement is unlocked.
     /// </summary>
     Task<bool> HasAchievementAsync(string achievementId);
+
+    /// <summary>
+    /// Checks if this account has been persisted (exists in storage).
+    /// Uses Orleans RecordExists - does NOT auto-create the account.
+    /// </summary>
+    Task<bool> ExistsAsync();
+
+    /// <summary>
+    /// Deletes this account by clearing its persistent state.
+    /// Uses Orleans ClearStateAsync.
+    /// </summary>
+    Task DeleteAsync();
 }

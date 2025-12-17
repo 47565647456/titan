@@ -7,6 +7,7 @@ using StackExchange.Redis;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Config;
+using Titan.API.Hubs;
 
 namespace Titan.API.Services.RateLimiting;
 
@@ -29,6 +30,7 @@ public partial class RateLimitService
     private readonly IClusterClient _clusterClient;
     private readonly IOptions<RateLimitingOptions> _options;
     private readonly ILogger<RateLimitService> _logger;
+    private readonly AdminMetricsBroadcaster? _broadcaster;
 
     private RateLimitingConfiguration? _cachedConfig;
     private DateTimeOffset _configCacheExpiry;
@@ -38,12 +40,14 @@ public partial class RateLimitService
         [FromKeyedServices("rate-limiting")] IConnectionMultiplexer redis,
         IClusterClient clusterClient,
         IOptions<RateLimitingOptions> options,
-        ILogger<RateLimitService> logger)
+        ILogger<RateLimitService> logger,
+        AdminMetricsBroadcaster? broadcaster = null)
     {
         _redis = redis;
         _clusterClient = clusterClient;
         _options = options;
         _logger = logger;
+        _broadcaster = broadcaster;
     }
 
     /// <summary>
@@ -144,6 +148,9 @@ public partial class RateLimitService
                 partitionKey, policy.Name, maxRetryAfter);
         }
 
+        // Trigger metrics broadcast (debounced) for real-time dashboard
+        _broadcaster?.TriggerBroadcast();
+
         return new RateLimitResult(allowed, policy, states, maxRetryAfter);
     }
 
@@ -215,8 +222,8 @@ public partial class RateLimitService
         var keysToDelete = new List<RedisKey>();
         
         // Find all rate limit keys (counters and timeouts)
-        // Key format: rl:{partitionKey}:{policyName}:{periodSeconds} or rl:timeout:{partitionKey}:{policyName}
-        await foreach (var key in server.KeysAsync(pattern: "rl:*"))
+        // Key format: rl|{partitionKey}|{policyName}|{periodSeconds} or rl|timeout|{partitionKey}|{policyName}
+        await foreach (var key in server.KeysAsync(pattern: "rl|*"))
         {
             keysToDelete.Add(key);
         }
@@ -227,6 +234,141 @@ public partial class RateLimitService
             _logger.LogInformation("Cleared {Count} rate limit keys from Redis", keysToDelete.Count);
         }
     }
+
+    /// <summary>
+    /// Clears a specific timeout from Redis.
+    /// Returns true if the timeout was found and deleted, false otherwise.
+    /// </summary>
+    public async Task<bool> ClearTimeoutAsync(string partitionKey, string policyName)
+    {
+        var db = _redis.GetDatabase();
+        var timeoutKey = GetTimeoutKey(partitionKey, policyName);
+        
+        var deleted = await db.KeyDeleteAsync(timeoutKey);
+        
+        if (deleted)
+        {
+            _logger.LogInformation("Cleared timeout for {PartitionKey} on policy {Policy}", 
+                partitionKey, policyName);
+            
+            // Trigger metrics broadcast so dashboard updates
+            _broadcaster?.TriggerBroadcast();
+        }
+        else
+        {
+            _logger.LogDebug("No timeout found for {PartitionKey} on policy {Policy}", 
+                partitionKey, policyName);
+        }
+        
+        return deleted;
+    }
+
+    /// <summary>
+    /// Clears all rate limit buckets (counters) for a specific partition key.
+    /// Returns the number of buckets deleted.
+    /// </summary>
+    public async Task<int> ClearBucketAsync(string partitionKey)
+    {
+        var db = _redis.GetDatabase();
+        var server = _redis.GetServers().FirstOrDefault();
+        
+        if (server == null)
+        {
+            _logger.LogWarning("No Redis server found for clearing buckets");
+            return 0;
+        }
+        
+        var keysToDelete = new List<RedisKey>();
+        
+        // Find all counter keys for this partition key
+        // Counter key format: rl|{partitionKey}|{policyName}|{periodSeconds}
+        var pattern = $"rl|{partitionKey}|*";
+        await foreach (var key in server.KeysAsync(pattern: pattern))
+        {
+            // Exclude timeout keys (they have "timeout" as the second segment)
+            if (!key.ToString().StartsWith("rl|timeout|"))
+            {
+                keysToDelete.Add(key);
+            }
+        }
+        
+        if (keysToDelete.Count > 0)
+        {
+            await db.KeyDeleteAsync([.. keysToDelete]);
+            _logger.LogInformation("Cleared {Count} buckets for {PartitionKey}", 
+                keysToDelete.Count, partitionKey);
+            
+            // Trigger metrics broadcast so dashboard updates
+            _broadcaster?.TriggerBroadcast();
+        }
+        else
+        {
+            _logger.LogDebug("No buckets found for {PartitionKey}", partitionKey);
+        }
+        
+        return keysToDelete.Count;
+    }
+
+    /// <summary>
+    /// Gets current rate limit metrics from Redis.
+    /// Returns active buckets and timeouts with their current state.
+    /// </summary>
+    public async Task<(int ActiveBuckets, int ActiveTimeouts, 
+        List<(string PartitionKey, string PolicyName, int PeriodSeconds, int CurrentCount, int SecondsRemaining)> Buckets,
+        List<(string PartitionKey, string PolicyName, int SecondsRemaining)> Timeouts)> GetMetricsAsync()
+    {
+        var db = _redis.GetDatabase();
+        var server = _redis.GetServers().FirstOrDefault();
+        
+        var buckets = new List<(string PartitionKey, string PolicyName, int PeriodSeconds, int CurrentCount, int SecondsRemaining)>();
+        var timeouts = new List<(string PartitionKey, string PolicyName, int SecondsRemaining)>();
+
+        if (server == null)
+        {
+            _logger.LogWarning("No Redis server found for getting metrics");
+            return (0, 0, buckets, timeouts);
+        }
+
+        // Find all rate limit keys
+        await foreach (var key in server.KeysAsync(pattern: "rl|*"))
+        {
+            var keyStr = key.ToString();
+            var ttl = await db.KeyTimeToLiveAsync(key);
+            var secondsRemaining = ttl.HasValue ? (int)Math.Ceiling(ttl.Value.TotalSeconds) : 0;
+
+            if (keyStr.StartsWith("rl|timeout|"))
+            {
+                // Timeout key format: rl|timeout|{partitionKey}|{policyName}
+                var parts = keyStr.Split('|', 4);
+                if (parts.Length >= 4)
+                {
+                    var partitionKey = parts[2];
+                    var policyName = parts[3];
+                    timeouts.Add((partitionKey, policyName, secondsRemaining));
+                }
+            }
+            else if (keyStr.StartsWith("rl|"))
+            {
+                // Counter key format: rl|{partitionKey}|{policyName}|{periodSeconds}
+                var parts = keyStr.Split('|', 4);
+                if (parts.Length >= 4)
+                {
+                    var partitionKey = parts[1];
+                    var policyName = parts[2];
+                    if (int.TryParse(parts[3], out var periodSeconds))
+                    {
+                        var countValue = await db.StringGetAsync(key);
+                        var count = countValue.HasValue ? (int)countValue : 0;
+                        buckets.Add((partitionKey, policyName, periodSeconds, count, secondsRemaining));
+                    }
+                }
+            }
+
+        }
+
+        return (buckets.Count, timeouts.Count, buckets, timeouts);
+    }
+
 
     private async Task IncrementCounterAsync(IDatabase db, string partitionKey, string policyName, RateLimitRule rule)
     {
@@ -305,10 +447,10 @@ public partial class RateLimitService
     }
 
     private static string GetCounterKey(string partitionKey, string policyName, int periodSeconds)
-        => $"rl:{partitionKey}:{policyName}:{periodSeconds}";
+        => $"rl|{partitionKey}|{policyName}|{periodSeconds}";
 
     private static string GetTimeoutKey(string partitionKey, string policyName)
-        => $"rl:timeout:{partitionKey}:{policyName}";
+        => $"rl|timeout|{partitionKey}|{policyName}";
 
     private static bool MatchesPattern(string endpoint, string pattern)
     {

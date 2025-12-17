@@ -1,0 +1,212 @@
+/* Players Page Styles */
+
+.players-page .subtitle {
+  color: var(--color-text-secondary);
+  margin-top: var(--space-1);
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-1);
+}
+
+.tab {
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: var(--transition-fast);
+}
+
+.tab:hover {
+  color: var(--color-text);
+  background: var(--color-bg-tertiary);
+}
+
+.tab.active {
+  color: var(--color-accent);
+  background: var(--color-bg-secondary);
+  border-bottom: 2px solid var(--color-accent);
+}
+
+/* Actions Bar */
+.actions-bar {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+/* Alert Messages */
+.alert {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.alert-danger {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+}
+
+.alert-success {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+}
+
+/* Search Section */
+.search-section {
+  background: var(--color-bg-secondary);
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-6);
+  border: 1px solid var(--color-border);
+}
+
+.search-input-group .form-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-weight: 500;
+}
+
+.search-row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.search-row .input {
+  flex: 1;
+}
+
+/* Player Details */
+.player-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.player-card {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  border: 1px solid var(--color-border);
+}
+
+.player-card h2 {
+  margin: 0 0 var(--space-4) 0;
+  font-size: 1.1rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.detail-label {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+/* Character Table */
+.row-dead {
+  opacity: 0.6;
+}
+
+.badge-restriction {
+  background: var(--color-warning);
+  color: var(--color-bg);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-right: var(--space-1);
+}
+
+.badge-dead {
+  background: var(--color-error);
+  color: white;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+.badge-alive {
+  background: var(--color-success);
+  color: white;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+}
+
+/* Tags */
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tag {
+  background: var(--color-bg-tertiary);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}
+
+.tag-achievement {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: white;
+}
+
+/* Empty State */
+.empty-state {
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border);
+}
+
+/* Loading State */
+.loading-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  color: var(--color-text-secondary);
+}
+
+/* Modal sizes */
+.modal-small {
+  max-width: 450px;
+}
+
+/* Utilities */
+.text-muted {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+code {
+  font-family: var(--font-mono);
+  background: var(--color-bg-tertiary);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+}

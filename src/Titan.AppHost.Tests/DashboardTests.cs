@@ -1,158 +1,378 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 
 namespace Titan.AppHost.Tests;
 
 /// <summary>
-/// Integration tests for the Titan Admin Dashboard.
-/// Tests authentication, authorization, and page accessibility.
+/// Integration tests for the Admin Dashboard API endpoints.
+/// Tests JWT authentication and admin API accessibility.
 /// </summary>
 [Collection("AppHost")]
 public class DashboardTests : IntegrationTestBase
 {
-    private readonly HttpClient _dashboardClient;
-
     public DashboardTests(AppHostFixture fixture) : base(fixture)
     {
-        // Create a new HttpClient with cookie container for session management
-        var handler = new HttpClientHandler
-        {
-            CookieContainer = new CookieContainer(),
-            AllowAutoRedirect = false // Don't auto-follow redirects so we can check them
-        };
-        _dashboardClient = new HttpClient(handler)
-        {
-            BaseAddress = new Uri(fixture.DashboardBaseUrl)
-        };
     }
 
     #region Authentication Tests
 
     [Fact]
-    public async Task Dashboard_UnauthenticatedUser_RedirectsToLogin()
+    public async Task AdminAuth_UnauthenticatedRequest_Returns401()
     {
-        // Act - Try accessing the home page without authentication
-        var response = await _dashboardClient.GetAsync("/");
+        // Act - Try accessing admin endpoint without authentication
+        var response = await HttpClient.GetAsync("/api/admin/accounts");
         
-        // Assert - Should redirect to login
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("/Account/Login", response.Headers.Location?.ToString() ?? "");
+        // Assert - Should return 401 Unauthorized
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
-    public async Task Dashboard_LoginPage_IsAccessible()
+    public async Task AdminAuth_InvalidCredentials_Returns401()
     {
-        // Act - Access the login page
-        var response = await _dashboardClient.GetAsync("/Account/Login");
-        
-        // Assert - Login page should be accessible without authentication
-        Assert.True(response.IsSuccessStatusCode);
-        var content = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Titan Admin", content);
-    }
-
-    [Fact]
-    public async Task Dashboard_Login_WithInvalidCredentials_DoesNotGrantAccess()
-    {
-        // Arrange - Get the login page first
-        var loginPage = await _dashboardClient.GetAsync("/Account/Login");
-        loginPage.EnsureSuccessStatusCode();
-        
-        // Act - Submit invalid credentials (Blazor forms may require anti-forgery tokens)
-        // Without proper tokens, we expect a failure or redirect back to login
-        using var formContent = new FormUrlEncodedContent(new Dictionary<string, string>
+        // Act - Try logging in with invalid credentials
+        var response = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
         {
-            ["Input.Email"] = "invalid@test.com",
-            ["Input.Password"] = "wrongpassword",
-            ["Input.RememberMe"] = "false"
+            email = "invalid@example.com",
+            password = "wrongpassword"
         });
-        var response = await _dashboardClient.PostAsync("/Account/Login", formContent);
         
-        // Assert - We should NOT get a redirect to the home page (which would mean success)
-        // Any other response (400, 200 with error, redirect to login) is acceptable
-        if (response.StatusCode == HttpStatusCode.Redirect)
+        // Assert - Should return 401
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminAuth_ValidCredentials_ReturnsToken()
+    {
+        // Act - Login with valid admin credentials
+        var response = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
         {
-            // If redirecting, should NOT be to home page
-            Assert.DoesNotContain("ReturnUrl=%2F", response.Headers.Location?.ToString() ?? "");
-        }
-        // Otherwise, just verify the request completed (any non-success scenario is valid)
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        
+        // Assert - Should return success with tokens
+        response.EnsureSuccessStatusCode();
+        var loginResponse = await response.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        
+        Assert.NotNull(loginResponse);
+        Assert.True(loginResponse.Success);
+        Assert.False(string.IsNullOrEmpty(loginResponse.AccessToken));
+        Assert.NotEmpty(loginResponse.Roles);
+    }
+
+    [Fact]
+    public async Task AdminAuth_WithToken_CanAccessProtectedEndpoints()
+    {
+        // Arrange - Login first
+        var loginResponse = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        
+        // Create authenticated client
+        var authClient = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
+        authClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", login!.AccessToken);
+        
+        // Act - Access protected endpoint
+        var response = await authClient.GetAsync("/api/admin/auth/me");
+        
+        // Assert - Should succeed
+        response.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task AdminAuth_Logout_ReturnsSuccess()
+    {
+        // Arrange - Login first
+        var loginResponse = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        
+        // Create authenticated client
+        var authClient = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
+        authClient.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", login!.AccessToken);
+        
+        // Act - Logout
+        var logoutResponse = await authClient.PostAsync("/api/admin/auth/logout", null);
+        
+        // Assert - Should succeed
+        logoutResponse.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task AdminAuth_Logout_WithoutAuth_Returns401()
+    {
+        // Act - Try to logout without being authenticated
+        var response = await HttpClient.PostAsync("/api/admin/auth/logout", null);
+        
+        // Assert - Should return 401
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminAuth_Login_SetsHttpOnlyCookies()
+    {
+        // Act - Login with valid credentials
+        var response = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        
+        // Assert - Should set httpOnly cookies
+        response.EnsureSuccessStatusCode();
+        
+        Assert.True(response.Headers.Contains("Set-Cookie"), "Expected Set-Cookie header");
+        var cookieHeaders = response.Headers.GetValues("Set-Cookie").ToList();
+        
+        // Should have access token, refresh token, and user ID cookies
+        Assert.True(cookieHeaders.Any(c => c.Contains("admin_access_token")), 
+            "Expected admin_access_token cookie");
+        Assert.True(cookieHeaders.Any(c => c.Contains("admin_refresh_token")), 
+            "Expected admin_refresh_token cookie");
+        Assert.True(cookieHeaders.Any(c => c.Contains("admin_user_id")), 
+            "Expected admin_user_id cookie");
+        
+        // All auth cookies should be httpOnly
+        Assert.All(cookieHeaders.Where(c => c.Contains("admin_")), 
+            cookie => Assert.Contains("httponly", cookie.ToLowerInvariant()));
+    }
+
+    [Fact]
+    public async Task AdminAuth_Refresh_WithValidCookie_ReturnsNewTokens()
+    {
+        // Arrange - Login first to get cookies
+        using var handler = new HttpClientHandler { UseCookies = true };
+        using var client = new HttpClient(handler) { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
+        
+        var loginResponse = await client.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        loginResponse.EnsureSuccessStatusCode();
+        var loginResult = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        var originalAccessToken = loginResult!.AccessToken;
+        var originalRefreshToken = loginResult.RefreshToken;
+        
+        // Act - Call refresh endpoint (cookies are automatically sent)
+        var refreshResponse = await client.PostAsync("/api/admin/auth/refresh", null);
+        
+        // Assert - Should return new tokens
+        refreshResponse.EnsureSuccessStatusCode();
+        var refreshResult = await refreshResponse.Content.ReadFromJsonAsync<AdminRefreshResponse>();
+        
+        Assert.NotNull(refreshResult);
+        Assert.True(refreshResult.Success);
+        Assert.NotEmpty(refreshResult.AccessToken);
+        Assert.NotEmpty(refreshResult.RefreshToken);
+        Assert.True(refreshResult.ExpiresInSeconds > 0);
+        
+        // New tokens should be different (rotation)
+        Assert.NotEqual(originalAccessToken, refreshResult.AccessToken);
+        Assert.NotEqual(originalRefreshToken, refreshResult.RefreshToken);
+    }
+
+    [Fact]
+    public async Task AdminAuth_Refresh_WithoutCookie_Returns401()
+    {
+        // Act - Try to refresh without cookies
+        var response = await HttpClient.PostAsync("/api/admin/auth/refresh", null);
+        
+        // Assert - Should return 401
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminAuth_Refresh_AfterLogout_Returns401()
+    {
+        // Arrange - Login to get cookies
+        using var handler = new HttpClientHandler { UseCookies = true };
+        using var client = new HttpClient(handler) { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
+        
+        // Login
+        var loginResponse = await client.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        loginResponse.EnsureSuccessStatusCode();
+        var loginResult = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        
+        // Add auth header for logout (which requires [Authorize])
+        client.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", loginResult!.AccessToken);
+        
+        // Logout - this revokes the refresh token
+        var logoutResponse = await client.PostAsync("/api/admin/auth/logout", null);
+        logoutResponse.EnsureSuccessStatusCode();
+        
+        // Clear auth header but keep cookies
+        client.DefaultRequestHeaders.Authorization = null;
+        
+        // Act - Try to refresh with the now-revoked token
+        // Note: We need to manually restore the cookies since logout clears them
+        // In a real scenario, the cookies would be cleared, so this tests the grain revocation
+        handler.CookieContainer.Add(
+            new Uri(Fixture.ApiBaseUrl), 
+            new System.Net.Cookie("admin_refresh_token", loginResult.RefreshToken, "/api/admin/auth"));
+        handler.CookieContainer.Add(
+            new Uri(Fixture.ApiBaseUrl), 
+            new System.Net.Cookie("admin_user_id", loginResult.UserId, "/api/admin/auth"));
+        
+        var refreshResponse = await client.PostAsync("/api/admin/auth/refresh", null);
+        
+        // Assert - Should fail because token was revoked
+        Assert.Equal(HttpStatusCode.Unauthorized, refreshResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task AdminAuth_RevokeAll_InvalidatesAllTokens()
+    {
+        // Arrange - Login twice to simulate multiple sessions
+        using var handler1 = new HttpClientHandler { UseCookies = true };
+        using var client1 = new HttpClient(handler1) { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
+        
+        var login1 = await client1.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        login1.EnsureSuccessStatusCode();
+        var loginResult1 = await login1.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        client1.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", loginResult1!.AccessToken);
+        
+        // Second "session" 
+        using var handler2 = new HttpClientHandler { UseCookies = true };
+        using var client2 = new HttpClient(handler2) { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
+        
+        var login2 = await client2.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        login2.EnsureSuccessStatusCode();
+        var loginResult2 = await login2.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        
+        // Act - Revoke all tokens from first session
+        var revokeResponse = await client1.PostAsync("/api/admin/auth/revoke-all", null);
+        revokeResponse.EnsureSuccessStatusCode();
+        
+        // Assert - Second session's refresh token should be revoked
+        handler2.CookieContainer.Add(
+            new Uri(Fixture.ApiBaseUrl), 
+            new System.Net.Cookie("admin_refresh_token", loginResult2!.RefreshToken, "/api/admin/auth"));
+        handler2.CookieContainer.Add(
+            new Uri(Fixture.ApiBaseUrl), 
+            new System.Net.Cookie("admin_user_id", loginResult2.UserId, "/api/admin/auth"));
+        
+        var refreshResponse = await client2.PostAsync("/api/admin/auth/refresh", null);
+        Assert.Equal(HttpStatusCode.Unauthorized, refreshResponse.StatusCode);
     }
 
     #endregion
 
-    #region Protected Routes Tests
+    #region Admin Endpoints Tests
 
     [Fact]
-    public async Task Dashboard_ItemTypesPage_RequiresAuthentication()
+    public async Task AdminAccounts_WithAuth_ReturnsAccountList()
     {
-        // Act - Try accessing item types page without auth
-        var response = await _dashboardClient.GetAsync("/itemtypes");
+        // Arrange - Get auth token
+        using var authClient = await CreateAuthenticatedAdminClientAsync();
         
-        // Assert - Should redirect to login
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        // Act - Get accounts
+        var response = await authClient.GetAsync("/api/admin/accounts");
+        
+        // Assert - Should return success (even if empty list)
+        response.EnsureSuccessStatusCode();
     }
 
     [Fact]
-    public async Task Dashboard_SeasonsPage_RequiresAuthentication()
+    public async Task AdminSeasons_WithAuth_ReturnsSeasonList()
     {
-        // Act - Try accessing seasons page without auth
-        var response = await _dashboardClient.GetAsync("/seasons");
+        // Arrange - Get auth token
+        using var authClient = await CreateAuthenticatedAdminClientAsync();
         
-        // Assert - Should redirect to login
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        // Act - Get seasons
+        var response = await authClient.GetAsync("/api/admin/seasons");
+        
+        // Assert - Should return success
+        response.EnsureSuccessStatusCode();
     }
 
     [Fact]
-    public async Task Dashboard_PlayersPage_RequiresAuthentication()
+    public async Task AdminBaseTypes_WithAuth_ReturnsBaseTypeList()
     {
-        // Act - Try accessing players page without auth
-        var response = await _dashboardClient.GetAsync("/players");
+        // Arrange - Get auth token
+        using var authClient = await CreateAuthenticatedAdminClientAsync();
         
-        // Assert - Should redirect to login
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        // Act - Get base types
+        var response = await authClient.GetAsync("/api/admin/base-types");
+        
+        // Assert - Should return success
+        response.EnsureSuccessStatusCode();
     }
 
     [Fact]
-    public async Task Dashboard_AdminUsersPage_RequiresAuthentication()
+    public async Task AdminRateLimiting_WithAuth_ReturnsConfig()
     {
-        // Act - Try accessing admin users page without auth
-        var response = await _dashboardClient.GetAsync("/admin/users");
+        // Arrange - Get auth token
+        using var authClient = await CreateAuthenticatedAdminClientAsync();
         
-        // Assert - Should redirect to login
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-    }
-
-    #endregion
-
-    #region Static Assets Tests
-
-    [Fact]
-    public async Task Dashboard_CssFile_IsAccessible()
-    {
-        // Act - Access the dashboard CSS file
-        var response = await _dashboardClient.GetAsync("/css/titan-dashboard.css");
+        // Act - Get rate limiting config
+        var response = await authClient.GetAsync("/api/admin/rate-limiting/config");
         
-        // Assert - Static files should be accessible without authentication
-        Assert.True(response.IsSuccessStatusCode);
-        var content = await response.Content.ReadAsStringAsync();
-        Assert.Contains("--titan-primary", content); // CSS variables
+        // Assert - Should return success
+        response.EnsureSuccessStatusCode();
     }
 
     #endregion
 
-    #region API Endpoints Tests
+    #region Helpers
 
-    [Fact]
-    public async Task Dashboard_AccessDeniedPage_IsAccessible()
+    private async Task<HttpClient> CreateAuthenticatedAdminClientAsync()
     {
-        // Act - Access the access denied page directly
-        var response = await _dashboardClient.GetAsync("/Account/AccessDenied");
+        var loginResponse = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
         
-        // Assert - Access denied page should be viewable
-        Assert.True(response.IsSuccessStatusCode);
-        var content = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Access Denied", content);
+        var client = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
+        client.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", login!.AccessToken);
+        return client;
     }
+
+    private record AdminLoginResponse(
+        bool Success,
+        string UserId,
+        string Email,
+        string? DisplayName,
+        List<string> Roles,
+        string AccessToken,
+        string RefreshToken,
+        int ExpiresInSeconds);
+
+    private record AdminRefreshResponse(
+        bool Success,
+        string AccessToken,
+        string RefreshToken,
+        int ExpiresInSeconds);
 
     #endregion
 }
+

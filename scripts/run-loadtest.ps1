@@ -35,7 +35,7 @@ param(
     [ValidateSet("auth", "character", "trading", "ratelimit", "ratelimit-backoff", "all")]
     [string]$Scenario = "all",
     
-    [int]$Users = 100,
+    [int]$Users = 50,
     
     [int]$Duration = 60,
     

@@ -165,6 +165,25 @@ public class RateLimitAdminController : ControllerBase
             defaults.Policies.Count);
         return Ok(new { success = true, policiesRestored = defaults.Policies.Count });
     }
+
+    /// <summary>
+    /// Get current rate limiting metrics from Redis.
+    /// Shows active rate limit buckets, their counts and TTLs.
+    /// </summary>
+    [HttpGet("metrics")]
+    public async Task<ActionResult<RateLimitMetrics>> GetMetrics()
+    {
+        var (activeBuckets, activeTimeouts, buckets, timeouts) = await _rateLimitService.GetMetricsAsync();
+        
+        var result = new RateLimitMetrics(
+            activeBuckets,
+            activeTimeouts,
+            buckets.Select(b => new RateLimitBucket(b.PartitionKey, b.PolicyName, b.PeriodSeconds, b.CurrentCount, b.SecondsRemaining)).ToList(),
+            timeouts.Select(t => new RateLimitTimeout(t.PartitionKey, t.PolicyName, t.SecondsRemaining)).ToList()
+        );
+        
+        return Ok(result);
+    }
 }
 
 // Request DTOs
@@ -172,4 +191,23 @@ public record SetEnabledRequest(bool Enabled);
 public record UpsertPolicyRequest(string Name, List<string> Rules);
 public record SetDefaultPolicyRequest(string PolicyName);
 public record AddEndpointMappingRequest(string Pattern, string PolicyName);
+
+// Metrics DTOs
+public record RateLimitMetrics(
+    int ActiveBuckets,
+    int ActiveTimeouts,
+    List<RateLimitBucket> Buckets,
+    List<RateLimitTimeout> Timeouts);
+
+public record RateLimitBucket(
+    string PartitionKey,
+    string PolicyName,
+    int PeriodSeconds,
+    int CurrentCount,
+    int SecondsRemaining);
+
+public record RateLimitTimeout(
+    string PartitionKey,
+    string PolicyName,
+    int SecondsRemaining);
 

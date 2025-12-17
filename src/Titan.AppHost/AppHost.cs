@@ -76,6 +76,7 @@ var tradingHost = builder.AddProject<Projects.Titan_TradingHost>("trading-host")
 var api = builder.AddProject<Projects.Titan_API>("api")
     .WithReference(orleans.AsClient())
     .WithReference(titanDb)
+    .WithReference(titanAdminDb)  // Admin Identity database for dashboard auth
     .WithReference(rateLimitRedis)
     .WaitFor(identityHost)  // Wait for at least one silo to be running
     .WithExternalHttpEndpoints()
@@ -84,16 +85,13 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithEnvironment("RateLimiting__Enabled", builder.Configuration["RateLimiting:Enabled"] ?? "true");
 
 // =============================================================================
-// Admin Dashboard (Orleans Client + Identity)
+// Admin Dashboard (React SPA via Vite)
 // =============================================================================
 
-var dashboard = builder.AddProject<Projects.Titan_Dashboard>("dashboard")
-    .WithReference(orleans.AsClient())
-    .WithReference(titanDb)       // Orleans storage database (for account queries)
-    .WithReference(titanAdminDb)  // Admin Identity database (titan_admin)
-    .WithReference(api)           // API service for admin endpoint calls
-    .WaitFor(identityHost)  // Wait for at least one silo to be running
-    .WithExternalHttpEndpoints()
-    .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment);
+var dashboard = builder.AddViteApp("dashboard", "../titan-dashboard")
+    .WithReference(api)
+    .WaitFor(api)
+    .WithExternalHttpEndpoints();
 
 builder.Build().Run();
+

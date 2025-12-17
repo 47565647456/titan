@@ -97,18 +97,27 @@ public class RateLimitMiddleware
     /// <summary>
     /// Extracts the user ID from a JWT Bearer token without full validation.
     /// This allows rate limiting by account before authentication middleware runs.
+    /// Checks both Authorization header and query string (for SignalR connections).
     /// </summary>
     private string? ExtractUserIdFromToken(HttpContext context)
     {
         try
         {
+            string? token = null;
+            
+            // First try Authorization header
             var authHeader = context.Request.Headers.Authorization.FirstOrDefault();
-            if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
             {
-                return null;
+                token = authHeader["Bearer ".Length..].Trim();
             }
-
-            var token = authHeader["Bearer ".Length..].Trim();
+            
+            // If no header, check query string (SignalR passes token this way)
+            if (string.IsNullOrEmpty(token))
+            {
+                token = context.Request.Query["access_token"].FirstOrDefault();
+            }
+            
             if (string.IsNullOrEmpty(token))
             {
                 return null;

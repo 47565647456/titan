@@ -137,4 +137,16 @@ public class AccountGrain : Grain, IAccountGrain
         var account = await GetAccountAsync();
         return account.UnlockedAchievements.Contains(achievementId);
     }
+
+    public Task<bool> ExistsAsync()
+    {
+        // Uses Orleans RecordExists - true only if state has been persisted
+        return Task.FromResult(_state.RecordExists);
+    }
+
+    public async Task DeleteAsync()
+    {
+        // Uses Orleans ClearStateAsync to remove state from storage
+        await _state.ClearStateAsync();
+    }
 }
