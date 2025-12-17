@@ -9,7 +9,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Titan.API\Titan.API.csproj" />
-    <ProjectReference Include="..\Titan.Dashboard\Titan.Dashboard.csproj" />
     <ProjectReference Include="..\Titan.IdentityHost\Titan.IdentityHost.csproj" />
     <ProjectReference Include="..\Titan.InventoryHost\Titan.InventoryHost.csproj" />
     <ProjectReference Include="..\Titan.TradingHost\Titan.TradingHost.csproj" />
@@ -17,6 +16,7 @@
 
   <ItemGroup>
     <!-- Aspire.Hosting.AppHost is automatically included by the SDK in 13.0 -->
+    <PackageReference Include="Aspire.Hosting.JavaScript" />
     <PackageReference Include="Aspire.Hosting.Orleans" />
     <PackageReference Include="Aspire.Hosting.PostgreSQL" />
     <PackageReference Include="Aspire.Hosting.Redis" />

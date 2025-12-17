@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains.Items;
 using Titan.Abstractions.Models.Items;
+using Titan.API.Services;
 
 namespace Titan.API.Hubs;
 
@@ -57,6 +58,7 @@ public class BaseTypeHub : TitanHubBase
     /// </summary>
     public async Task<BaseType?> Get(string baseTypeId)
     {
+        HubValidation.ValidateId(baseTypeId, nameof(baseTypeId));
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
         return await registry.GetAsync(baseTypeId);
     }
@@ -84,6 +86,7 @@ public class BaseTypeHub : TitanHubBase
     /// </summary>
     public async Task<bool> Exists(string baseTypeId)
     {
+        HubValidation.ValidateId(baseTypeId, nameof(baseTypeId));
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
         return await registry.ExistsAsync(baseTypeId);
     }
@@ -95,11 +98,8 @@ public class BaseTypeHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<BaseType> Create(BaseType baseType)
     {
-        if (string.IsNullOrWhiteSpace(baseType.BaseTypeId))
-            throw new HubException("BaseTypeId is required.");
-
-        if (string.IsNullOrWhiteSpace(baseType.Name))
-            throw new HubException("Name is required.");
+        HubValidation.ValidateId(baseType.BaseTypeId, nameof(baseType.BaseTypeId));
+        HubValidation.ValidateName(baseType.Name, nameof(baseType.Name));
 
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
 
@@ -122,6 +122,9 @@ public class BaseTypeHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<BaseType> Update(string baseTypeId, BaseType baseType)
     {
+        HubValidation.ValidateId(baseTypeId, nameof(baseTypeId));
+        HubValidation.ValidateName(baseType.Name, nameof(baseType.Name));
+
         if (baseType.BaseTypeId != baseTypeId)
             throw new HubException("BaseTypeId in request must match.");
 
@@ -146,6 +149,7 @@ public class BaseTypeHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task Delete(string baseTypeId)
     {
+        HubValidation.ValidateId(baseTypeId, nameof(baseTypeId));
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
 
         if (!await registry.ExistsAsync(baseTypeId))

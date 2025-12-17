@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Orleans.Configuration;
 using Scalar.AspNetCore;
 using System.Text;
-using System.Threading.RateLimiting;
 using Titan.Abstractions;
+using Titan.API.Data;
 using Titan.API.Hubs;
 using Titan.API.Services;
 using Titan.API.Services.Auth;
@@ -12,9 +15,14 @@ using Titan.Abstractions.Rules;
 using Titan.Grains.Trading.Rules;
 using Titan.API.Config;
 using Titan.API.Controllers;
-using Microsoft.Extensions.Options;
+using Titan.API.Services.RateLimiting;
+using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Register all FluentValidation validators from this assembly
+builder.Services.AddValidatorsFromAssemblyContaining<Program>();
+
 
 // Validate configuration early (fails fast if critical config is missing)
 builder.ValidateTitanConfiguration(requireJwtKey: true, requireEosInProduction: true);
@@ -25,6 +33,39 @@ builder.AddServiceDefaults();
 // Add Redis client for Orleans clustering (keyed service registration)
 // Key must match Redis resource name from AppHost's AddRedis()
 builder.AddKeyedRedisClient("orleans-clustering");
+
+// Add Redis client for rate limiting state
+builder.AddKeyedRedisClient("rate-limiting");
+
+// Configure EF Core with PostgreSQL for Admin Identity
+var adminConnectionString = builder.Configuration.GetConnectionString("titan-admin");
+if (!string.IsNullOrEmpty(adminConnectionString))
+{
+    builder.Services.AddDbContext<AdminDbContext>(options =>
+        options.UseNpgsql(adminConnectionString));
+    
+    // Use AddIdentityCore instead of AddIdentity to avoid overriding the default JWT auth scheme
+    // AddIdentity sets up cookie auth as default, which breaks our JWT-based SignalR hubs
+    builder.Services.AddIdentityCore<AdminUser>(options =>
+    {
+        options.Password.RequireDigit = true;
+        options.Password.RequiredLength = 8;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.User.RequireUniqueEmail = true;
+    })
+    .AddRoles<AdminRole>()
+    .AddEntityFrameworkStores<AdminDbContext>()
+    .AddSignInManager()
+    .AddRoleManager<RoleManager<AdminRole>>()
+    .AddDefaultTokenProviders();
+    
+    // Register AccountQueryService for admin dashboard
+    builder.Services.AddSingleton<AccountQueryService>();
+}
 
 // Configure Sentry SDK for ASP.NET Core (only if DSN is configured)
 var sentryDsn = builder.Configuration["Sentry:Dsn"];
@@ -48,11 +89,14 @@ builder.AddTitanLogging("api");
 // Clustering is auto-configured by Aspire via Redis
 builder.UseOrleansClient(client =>
 {
+    // CRITICAL: Must match ServiceId used by silos for clustering to work
+    client.Configure<ClusterOptions>(options => options.ServiceId = "titan-service");
+    
     // Add stream support for receiving trade events
     client.AddMemoryStreams(TradeStreamConstants.ProviderName);
 });
 
-// Add SignalR for WebSocket hubs
+// Add SignalR for WebSocket hubs with rate limiting filter
 builder.Services.AddSignalR(options =>
 {
     // Enable detailed errors in development/testing for debugging
@@ -60,7 +104,14 @@ builder.Services.AddSignalR(options =>
     {
         options.EnableDetailedErrors = true;
     }
+}).AddHubOptions<Titan.API.Hubs.TitanHubBase>(options =>
+{
+    // Hub-specific options if needed
 });
+
+// Register hub filter for rate limiting (applied to all hubs)
+builder.Services.AddSingleton<IHubFilter, RateLimitHubFilter>();
+
 builder.Services.AddOpenApi();
 
 // Register and Bind Options
@@ -135,7 +186,28 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             }
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // SuperAdmin policy - requires "admin" or "superadmin" role claim
+    options.AddPolicy("SuperAdmin", policy => 
+        policy.RequireAssertion(context =>
+            context.User.HasClaim(c => 
+                c.Type == System.Security.Claims.ClaimTypes.Role && 
+                (c.Value.Equals("Admin", StringComparison.OrdinalIgnoreCase) ||
+                 c.Value.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase)))));
+    
+    // AdminDashboard policy - requires any admin role (SuperAdmin, Admin, or Viewer)
+    options.AddPolicy("AdminDashboard", policy => 
+        policy.RequireAssertion(context =>
+            context.User.HasClaim(c => 
+                c.Type == System.Security.Claims.ClaimTypes.Role && 
+                (c.Value.Equals("SuperAdmin", StringComparison.OrdinalIgnoreCase) ||
+                 c.Value.Equals("Admin", StringComparison.OrdinalIgnoreCase) ||
+                 c.Value.Equals("Viewer", StringComparison.OrdinalIgnoreCase)))));
+});
+
+// Add controllers for admin API endpoints
+builder.Services.AddControllers();
 
 // Register Auth Services
 builder.Services.AddSingleton<ITokenService, TokenService>();
@@ -176,29 +248,85 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Rate limiting to prevent abuse (can be disabled for load testing)
-var rateLimitConfig = builder.Configuration.GetSection(RateLimitingOptions.SectionName).Get<RateLimitingOptions>() ?? new RateLimitingOptions();
-if (rateLimitConfig.Enabled)
-{
-    builder.Services.AddRateLimiter(options =>
-    {
-        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        
-        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                partitionKey: context.User?.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
-                factory: _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = rateLimitConfig.PermitLimit,
-                    Window = TimeSpan.FromMinutes(rateLimitConfig.WindowMinutes)
-                }));
-    });
-}
+// Register rate limiting services (Redis-backed)
+builder.Services.AddSingleton<RateLimitService>();
+builder.Services.AddSingleton<RateLimitHubFilter>();
+builder.Services.AddHostedService<RateLimitConfigInitializer>();
+
+// Register admin metrics broadcaster for SignalR push updates
+builder.Services.AddSingleton<AdminMetricsBroadcaster>();
 
 var app = builder.Build();
 
+// Seed default admin user if none exists
+await SeedAdminUsersAsync(app);
+
 // Map Aspire default health check endpoints
 app.MapDefaultEndpoints();
+
+async Task SeedAdminUsersAsync(WebApplication app)
+{
+    // Only seed if admin DB is configured
+    if (string.IsNullOrEmpty(adminConnectionString)) return;
+    
+    using var scope = app.Services.CreateScope();
+    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<AdminUser>>();
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<AdminRole>>();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AdminDbContext>();
+    var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    
+    try
+    {
+        // Ensure database is created
+        await dbContext.Database.EnsureCreatedAsync();
+        
+        // Create default roles if they don't exist
+        string[] roles = ["SuperAdmin", "Admin", "Viewer"];
+        foreach (var roleName in roles)
+        {
+            if (!await roleManager.RoleExistsAsync(roleName))
+            {
+                await roleManager.CreateAsync(new AdminRole { Name = roleName });
+                logger.LogInformation("Created role: {Role}", roleName);
+            }
+        }
+        
+        // Create default admin user if no users exist
+        if (!await userManager.Users.AnyAsync())
+        {
+            // Get admin credentials from configuration, with fallbacks for development
+            var adminEmail = config["Admin:DefaultEmail"] ?? "admin@titan.local";
+            var adminPassword = config["Admin:DefaultPassword"] ?? "Admin123!";
+            var adminDisplayName = config["Admin:DefaultDisplayName"] ?? "Default Admin";
+            
+            var adminUser = new AdminUser
+            {
+                UserName = adminEmail,
+                Email = adminEmail,
+                DisplayName = adminDisplayName,
+                EmailConfirmed = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            var result = await userManager.CreateAsync(adminUser, adminPassword);
+            if (result.Succeeded)
+            {
+                await userManager.AddToRolesAsync(adminUser, ["SuperAdmin", "Admin"]);
+                logger.LogInformation("Created default admin user: {Id}", adminUser.Id);
+            }
+            else
+            {
+                logger.LogWarning("Failed to create default admin: {Errors}", 
+                    string.Join(", ", result.Errors.Select(e => e.Description)));
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to seed admin users");
+    }
+}
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -209,10 +337,15 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors();
-if (rateLimitConfig.Enabled)
-{
-    app.UseRateLimiter();
-}
+
+// Rate limiting middleware - applies to all routes
+// Policy matching is configured in appsettings.json:
+// - /api/admin/auth/* -> "Auth" (strict)
+// - /api/admin/* -> "Admin" (1000/min, defense-in-depth)
+// - /hubs/admin* -> "AdminHub" (5000/min, real-time metrics)
+// - Everything else -> "Global" (default)
+app.UseMiddleware<RateLimitMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -225,7 +358,13 @@ app.MapHub<BaseTypeHub>("/baseTypeHub");
 app.MapHub<SeasonHub>("/seasonHub");
 app.MapHub<TradeHub>("/tradeHub");
 
+// Admin dashboard SignalR hub for real-time metrics
+app.MapHub<AdminMetricsHub>("/hubs/admin-metrics");
+
 // Map HTTP Authentication API (industry standard: HTTP for auth, WebSocket for real-time)
 app.MapAuthEndpoints();
+
+// Map controllers for admin API
+app.MapControllers();
 
 app.Run();

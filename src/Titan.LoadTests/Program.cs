@@ -15,7 +15,7 @@ var urlOption = new Option<string>(
 
 var scenarioOption = new Option<string>(
     name: "--scenario",
-    description: "Scenario to run: auth, character, trading, all",
+    description: "Scenario to run: auth, character, trading, ratelimit, ratelimit-backoff, all",
     getDefaultValue: () => "all");
 
 var usersOption = new Option<int>(
@@ -54,6 +54,8 @@ rootCommand.SetHandler((string url, string scenario, int users, int duration) =>
         "auth" => [AuthScenario.Create(url, users, testDuration)],
         "character" => [CharacterScenario.Create(url, users, testDuration)],
         "trading" => [TradingScenario.Create(url, Math.Max(1, users / 2), testDuration)],
+        "ratelimit" => [RateLimitingScenario.Create(url, users * 5, testDuration)], // High rate to trigger limits
+        "ratelimit-backoff" => [RateLimitingScenario.CreateWithBackoff(url, users, testDuration)],
         "all" => 
         [ 
             AuthScenario.Create(url, users, testDuration),

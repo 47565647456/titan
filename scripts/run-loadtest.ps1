@@ -7,7 +7,7 @@
     Requires Titan.AppHost to be running.
 
 .PARAMETER Scenario
-    Scenario to run: auth, character, trading, all (default: all)
+    Scenario to run: auth, character, trading, ratelimit, ratelimit-backoff, all (default: all)
 
 .PARAMETER Users
     Number of concurrent users (default: 50)
@@ -25,13 +25,17 @@
 .EXAMPLE
     .\run-loadtest.ps1 -Scenario auth -Users 50 -Duration 120
     Runs auth scenario with 50 users for 2 minutes.
+
+.EXAMPLE
+    .\run-loadtest.ps1 -Scenario ratelimit -Users 20
+    Tests rate limiting by hammering auth endpoint to trigger 429s.
 #>
 
 param(
-    [ValidateSet("auth", "character", "trading", "all")]
+    [ValidateSet("auth", "character", "trading", "ratelimit", "ratelimit-backoff", "all")]
     [string]$Scenario = "all",
     
-    [int]$Users = 100,
+    [int]$Users = 50,
     
     [int]$Duration = 60,
     

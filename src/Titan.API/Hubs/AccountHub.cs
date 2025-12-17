@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.API.Services;
 
 namespace Titan.API.Hubs;
 
@@ -40,6 +41,9 @@ public class AccountHub : TitanHubBase
     /// </summary>
     public async Task<CharacterSummary> CreateCharacter(string seasonId, string name, CharacterRestrictions restrictions = CharacterRestrictions.None)
     {
+        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        HubValidation.ValidateName(name, nameof(name), 50);
+
         var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.CreateCharacterAsync(seasonId, name, restrictions);
     }
@@ -49,6 +53,8 @@ public class AccountHub : TitanHubBase
     /// </summary>
     public async Task<bool> HasCosmetic(string cosmeticId)
     {
+        HubValidation.ValidateId(cosmeticId, nameof(cosmeticId));
+
         var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.HasCosmeticAsync(cosmeticId);
     }
@@ -58,6 +64,8 @@ public class AccountHub : TitanHubBase
     /// </summary>
     public async Task UnlockCosmetic(string cosmeticId)
     {
+        HubValidation.ValidateId(cosmeticId, nameof(cosmeticId));
+
         var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         await grain.UnlockCosmeticAsync(cosmeticId);
     }
@@ -67,6 +75,8 @@ public class AccountHub : TitanHubBase
     /// </summary>
     public async Task<bool> HasAchievement(string achievementId)
     {
+        HubValidation.ValidateId(achievementId, nameof(achievementId));
+
         var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         return await grain.HasAchievementAsync(achievementId);
     }
@@ -76,8 +86,11 @@ public class AccountHub : TitanHubBase
     /// </summary>
     public async Task UnlockAchievement(string achievementId)
     {
+        HubValidation.ValidateId(achievementId, nameof(achievementId));
+
         var grain = ClusterClient.GetGrain<IAccountGrain>(GetUserId());
         await grain.UnlockAchievementAsync(achievementId);
     }
 }
+
 
