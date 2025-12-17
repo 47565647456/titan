@@ -17,20 +17,15 @@ internal sealed class BearerSecuritySchemeTransformer(IAuthenticationSchemeProvi
         if (authenticationSchemes.Any(authScheme => authScheme.Name == "Bearer"))
         {
             // Add the security scheme at the document level
-            var securitySchemes = new Dictionary<string, IOpenApiSecurityScheme>
-            {
-                ["Bearer"] = new OpenApiSecurityScheme
-                {
-                    Type = SecuritySchemeType.Http,
-                    Scheme = "bearer",
-                    In = ParameterLocation.Header,
-                    BearerFormat = "JWT",
-                    Description = "JWT Authorization header using the Bearer scheme. Enter your JWT token below."
-                }
-            };
-
             document.Components ??= new OpenApiComponents();
-            document.Components.SecuritySchemes = securitySchemes;
+            document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+            document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.Http,
+                Scheme = "bearer",
+                BearerFormat = "JWT",
+                Description = "JWT Authorization header using the Bearer scheme. Enter your JWT token below."
+            };
 
             // Apply it as a requirement for all operations
             foreach (var operation in document.Paths.Values.SelectMany(path => path.Operations ?? []))
