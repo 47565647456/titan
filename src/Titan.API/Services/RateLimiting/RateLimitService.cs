@@ -163,12 +163,10 @@ public partial class RateLimitService
         if (!config.Enabled)
             return null;
 
-        foreach (var mapping in config.EndpointMappings)
+        var mapping = config.EndpointMappings.FirstOrDefault(m => MatchesPattern(endpoint, m.Pattern));
+        if (mapping is not null)
         {
-            if (MatchesPattern(endpoint, mapping.Pattern))
-            {
-                return config.Policies.FirstOrDefault(p => p.Name == mapping.PolicyName);
-            }
+            return config.Policies.FirstOrDefault(p => p.Name == mapping.PolicyName);
         }
 
         return config.Policies.FirstOrDefault(p => p.Name == config.DefaultPolicyName);
@@ -212,7 +210,7 @@ public partial class RateLimitService
     {
         var db = _redis.GetDatabase();
         var server = _redis.GetServers().FirstOrDefault();
-        
+
         if (server == null)
         {
             _logger.LogWarning("No Redis server found for clearing rate limit state");
@@ -220,7 +218,7 @@ public partial class RateLimitService
         }
 
         var keysToDelete = new List<RedisKey>();
-        
+
         // Find all rate limit keys (counters and timeouts)
         // Key format: rl|{partitionKey}|{policyName}|{periodSeconds} or rl|timeout|{partitionKey}|{policyName}
         await foreach (var key in server.KeysAsync(pattern: "rl|*"))
@@ -243,23 +241,23 @@ public partial class RateLimitService
     {
         var db = _redis.GetDatabase();
         var timeoutKey = GetTimeoutKey(partitionKey, policyName);
-        
+
         var deleted = await db.KeyDeleteAsync(timeoutKey);
-        
+
         if (deleted)
         {
-            _logger.LogInformation("Cleared timeout for {PartitionKey} on policy {Policy}", 
+            _logger.LogInformation("Cleared timeout for {PartitionKey} on policy {Policy}",
                 partitionKey, policyName);
-            
+
             // Trigger metrics broadcast so dashboard updates
             _broadcaster?.TriggerBroadcast();
         }
         else
         {
-            _logger.LogDebug("No timeout found for {PartitionKey} on policy {Policy}", 
+            _logger.LogDebug("No timeout found for {PartitionKey} on policy {Policy}",
                 partitionKey, policyName);
         }
-        
+
         return deleted;
     }
 
@@ -271,15 +269,15 @@ public partial class RateLimitService
     {
         var db = _redis.GetDatabase();
         var server = _redis.GetServers().FirstOrDefault();
-        
+
         if (server == null)
         {
             _logger.LogWarning("No Redis server found for clearing buckets");
             return 0;
         }
-        
+
         var keysToDelete = new List<RedisKey>();
-        
+
         // Find all counter keys for this partition key
         // Counter key format: rl|{partitionKey}|{policyName}|{periodSeconds}
         var pattern = $"rl|{partitionKey}|*";
@@ -291,13 +289,13 @@ public partial class RateLimitService
                 keysToDelete.Add(key);
             }
         }
-        
+
         if (keysToDelete.Count > 0)
         {
             await db.KeyDeleteAsync([.. keysToDelete]);
-            _logger.LogInformation("Cleared {Count} buckets for {PartitionKey}", 
+            _logger.LogInformation("Cleared {Count} buckets for {PartitionKey}",
                 keysToDelete.Count, partitionKey);
-            
+
             // Trigger metrics broadcast so dashboard updates
             _broadcaster?.TriggerBroadcast();
         }
@@ -305,7 +303,7 @@ public partial class RateLimitService
         {
             _logger.LogDebug("No buckets found for {PartitionKey}", partitionKey);
         }
-        
+
         return keysToDelete.Count;
     }
 
@@ -313,13 +311,13 @@ public partial class RateLimitService
     /// Gets current rate limit metrics from Redis.
     /// Returns active buckets and timeouts with their current state.
     /// </summary>
-    public async Task<(int ActiveBuckets, int ActiveTimeouts, 
+    public async Task<(int ActiveBuckets, int ActiveTimeouts,
         List<(string PartitionKey, string PolicyName, int PeriodSeconds, int CurrentCount, int SecondsRemaining)> Buckets,
         List<(string PartitionKey, string PolicyName, int SecondsRemaining)> Timeouts)> GetMetricsAsync()
     {
         var db = _redis.GetDatabase();
         var server = _redis.GetServers().FirstOrDefault();
-        
+
         var buckets = new List<(string PartitionKey, string PolicyName, int PeriodSeconds, int CurrentCount, int SecondsRemaining)>();
         var timeouts = new List<(string PartitionKey, string PolicyName, int SecondsRemaining)>();
 
@@ -392,13 +390,13 @@ public partial class RateLimitService
         }
 
         RateLimitingConfiguration config;
-        
+
         try
         {
             // Fetch from grain
             var grain = _clusterClient.GetGrain<IRateLimitConfigGrain>("default");
             config = await grain.GetConfigurationAsync();
-            
+
             // If grain has no policies yet, use appsettings defaults
             if (config.Policies.Count == 0)
             {
@@ -422,11 +420,11 @@ public partial class RateLimitService
 
         return config;
     }
-    
+
     private RateLimitingConfiguration BuildDefaultConfig()
     {
         var opts = _options.Value;
-        
+
         var policies = opts.DefaultPolicies
             .Select(p => new RateLimitPolicy(
                 p.Name,

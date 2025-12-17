@@ -76,7 +76,7 @@ public class BaseTypeSeedStartupTask : IStartupTask
             var seedData = await LoadSeedDataAsync(cancellationToken);
             if (seedData == null)
             {
-                _logger.LogError("No seed data found. Please check the seed data file.");
+                _logger.LogWarning("No seed data found. Please check the seed data file.");
                 return;
             }
 
