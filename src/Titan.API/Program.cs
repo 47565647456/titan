@@ -308,7 +308,7 @@ async Task SeedAdminUsersAsync(WebApplication app)
             if (result.Succeeded)
             {
                 await userManager.AddToRolesAsync(adminUser, ["SuperAdmin", "Admin"]);
-                logger.LogInformation("Created default admin user: {Email}", adminUser.Email);
+                logger.LogInformation("Created default admin user: {Id}", adminUser.Id);
             }
             else
             {

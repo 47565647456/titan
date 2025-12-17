@@ -64,13 +64,13 @@ public class AdminAuthController : ControllerBase
         }
 
         var result = await _signInManager.CheckPasswordSignInAsync(user, request.Password, lockoutOnFailure: true);
-        
+
         if (result.IsLockedOut)
         {
             _logger.LogWarning("Login failed: user {Email} is locked out", request.Email);
             return Unauthorized(new { error = "Account locked out. Please try again later." });
         }
-        
+
         if (!result.Succeeded)
         {
             _logger.LogWarning("Login failed: invalid password for {Email}", request.Email);
@@ -213,7 +213,7 @@ public class AdminAuthController : ControllerBase
     public async Task<IActionResult> Logout()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        
+
         // Revoke the refresh token if we have it
         if (Request.Cookies.TryGetValue(RefreshTokenCookie, out var refreshToken) &&
             !string.IsNullOrEmpty(userId) && Guid.TryParse(userId, out var id))
@@ -222,10 +222,10 @@ public class AdminAuthController : ControllerBase
             await refreshTokenGrain.RevokeTokenAsync(refreshToken);
             _logger.LogInformation("Admin {UserId} logged out, refresh token revoked", id);
         }
-        
+
         // Clear auth cookies
         ClearAuthCookies();
-        
+
         return Ok(new { success = true });
     }
 
@@ -244,11 +244,11 @@ public class AdminAuthController : ControllerBase
 
         var refreshTokenGrain = _clusterClient.GetGrain<IRefreshTokenGrain>(id);
         await refreshTokenGrain.RevokeAllTokensAsync();
-        
+
         ClearAuthCookies();
-        
+
         _logger.LogInformation("Admin {UserId} revoked all refresh tokens", id);
-        
+
         return Ok(new { success = true });
     }
 
@@ -257,8 +257,8 @@ public class AdminAuthController : ControllerBase
     private void SetAuthCookies(string accessToken, string refreshToken, Guid userId, TimeSpan accessTokenExpiry)
     {
         var isProduction = !string.Equals(
-            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), 
-            "Development", 
+            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            "Development",
             StringComparison.OrdinalIgnoreCase);
 
         var cookieOptions = new CookieOptions
@@ -302,28 +302,29 @@ public class AdminAuthController : ControllerBase
 
     private void ClearAuthCookies()
     {
-        var expiredOptions = new CookieOptions
-        {
-            Expires = DateTimeOffset.UtcNow.AddDays(-1)
+        var isProduction = !string.Equals(
+            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            "Development",
+            StringComparison.OrdinalIgnoreCase);
+
+        // Options must match the path and secure flag of the original cookie
+        var rootOptions = new CookieOptions { 
+            Path = "/", 
+            Secure = isProduction, 
+            HttpOnly = true 
         };
 
-        Response.Cookies.Append(AccessTokenCookie, "", new CookieOptions
-        {
-            Expires = DateTimeOffset.UtcNow.AddDays(-1),
-            Path = "/"
-        });
-        Response.Cookies.Append(RefreshTokenCookie, "", new CookieOptions
-        {
-            Expires = DateTimeOffset.UtcNow.AddDays(-1),
-            Path = "/api/admin/auth"
-        });
-        Response.Cookies.Append(UserIdCookie, "", new CookieOptions
-        {
-            Expires = DateTimeOffset.UtcNow.AddDays(-1),
-            Path = "/api/admin/auth"
-        });
-    }
+        var authOptions = new CookieOptions 
+        { 
+            Path = "/api/admin/auth", 
+            Secure = isProduction, 
+            HttpOnly = true 
+        };
 
+        Response.Cookies.Delete(AccessTokenCookie, rootOptions);
+        Response.Cookies.Delete(RefreshTokenCookie, authOptions);
+        Response.Cookies.Delete(UserIdCookie, authOptions);
+    }
     #endregion
 }
 
