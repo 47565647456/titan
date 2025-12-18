@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw } from 'lucide-react';
 import { rateLimitingApi } from '../api/client';
 import type { RateLimitPolicy } from '../types';
 import './DataPage.css';
@@ -296,7 +297,7 @@ export function RateLimitingPage() {
             onClick={() => setShowResetConfirm(true)}
             disabled={resetMutation.isPending}
           >
-            🔄 Reset to Defaults
+            <RefreshCw size={16} /> Reset to Defaults
           </button>
         </div>
       </div>
@@ -311,11 +312,11 @@ export function RateLimitingPage() {
               checked={config?.enabled ?? false}
               onChange={(e) => toggleMutation.mutate(e.target.checked)}
             />
-            <span className="toggle-track">
-              <span className="toggle-thumb" />
-            </span>
             <span className="toggle-label">
               {config?.enabled ? 'Enabled' : 'Disabled'}
+            </span>
+            <span className="toggle-track">
+              <span className="toggle-thumb" />
             </span>
           </label>
         </div>
@@ -623,7 +624,7 @@ export function RateLimitingPage() {
         <div className="modal-overlay" onClick={() => setShowResetConfirm(false)}>
           <div className="modal modal-small" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2 className="modal-title">🔄 Reset to Defaults</h2>
+              <h2 className="modal-title"><RefreshCw size={20} /> Reset to Defaults</h2>
             </div>
             <div className="modal-body">
               <p>This will remove all custom policies and mappings.</p>

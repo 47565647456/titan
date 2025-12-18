@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Activity, Timer, CheckCircle, XCircle, FileText, RefreshCw, Database, Trash2 } from 'lucide-react';
 import { rateLimitingApi } from '../api/client';
 import { useAdminMetrics } from '../hooks/useAdminMetrics';
+import { LineChart, AreaChart } from '../components/charts';
 import './DataPage.css';
 import './RateLimitingMetrics.css';
 
@@ -12,6 +14,36 @@ export function RateLimitingMetricsPage() {
   const { data: config } = useQuery({
     queryKey: ['rateLimitConfig'],
     queryFn: rateLimitingApi.getConfig,
+  });
+
+  // Fetch historical metrics for charts
+  const { data: history, refetch: refetchHistory } = useQuery({
+    queryKey: ['rateLimitHistory'],
+    queryFn: () => rateLimitingApi.getMetricsHistory(60),
+    refetchInterval: 10000, // Refresh every 10 seconds
+  });
+
+  // Query for metrics collection status
+  const queryClient = useQueryClient();
+  const { data: collectionStatus } = useQuery({
+    queryKey: ['metricsCollectionStatus'],
+    queryFn: rateLimitingApi.getMetricsCollectionStatus,
+  });
+
+  // Mutation to toggle metrics collection
+  const toggleCollectionMutation = useMutation({
+    mutationFn: (enabled: boolean) => rateLimitingApi.setMetricsCollection(enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['metricsCollectionStatus'] });
+    },
+  });
+
+  // Mutation to clear history
+  const clearHistoryMutation = useMutation({
+    mutationFn: rateLimitingApi.clearMetricsHistory,
+    onSuccess: () => {
+      refetchHistory();
+    },
   });
 
   const isLoading = connectionState === 'connecting' && !metrics;
@@ -63,12 +95,12 @@ export function RateLimitingMetricsPage() {
     <div className="data-page rate-limit-metrics-page">
       <div className="page-header">
         <div>
-          <h1>📊 Rate Limiting Metrics</h1>
+          <h1><Activity size={28} className="page-icon" /> Rate Limiting Metrics</h1>
           <p className="subtitle">Live view of active rate limit buckets and timeouts</p>
         </div>
         <div className="page-actions">
           <button className="btn btn-secondary" onClick={refresh} disabled={connectionState !== 'connected'}>
-            🔄 Refresh
+            <RefreshCw size={16} /> Refresh
           </button>
         </div>
       </div>
@@ -76,34 +108,96 @@ export function RateLimitingMetricsPage() {
       {/* Summary Cards */}
       <div className="metrics-summary">
         <div className="summary-card">
-          <div className="summary-icon">📦</div>
+          <div className="summary-icon"><Activity size={24} /></div>
           <div className="summary-content">
             <div className="summary-value">{metrics?.activeBuckets || 0}</div>
             <div className="summary-label">Active Buckets</div>
           </div>
         </div>
         <div className="summary-card timeout-card">
-          <div className="summary-icon">⏱️</div>
+          <div className="summary-icon"><Timer size={24} /></div>
           <div className="summary-content">
             <div className="summary-value">{metrics?.activeTimeouts || 0}</div>
             <div className="summary-label">Active Timeouts</div>
           </div>
         </div>
         <div className="summary-card status-card">
-          <div className="summary-icon">{config?.enabled ? '✅' : '⚠️'}</div>
+          <div className="summary-icon">
+            {config?.enabled ? <CheckCircle size={24} /> : <XCircle size={24} />}
+          </div>
           <div className="summary-content">
             <div className="summary-value">{config?.enabled ? 'Enabled' : 'Disabled'}</div>
             <div className="summary-label">Rate Limiting Status</div>
           </div>
         </div>
         <div className="summary-card">
-          <div className="summary-icon">📋</div>
+          <div className="summary-icon"><FileText size={24} /></div>
           <div className="summary-content">
             <div className="summary-value">{config?.policies.length || 0}</div>
             <div className="summary-label">Configured Policies</div>
           </div>
         </div>
+        <div className="summary-card collection-card">
+          <div className="summary-icon"><Database size={24} /></div>
+          <div className="summary-content">
+            <div className="summary-value collection-toggle">
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={collectionStatus?.enabled ?? false}
+                  onChange={(e) => toggleCollectionMutation.mutate(e.target.checked)}
+                  disabled={toggleCollectionMutation.isPending}
+                />
+                <span className="toggle-slider" />
+              </label>
+              <span>{collectionStatus?.enabled ? 'On' : 'Off'}</span>
+            </div>
+            <div className="summary-label">Metrics Collection</div>
+            {collectionStatus?.enabled && history && history.length > 0 && (
+              <button 
+                className="btn btn-sm btn-ghost clear-history-btn"
+                onClick={() => clearHistoryMutation.mutate()}
+                disabled={clearHistoryMutation.isPending}
+                title="Clear collected history"
+              >
+                <Trash2 size={14} /> Clear
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Historical Charts */}
+      {history && history.length > 1 && (
+        <div className="metrics-charts">
+          <div className="chart-card">
+            <h3>Request Activity (Recent)</h3>
+            <LineChart
+              data={history.slice().reverse().map(h => ({
+                timestamp: new Date(h.timestamp).toLocaleTimeString(),
+                value: h.totalRequests,
+              }))}
+              height={180}
+            />
+          </div>
+          <div className="chart-card">
+            <h3>Buckets & Timeouts</h3>
+            <AreaChart
+              data={history.slice().reverse().map(h => ({
+                timestamp: new Date(h.timestamp).toLocaleTimeString(),
+                buckets: h.activeBuckets,
+                timeouts: h.activeTimeouts,
+              }))}
+              areas={[
+                { dataKey: 'buckets', color: 'var(--color-accent)', name: 'Buckets' },
+                { dataKey: 'timeouts', color: 'var(--color-error)', name: 'Timeouts' },
+              ]}
+              height={180}
+              stacked={false}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Active Timeouts Section */}
       {metrics && metrics.timeouts.length > 0 && (

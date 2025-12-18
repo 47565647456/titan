@@ -309,6 +309,73 @@ export const rateLimitingApi = {
     const response = await api.get<RateLimitMetrics>('/admin/rate-limiting/metrics');
     return response.data;
   },
+
+  getMetricsHistory: async (count = 60): Promise<MetricsHistoryItem[]> => {
+    const response = await api.get<MetricsHistoryItem[]>(`/admin/rate-limiting/metrics/history?count=${count}`);
+    return response.data;
+  },
+
+  getMetricsCollectionStatus: async (): Promise<MetricsCollectionStatus> => {
+    const response = await api.get<MetricsCollectionStatus>('/admin/rate-limiting/metrics/collection');
+    return response.data;
+  },
+
+  setMetricsCollection: async (enabled: boolean): Promise<void> => {
+    await api.post('/admin/rate-limiting/metrics/collection', { enabled });
+  },
+
+  clearMetricsHistory: async (): Promise<void> => {
+    await api.delete('/admin/rate-limiting/metrics/history');
+  },
+};
+
+export interface MetricsHistoryItem {
+  timestamp: string;
+  activeBuckets: number;
+  activeTimeouts: number;
+  totalRequests: number;
+}
+
+export interface MetricsCollectionStatus {
+  enabled: boolean;
+}
+
+// Health Check API (unauthenticated - uses fetch directly)
+export interface HealthCheckResult {
+  name: string;
+  status: 'Healthy' | 'Degraded' | 'Unhealthy';
+  duration: string;
+}
+
+export interface HealthCheckResponse {
+  status: 'Healthy' | 'Degraded' | 'Unhealthy';
+  checks: HealthCheckResult[];
+}
+
+export const healthApi = {
+  getStatus: async (signal?: AbortSignal): Promise<HealthCheckResponse> => {
+    const baseUrl = import.meta.env.VITE_API_URL || '';
+    
+    // Create timeout controller (10 second timeout)
+    const timeoutMs = 10000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    // Link external abort signal if provided
+    signal?.addEventListener('abort', () => controller.abort());
+    
+    try {
+      const response = await fetch(`${baseUrl}/health`, { 
+        signal: controller.signal 
+      });
+      if (!response.ok) {
+        throw new Error(`Health check failed: ${response.status}`);
+      }
+      return response.json();
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  },
 };
 
 export default api;

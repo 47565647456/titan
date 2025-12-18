@@ -20,6 +20,10 @@ public class ResourceTests : IntegrationTestBase
         // Assert
         response.EnsureSuccessStatusCode();
         var content = await response.Content.ReadAsStringAsync();
+        
+        // Verify JSON structure with per-check details
+        Assert.Contains("\"status\":", content);
+        Assert.Contains("\"checks\":", content);
         Assert.Contains("Healthy", content);
     }
 }

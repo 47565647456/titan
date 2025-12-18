@@ -198,6 +198,9 @@ public class AdminMetricsBroadcaster : IDisposable
             var rateLimitService = scope.ServiceProvider.GetRequiredService<RateLimitService>();
             var metrics = await rateLimitService.GetMetricsAsync();
             
+            // Record snapshot to Redis for historical tracking (pass metrics to avoid redundant fetch)
+            await rateLimitService.RecordMetricsSnapshotAsync(metrics);
+            
             await _hubContext.Clients.Group("RateLimitMetrics").SendAsync("MetricsUpdated", new
             {
                 ActiveBuckets = metrics.ActiveBuckets,

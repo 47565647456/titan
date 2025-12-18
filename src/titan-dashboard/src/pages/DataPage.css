@@ -24,6 +24,12 @@
   margin-bottom: 0;
 }
 
+.page-actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 /* Loading State */
 .loading-state {
   display: flex;

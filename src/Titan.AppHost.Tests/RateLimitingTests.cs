@@ -902,6 +902,347 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
     }
 
     #endregion
+
+    #region Metrics Collection Enabled Tests
+
+    [Fact]
+    public async Task GetMetricsCollectionStatus_ReturnsEnabledState()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+
+        // Act
+        var response = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/collection");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var status = await response.Content.ReadFromJsonAsync<MetricsCollectionStatus>();
+        Assert.NotNull(status);
+        // Default value is false
+        Assert.False(status.Enabled);
+    }
+
+    [Fact]
+    public async Task SetMetricsCollection_TogglesState()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+        
+        // Get initial state
+        var initialResponse = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/collection");
+        var initialStatus = await initialResponse.Content.ReadFromJsonAsync<MetricsCollectionStatus>();
+        var wasEnabled = initialStatus?.Enabled ?? false;
+
+        try
+        {
+            // Act - enable
+            var enableResponse = await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+                new { Enabled = true });
+            Assert.Equal(HttpStatusCode.OK, enableResponse.StatusCode);
+
+            // Verify enabled
+            var enabledResponse = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/collection");
+            var enabledStatus = await enabledResponse.Content.ReadFromJsonAsync<MetricsCollectionStatus>();
+            Assert.NotNull(enabledStatus);
+            Assert.True(enabledStatus.Enabled);
+
+            // Act - disable
+            var disableResponse = await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+                new { Enabled = false });
+            Assert.Equal(HttpStatusCode.OK, disableResponse.StatusCode);
+
+            // Verify disabled
+            var disabledResponse = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/collection");
+            var disabledStatus = await disabledResponse.Content.ReadFromJsonAsync<MetricsCollectionStatus>();
+            Assert.NotNull(disabledStatus);
+            Assert.False(disabledStatus.Enabled);
+        }
+        finally
+        {
+            // Restore original state
+            await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+                new { Enabled = wasEnabled });
+        }
+    }
+
+    [Fact]
+    public async Task SetMetricsCollection_RequiresAuthentication()
+    {
+        // Create a new client without auth
+        using var unauthClient = new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
+
+        // Act - try without auth
+        var response = await unauthClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+            new { Enabled = true });
+
+        // Assert - should be unauthorized (401) or forbidden (403)
+        Assert.True(
+            response.StatusCode == HttpStatusCode.Unauthorized || 
+            response.StatusCode == HttpStatusCode.Forbidden,
+            $"Expected 401 or 403, got {response.StatusCode}");
+    }
+
+    [Fact]
+    public async Task GetConfiguration_IncludesMetricsCollectionEnabled()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+
+        // Act
+        var response = await HttpClient.GetAsync("/api/admin/rate-limiting/config");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var config = await response.Content.ReadFromJsonAsync<RateLimitingConfiguration>();
+        Assert.NotNull(config);
+        
+        // MetricsCollectionEnabled should be present and default to false
+        // We can verify it's a valid boolean by checking it doesn't throw
+        var metricsEnabled = config.MetricsCollectionEnabled;
+        Assert.False(metricsEnabled); // Default is false
+    }
+
+    [Fact]
+    public async Task ResetToDefaults_ResetsMetricsCollectionEnabled()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+        
+        // Enable metrics collection first
+        await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+            new { Enabled = true });
+        
+        // Verify it's enabled
+        var enabledResponse = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/collection");
+        var enabledStatus = await enabledResponse.Content.ReadFromJsonAsync<MetricsCollectionStatus>();
+        Assert.True(enabledStatus?.Enabled, "Metrics collection should be enabled before reset");
+
+        // Act - Reset to defaults
+        var resetResponse = await HttpClient.PostAsync("/api/admin/rate-limiting/reset", null);
+        Assert.Equal(HttpStatusCode.OK, resetResponse.StatusCode);
+
+        // Assert - MetricsCollectionEnabled should be reset to false (default)
+        var afterResetResponse = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/collection");
+        var afterResetStatus = await afterResetResponse.Content.ReadFromJsonAsync<MetricsCollectionStatus>();
+        Assert.False(afterResetStatus?.Enabled, "Metrics collection should be disabled after reset");
+    }
+
+    private record MetricsCollectionStatus(bool Enabled);
+
+    #endregion
+
+    #region Metrics History Tests
+
+    [Fact]
+    public async Task GetMetricsHistory_WhenEmpty_ReturnsEmptyList()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+        
+        // Clear any existing history
+        await HttpClient.DeleteAsync("/api/admin/rate-limiting/metrics/history");
+
+        // Act
+        var response = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/history");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var history = await response.Content.ReadFromJsonAsync<List<MetricsHistoryItem>>();
+        Assert.NotNull(history);
+        Assert.Empty(history);
+    }
+
+    [Fact]
+    public async Task GetMetricsHistory_RequiresAuthentication()
+    {
+        // Create a new client without auth
+        using var unauthClient = new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
+
+        // Act - try without auth
+        var response = await unauthClient.GetAsync("/api/admin/rate-limiting/metrics/history");
+
+        // Assert - should be unauthorized (401) or forbidden (403)
+        Assert.True(
+            response.StatusCode == HttpStatusCode.Unauthorized || 
+            response.StatusCode == HttpStatusCode.Forbidden,
+            $"Expected 401 or 403, got {response.StatusCode}");
+    }
+
+    [Fact]
+    public async Task DeleteMetricsHistory_ClearsAllHistory()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+        
+        // Enable collection and make some requests to generate history
+        await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+            new { Enabled = true });
+        
+        // Make requests to trigger metrics recording
+        for (int i = 0; i < 3; i++)
+        {
+            await HttpClient.GetAsync("/api/admin/rate-limiting/metrics");
+            await Task.Delay(100); // Give time for SignalR broadcast
+        }
+        
+        await Task.Delay(1000); // Allow broadcasts to complete
+        
+        // Act - Clear history
+        var clearResponse = await HttpClient.DeleteAsync("/api/admin/rate-limiting/metrics/history");
+        
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, clearResponse.StatusCode);
+        
+        // Verify history is cleared
+        var historyResponse = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/history");
+        var history = await historyResponse.Content.ReadFromJsonAsync<List<MetricsHistoryItem>>();
+        Assert.NotNull(history);
+        Assert.Empty(history);
+        
+        // Cleanup
+        await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+            new { Enabled = false });
+    }
+
+    [Fact]
+    public async Task DeleteMetricsHistory_RequiresAuthentication()
+    {
+        // Create a new client without auth
+        using var unauthClient = new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
+
+        // Act - try without auth
+        var response = await unauthClient.DeleteAsync("/api/admin/rate-limiting/metrics/history");
+
+        // Assert - should be unauthorized (401) or forbidden (403)
+        Assert.True(
+            response.StatusCode == HttpStatusCode.Unauthorized || 
+            response.StatusCode == HttpStatusCode.Forbidden,
+            $"Expected 401 or 403, got {response.StatusCode}");
+    }
+
+    [Fact]
+    public async Task MetricsCollection_WhenEnabled_RecordsSnapshots()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+        
+        // Clear existing history and enable collection
+        await HttpClient.DeleteAsync("/api/admin/rate-limiting/metrics/history");
+        await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+            new { Enabled = true });
+
+        try
+        {
+            // Make some requests to trigger metrics recording via SignalR broadcasts
+            for (int i = 0; i < 5; i++)
+            {
+                await HttpClient.GetAsync("/api/admin/rate-limiting/metrics");
+                await Task.Delay(600); // Wait longer than debounce interval (500ms)
+            }
+
+            // Act - Get history
+            var response = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/history?count=10");
+
+            // Assert
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var history = await response.Content.ReadFromJsonAsync<List<MetricsHistoryItem>>();
+            Assert.NotNull(history);
+            
+            // Should have recorded at least one snapshot
+            Assert.NotEmpty(history);
+            
+            // Verify snapshot structure
+            var snapshot = history.First();
+            Assert.True(snapshot.ActiveBuckets >= 0);
+            Assert.True(snapshot.ActiveTimeouts >= 0);
+            Assert.True(snapshot.TotalRequests >= 0);
+        }
+        finally
+        {
+            // Cleanup - disable collection and clear history
+            await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+                new { Enabled = false });
+            await HttpClient.DeleteAsync("/api/admin/rate-limiting/metrics/history");
+        }
+    }
+
+    [Fact]
+    public async Task MetricsCollection_WhenDisabled_DoesNotRecordSnapshots()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+        
+        // Clear history and ensure collection is disabled
+        await HttpClient.DeleteAsync("/api/admin/rate-limiting/metrics/history");
+        await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+            new { Enabled = false });
+
+        // Make some requests
+        for (int i = 0; i < 3; i++)
+        {
+            await HttpClient.GetAsync("/api/admin/rate-limiting/metrics");
+            await Task.Delay(600);
+        }
+
+        // Act - Get history
+        var response = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/history");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var history = await response.Content.ReadFromJsonAsync<List<MetricsHistoryItem>>();
+        Assert.NotNull(history);
+        
+        // Should have no snapshots since collection was disabled
+        Assert.Empty(history);
+    }
+
+    [Fact]
+    public async Task GetMetricsHistory_RespectsCountParameter()
+    {
+        // Arrange
+        await AuthenticateAsSuperAdminAsync();
+        
+        // Clear history and enable collection
+        await HttpClient.DeleteAsync("/api/admin/rate-limiting/metrics/history");
+        await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+            new { Enabled = true });
+
+        try
+        {
+            // Generate multiple snapshots
+            for (int i = 0; i < 5; i++)
+            {
+                await HttpClient.GetAsync("/api/admin/rate-limiting/metrics");
+                await Task.Delay(600);
+            }
+
+            // Act - Request only 2 entries
+            var response = await HttpClient.GetAsync("/api/admin/rate-limiting/metrics/history?count=2");
+
+            // Assert
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var history = await response.Content.ReadFromJsonAsync<List<MetricsHistoryItem>>();
+            Assert.NotNull(history);
+            
+            // Should return at most 2 entries
+            Assert.True(history.Count <= 2, $"Expected at most 2 entries, got {history.Count}");
+        }
+        finally
+        {
+            // Cleanup
+            await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/metrics/collection", 
+                new { Enabled = false });
+            await HttpClient.DeleteAsync("/api/admin/rate-limiting/metrics/history");
+        }
+    }
+
+    private record MetricsHistoryItem(
+        DateTimeOffset Timestamp,
+        int ActiveBuckets,
+        int ActiveTimeouts,
+        int TotalRequests);
+
+    #endregion
 }
 
 /// <summary>

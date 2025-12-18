@@ -214,10 +214,3 @@ public record LoginResponse(
     string? RefreshToken,
     int? AccessTokenExpiresInSeconds);
 
-/// <summary>
-/// Token refresh response.
-/// </summary>
-/// <param name="AccessToken">New JWT access token.</param>
-/// <param name="RefreshToken">New refresh token (old one is invalidated).</param>
-/// <param name="ExpiresInSeconds">Seconds until the access token expires.</param>
-public record RefreshResult(string AccessToken, string RefreshToken, int ExpiresInSeconds);

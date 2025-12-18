@@ -29,33 +29,38 @@
   margin-bottom: var(--space-2);
 }
 
-/* Toggle Switch */
-.toggle-switch {
+/* Toggle Switch - scoped to config-header to avoid conflicts with RateLimitingMetrics.css */
+.config-header .toggle-switch {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   cursor: pointer;
   user-select: none;
+  width: auto;
+  height: auto;
+  position: static;
 }
 
-.toggle-switch input {
+.config-header .toggle-switch input {
   display: none;
 }
 
-.toggle-track {
+.config-header .toggle-track {
   width: 48px;
+  min-width: 48px;
   height: 26px;
   background: var(--color-bg-tertiary);
   border-radius: 13px;
   position: relative;
   transition: background 0.2s;
+  flex-shrink: 0;
 }
 
-.toggle-switch input:checked + .toggle-track {
+.config-header .toggle-switch input:checked ~ .toggle-track {
   background: var(--color-success);
 }
 
-.toggle-thumb {
+.config-header .toggle-thumb {
   width: 22px;
   height: 22px;
   background: white;
@@ -66,11 +71,11 @@
   transition: left 0.2s;
 }
 
-.toggle-switch input:checked + .toggle-track .toggle-thumb {
+.config-header .toggle-switch input:checked ~ .toggle-track .toggle-thumb {
   left: 24px;
 }
 
-.toggle-label {
+.config-header .toggle-label {
   font-weight: 500;
 }
 

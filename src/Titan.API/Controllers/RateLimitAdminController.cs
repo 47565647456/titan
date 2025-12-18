@@ -252,6 +252,68 @@ public class RateLimitAdminController : ControllerBase
         
         return Ok(result);
     }
+
+    /// <summary>
+    /// Get historical rate limiting metrics for graphing.
+    /// Returns up to the specified number of snapshots, ordered newest first.
+    /// </summary>
+    /// <param name="count">Number of snapshots to return (1-300, default 60).</param>
+    /// <returns>Historical metrics snapshots for charting.</returns>
+    [HttpGet("metrics/history")]
+    [ProducesResponseType<List<MetricsHistoryItem>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<MetricsHistoryItem>>> GetMetricsHistory([FromQuery] int count = 60)
+    {
+        count = Math.Clamp(count, 1, 300);
+        var history = await _rateLimitService.GetMetricsHistoryAsync(count);
+        
+        var result = history.Select(h => new MetricsHistoryItem(
+            h.Timestamp,
+            h.ActiveBuckets,
+            h.ActiveTimeouts,
+            h.TotalRequests
+        )).ToList();
+        
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Get metrics collection status.
+    /// </summary>
+    /// <returns>Whether metrics collection is enabled.</returns>
+    [HttpGet("metrics/collection")]
+    [ProducesResponseType<MetricsCollectionStatus>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<MetricsCollectionStatus>> GetMetricsCollectionStatus()
+    {
+        var enabled = await _rateLimitService.IsMetricsCollectionEnabledAsync();
+        return Ok(new MetricsCollectionStatus(enabled));
+    }
+
+    /// <summary>
+    /// Enable or disable metrics collection.
+    /// Metrics collection is disabled by default.
+    /// </summary>
+    /// <param name="request">Enable/disable setting.</param>
+    /// <returns>Confirmation with new status.</returns>
+    [HttpPost("metrics/collection")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> SetMetricsCollection([FromBody] SetEnabledRequest request)
+    {
+        await _rateLimitService.SetMetricsCollectionEnabledAsync(request.Enabled);
+        _logger.LogInformation("Metrics collection {Status} by admin", request.Enabled ? "enabled" : "disabled");
+        return Ok(new { success = true, enabled = request.Enabled });
+    }
+
+    /// <summary>
+    /// Clear all collected metrics history.
+    /// </summary>
+    /// <returns>Confirmation of deletion.</returns>
+    [HttpDelete("metrics/history")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> ClearMetricsHistory()
+    {
+        await _rateLimitService.ClearMetricsHistoryAsync();
+        return Ok(new { success = true });
+    }
 }
 
 // Request DTOs
@@ -279,3 +341,10 @@ public record RateLimitTimeout(
     string PolicyName,
     int SecondsRemaining);
 
+public record MetricsHistoryItem(
+    DateTimeOffset Timestamp,
+    int ActiveBuckets,
+    int ActiveTimeouts,
+    int TotalRequests);
+
+public record MetricsCollectionStatus(bool Enabled);

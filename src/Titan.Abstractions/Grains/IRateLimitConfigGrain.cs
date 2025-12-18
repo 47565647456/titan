@@ -46,6 +46,11 @@ public interface IRateLimitConfigGrain : IGrainWithStringKey
     Task RemoveEndpointMappingAsync(string pattern);
 
     /// <summary>
+    /// Enables or disables historical metrics collection.
+    /// </summary>
+    Task SetMetricsCollectionEnabledAsync(bool enabled);
+
+    /// <summary>
     /// Resets configuration to defaults (from appsettings).
     /// </summary>
     Task ResetToDefaultsAsync();
