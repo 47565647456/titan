@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw } from 'lucide-react';
 import { accountsApi } from '../api/client';
 import type { AccountSummary } from '../types';
 import './DataPage.css';
@@ -168,7 +169,7 @@ export function PlayersPage() {
               onClick={() => refetch()}
               disabled={isLoading}
             >
-              🔄 Refresh
+              <RefreshCw size={16} /> Refresh
             </button>
           </div>
 

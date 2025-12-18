@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useHealthCheck } from '../hooks/useHealthCheck';
 import './Home.css';
@@ -88,7 +89,7 @@ export function HomePage() {
             disabled={isLoading}
             title="Refresh status"
           >
-            🔄
+            <RefreshCw size={14} />
           </button>
         </div>
         <div className="card-body">
@@ -101,7 +102,7 @@ export function HomePage() {
           ) : (
             <>
               {isError && (
-                <div className="status-error-message" style={{ marginBottom: 'var(--space-3)' }}>
+                <div className="status-error-message status-error-message-spaced">
                   ⚠️ Connection issue - showing last known status
                 </div>
               )}

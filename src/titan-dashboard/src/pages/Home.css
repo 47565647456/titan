@@ -156,3 +156,6 @@
   color: var(--color-error);
 }
 
+.status-error-message-spaced {
+  margin-bottom: var(--space-3);
+}

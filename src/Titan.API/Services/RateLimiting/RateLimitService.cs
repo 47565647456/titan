@@ -372,7 +372,11 @@ public partial class RateLimitService
     /// Called by the broadcaster after each metrics update.
     /// Only records if metrics collection is enabled.
     /// </summary>
-    public async Task RecordMetricsSnapshotAsync()
+    /// <param name="metrics">Pre-fetched metrics data (avoids redundant Redis scan).</param>
+    public async Task RecordMetricsSnapshotAsync(
+        (int ActiveBuckets, int ActiveTimeouts,
+        List<(string PartitionKey, string PolicyName, int PeriodSeconds, int CurrentCount, int SecondsRemaining)> Buckets,
+        List<(string PartitionKey, string PolicyName, int SecondsRemaining)> Timeouts) metrics)
     {
         // Check if metrics collection is enabled (default: disabled)
         if (!await IsMetricsCollectionEnabledAsync())
@@ -380,14 +384,13 @@ public partial class RateLimitService
             return;
         }
 
-        var (activeBuckets, activeTimeouts, buckets, _) = await GetMetricsAsync();
-        var totalRequests = buckets.Sum(b => b.CurrentCount);
+        var totalRequests = metrics.Buckets.Sum(b => b.CurrentCount);
         
         var snapshot = new MetricsSnapshot
         {
             Timestamp = DateTimeOffset.UtcNow,
-            ActiveBuckets = activeBuckets,
-            ActiveTimeouts = activeTimeouts,
+            ActiveBuckets = metrics.ActiveBuckets,
+            ActiveTimeouts = metrics.ActiveTimeouts,
             TotalRequests = totalRequests
         };
         
@@ -397,6 +400,16 @@ public partial class RateLimitService
         // LPUSH + LTRIM to maintain sliding window of 300 entries
         await db.ListLeftPushAsync(HistoryKey, json);
         await db.ListTrimAsync(HistoryKey, 0, MaxHistoryEntries - 1);
+    }
+
+    /// <summary>
+    /// Records current metrics snapshot to Redis for historical tracking.
+    /// This overload fetches metrics - prefer the overload that accepts pre-fetched metrics.
+    /// </summary>
+    public async Task RecordMetricsSnapshotAsync()
+    {
+        var metrics = await GetMetricsAsync();
+        await RecordMetricsSnapshotAsync(metrics);
     }
 
     /// <summary>
