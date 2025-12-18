@@ -110,4 +110,11 @@ public partial record RateLimitingConfiguration
     /// </summary>
     [Id(3), MemoryPackOrder(3)]
     public string DefaultPolicyName { get; init; } = "Global";
+
+    /// <summary>
+    /// Whether historical metrics collection is enabled.
+    /// When enabled, metrics snapshots are recorded for graphing.
+    /// </summary>
+    [Id(4), MemoryPackOrder(4)]
+    public bool MetricsCollectionEnabled { get; init; } = false;
 }

@@ -4,6 +4,115 @@
   max-width: 1400px;
 }
 
+/* Page Header Icon */
+.page-icon {
+  vertical-align: middle;
+  margin-right: var(--space-2);
+}
+
+/* Charts Section */
+.metrics-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.chart-card {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+
+.chart-card h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-4) 0;
+}
+
+/* Summary Icon Lucide styling */
+.summary-icon svg {
+  color: var(--color-accent);
+}
+
+.timeout-card .summary-icon svg {
+  color: var(--color-error);
+}
+
+.status-card .summary-icon svg {
+  color: var(--color-success);
+}
+
+/* Metrics Collection Toggle */
+.collection-card .summary-icon svg {
+  color: var(--color-info);
+}
+
+.collection-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--color-bg-tertiary);
+  border-radius: 24px;
+  transition: background-color var(--transition-fast);
+}
+
+.toggle-slider::before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: var(--color-text-secondary);
+  border-radius: 50%;
+  transition: transform var(--transition-fast), background-color var(--transition-fast);
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: var(--color-accent);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+  background-color: var(--color-text-primary);
+}
+
+.toggle-switch input:disabled + .toggle-slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.clear-history-btn {
+  margin-top: var(--space-2);
+  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-2);
+}
+
 /* Summary Cards */
 .metrics-summary {
   display: grid;

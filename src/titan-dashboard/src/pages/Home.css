@@ -116,3 +116,43 @@
   background: var(--color-error);
   box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
 }
+
+/* Health Check Enhancements */
+.system-status .card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-overall {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+}
+
+.status-overall-text {
+  font-size: 0.875rem;
+}
+
+.status-duration {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.status-loading,
+.status-error-message {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  padding: var(--space-2) 0;
+}
+
+.status-error-message {
+  color: var(--color-error);
+}
+

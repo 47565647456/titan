@@ -1,9 +1,25 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useHealthCheck } from '../hooks/useHealthCheck';
 import './Home.css';
 
 export function HomePage() {
   const { user, hasRole } = useAuth();
+  const { overallStatus, checks, isLoading, isError, refetch } = useHealthCheck();
+
+  /** Map health status to CSS class */
+  const getStatusClass = (status: string): string => {
+    switch (status) {
+      case 'Healthy':
+        return 'status-ok';
+      case 'Degraded':
+        return 'status-warning';
+      case 'Unhealthy':
+        return 'status-error';
+      default:
+        return 'status-warning';
+    }
+  };
 
   return (
     <div className="home">
@@ -66,24 +82,49 @@ export function HomePage() {
       <div className="system-status card">
         <div className="card-header">
           <h2>System Status</h2>
+          <button 
+            className="btn btn-sm btn-ghost" 
+            onClick={() => refetch()}
+            disabled={isLoading}
+            title="Refresh status"
+          >
+            🔄
+          </button>
         </div>
         <div className="card-body">
-          <div className="status-grid">
-            <div className="status-item">
-              <span className="status-indicator status-ok" />
-              <span>Orleans Cluster</span>
+          {isLoading && checks.length === 0 ? (
+            <div className="status-loading">Checking system health...</div>
+          ) : checks.length === 0 && isError ? (
+            <div className="status-error-message">
+              Unable to fetch health status
             </div>
-            <div className="status-item">
-              <span className="status-indicator status-ok" />
-              <span>Database</span>
-            </div>
-            <div className="status-item">
-              <span className="status-indicator status-ok" />
-              <span>Redis</span>
-            </div>
-          </div>
+          ) : (
+            <>
+              {isError && (
+                <div className="status-error-message" style={{ marginBottom: 'var(--space-3)' }}>
+                  ⚠️ Connection issue - showing last known status
+                </div>
+              )}
+              <div className="status-overall">
+                <span className={`status-indicator ${getStatusClass(overallStatus)}`} />
+                <span className="status-overall-text">
+                  Overall: {overallStatus}
+                </span>
+              </div>
+              <div className="status-grid">
+                {checks.map((check) => (
+                  <div key={check.name} className="status-item">
+                    <span className={`status-indicator ${getStatusClass(check.status)}`} />
+                    <span>{check.displayName}</span>
+                    <span className="status-duration">{check.duration}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 }
+

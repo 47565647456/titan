@@ -19,6 +19,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Proxy health check endpoint
+      '/health': {
+        target: apiUrl,
+        changeOrigin: true,
+        secure: false,
+      },
       // Proxy SignalR hub connections to the backend
       '/hubs': {
         target: apiUrl,

@@ -196,3 +196,18 @@ export interface RateLimitMetrics {
   buckets: RateLimitBucket[];
   timeouts: RateLimitTimeout[];
 }
+
+// Health Check Types
+export type HealthStatus = 'Healthy' | 'Degraded' | 'Unhealthy';
+
+export interface HealthCheckResult {
+  name: string;
+  status: HealthStatus;
+  duration: string;
+}
+
+export interface HealthCheckResponse {
+  status: HealthStatus;
+  checks: HealthCheckResult[];
+}
+

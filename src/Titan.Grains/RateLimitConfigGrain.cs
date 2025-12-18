@@ -31,7 +31,8 @@ public class RateLimitConfigGrain : Grain, IRateLimitConfigGrain
             Enabled = _state.State.Enabled,
             Policies = _state.State.Policies.Values.ToList(),
             EndpointMappings = _state.State.EndpointMappings.ToList(),
-            DefaultPolicyName = _state.State.DefaultPolicyName
+            DefaultPolicyName = _state.State.DefaultPolicyName,
+            MetricsCollectionEnabled = _state.State.MetricsCollectionEnabled
         });
     }
 
@@ -101,6 +102,13 @@ public class RateLimitConfigGrain : Grain, IRateLimitConfigGrain
         }
     }
 
+    public async Task SetMetricsCollectionEnabledAsync(bool enabled)
+    {
+        _state.State.MetricsCollectionEnabled = enabled;
+        await _state.WriteStateAsync();
+        _logger.LogInformation("Metrics collection {Status}", enabled ? "enabled" : "disabled");
+    }
+
     public async Task ResetToDefaultsAsync()
     {
         // Restore from stored defaults if available
@@ -108,6 +116,7 @@ public class RateLimitConfigGrain : Grain, IRateLimitConfigGrain
         {
             _state.State.Enabled = _state.State.StoredDefaults.Enabled;
             _state.State.DefaultPolicyName = _state.State.StoredDefaults.DefaultPolicyName;
+            _state.State.MetricsCollectionEnabled = _state.State.StoredDefaults.MetricsCollectionEnabled;
             _state.State.Policies.Clear();
             _state.State.EndpointMappings.Clear();
             
@@ -143,6 +152,7 @@ public class RateLimitConfigGrain : Grain, IRateLimitConfigGrain
         {
             _state.State.Enabled = defaults.Enabled;
             _state.State.DefaultPolicyName = defaults.DefaultPolicyName;
+            _state.State.MetricsCollectionEnabled = defaults.MetricsCollectionEnabled;
 
             foreach (var policy in defaults.Policies)
             {
@@ -183,10 +193,13 @@ public partial class RateLimitConfigState
 
     [Id(3), MemoryPackOrder(3)]
     public string DefaultPolicyName { get; set; } = "Global";
+
+    [Id(4), MemoryPackOrder(4)]
+    public bool MetricsCollectionEnabled { get; set; } = false;
     
     /// <summary>
     /// Stores the initial defaults for restoration on reset.
     /// </summary>
-    [Id(4), MemoryPackOrder(4)]
+    [Id(5), MemoryPackOrder(5)]
     public RateLimitingConfiguration? StoredDefaults { get; set; }
 }

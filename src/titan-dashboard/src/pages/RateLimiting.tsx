@@ -311,11 +311,11 @@ export function RateLimitingPage() {
               checked={config?.enabled ?? false}
               onChange={(e) => toggleMutation.mutate(e.target.checked)}
             />
-            <span className="toggle-track">
-              <span className="toggle-thumb" />
-            </span>
             <span className="toggle-label">
               {config?.enabled ? 'Enabled' : 'Disabled'}
+            </span>
+            <span className="toggle-track">
+              <span className="toggle-thumb" />
             </span>
           </label>
         </div>

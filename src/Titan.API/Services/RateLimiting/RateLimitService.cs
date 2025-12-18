@@ -367,6 +367,105 @@ public partial class RateLimitService
         return (buckets.Count, timeouts.Count, buckets, timeouts);
     }
 
+    /// <summary>
+    /// Records current metrics snapshot to Redis for historical tracking.
+    /// Called by the broadcaster after each metrics update.
+    /// Only records if metrics collection is enabled.
+    /// </summary>
+    public async Task RecordMetricsSnapshotAsync()
+    {
+        // Check if metrics collection is enabled (default: disabled)
+        if (!await IsMetricsCollectionEnabledAsync())
+        {
+            return;
+        }
+
+        var (activeBuckets, activeTimeouts, buckets, _) = await GetMetricsAsync();
+        var totalRequests = buckets.Sum(b => b.CurrentCount);
+        
+        var snapshot = new MetricsSnapshot
+        {
+            Timestamp = DateTimeOffset.UtcNow,
+            ActiveBuckets = activeBuckets,
+            ActiveTimeouts = activeTimeouts,
+            TotalRequests = totalRequests
+        };
+        
+        var db = _redis.GetDatabase();
+        var json = System.Text.Json.JsonSerializer.Serialize(snapshot);
+        
+        // LPUSH + LTRIM to maintain sliding window of 300 entries
+        await db.ListLeftPushAsync(HistoryKey, json);
+        await db.ListTrimAsync(HistoryKey, 0, MaxHistoryEntries - 1);
+    }
+
+    /// <summary>
+    /// Gets historical metrics snapshots from Redis.
+    /// </summary>
+    /// <param name="count">Number of snapshots to return (clamped to MaxHistoryEntries).</param>
+    /// <returns>List of snapshots ordered newest first.</returns>
+    public async Task<List<MetricsSnapshot>> GetMetricsHistoryAsync(int count = 60)
+    {
+        count = Math.Clamp(count, 1, MaxHistoryEntries);
+        var db = _redis.GetDatabase();
+        var values = await db.ListRangeAsync(HistoryKey, 0, count - 1);
+        
+        var result = new List<MetricsSnapshot>();
+        foreach (var value in values)
+        {
+            try
+            {
+                var snapshot = System.Text.Json.JsonSerializer.Deserialize<MetricsSnapshot>(value.ToString());
+                if (snapshot != null)
+                {
+                    result.Add(snapshot);
+                }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Skip malformed entries
+            }
+        }
+        
+        return result;
+    }
+
+    /// <summary>
+    /// Checks if metrics collection is enabled.
+    /// Uses the cached configuration from the grain.
+    /// </summary>
+    public async Task<bool> IsMetricsCollectionEnabledAsync()
+    {
+        var config = await GetConfigAsync();
+        return config.MetricsCollectionEnabled;
+    }
+
+    /// <summary>
+    /// Enables or disables metrics collection via the grain.
+    /// Clears the local cache to pick up the change immediately.
+    /// </summary>
+    public async Task SetMetricsCollectionEnabledAsync(bool enabled)
+    {
+        var grain = _clusterClient.GetGrain<IRateLimitConfigGrain>("default");
+        await grain.SetMetricsCollectionEnabledAsync(enabled);
+        ClearCache();
+        _logger.LogInformation("Metrics collection {Status}", enabled ? "enabled" : "disabled");
+    }
+
+    /// <summary>
+    /// Clears all historical metrics data.
+    /// </summary>
+    public async Task ClearMetricsHistoryAsync()
+    {
+        var db = _redis.GetDatabase();
+        await db.KeyDeleteAsync(HistoryKey);
+        _logger.LogInformation("Cleared metrics history");
+    }
+
+    private const string HistoryKey = "rl|history";
+    private const int MaxHistoryEntries = 300;
+
+
 
     private async Task IncrementCounterAsync(IDatabase db, string partitionKey, string policyName, RateLimitRule rule)
     {
@@ -482,3 +581,14 @@ public record RateLimitResult(
     public string GetStateHeaderValue() => string.Join(",", States.Select(s => s.ToString()));
 }
 
+/// <summary>
+/// Snapshot of rate limiting metrics at a point in time.
+/// Used for historical tracking and graphing.
+/// </summary>
+public class MetricsSnapshot
+{
+    public DateTimeOffset Timestamp { get; init; }
+    public int ActiveBuckets { get; init; }
+    public int ActiveTimeouts { get; init; }
+    public int TotalRequests { get; init; }
+}
