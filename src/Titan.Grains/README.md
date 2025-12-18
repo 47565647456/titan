@@ -31,11 +31,17 @@ Item management and generation system.
 - `SeasonMigrationGrain`: Logic for migrating characters between seasons.
 - `CharacterGrain`: Character persistence and progression.
 
-### Trading
-- `TradeGrain`: Manages secure trade sessions between players.
-  - Features: Cross-silo atomic transactions, snapshot isolation, timeout enforcement.
+### Trading & Rate Limiting
+- **TradeGrain**: Manages secure trade sessions between players.
+  - Features: Cross-silo atomic transactions (via `TransactionalState`), snapshot isolation, timeout enforcement.
+- **RateLimitConfigGrain**: Persistent singleton for storing dynamic rate limiting configuration.
+  - Features: Policy management, endpoint mapping, global enable/disable switch.
 
 ## Persistence
 This project uses Orleans 'State' and 'TransactionalState' features.
-- **Production**: Maps to PostgreSQL (ADO.NET) via `Titan.Abstractions` configuration.
-- **Development**: Supports Memory storage fallback (if configured).
+- **State**: Used by most grains via `IPersistentState<T>`.
+- **TransactionalState**: Used by `ICharacterInventoryGrain` (within `Titan.Grains/Items`) and `TradeGrain` for ACID compliance during multi-item transfers.
+- **Production Storage**: Maps to PostgreSQL (ADO.NET) via `Titan.Abstractions` configuration.
+- **Storage Providers**:
+  - `GlobalStorage`: Default provider for long-lived state.
+  - `TransactionalStorage`: Provider specifically configured for transaction operations.

@@ -21,15 +21,17 @@ var invHub = await user.GetInventoryHubAsync();  // Reuses same session
 ```
 
 ### Features Tested
-- **Authentication**: Verifies JWT generation, Admin roles, and SignalR connection security (`AuthenticationTests.cs`).
-- **Account Management**: Character creation, inventory access, cross-user isolation (`AccountTests.cs`).
-- **Admin Operations**: Item type and season creation with role-based authorization (`AdminTests.cs`).
+- **Authentication**: Verifies JWT generation, Admin roles, and SignalR connection security (`AuthenticationTests.cs`, `ValidationTests.cs`).
+- **Account Management**: Character creation, inventory access, cross-user isolation (`AccountTests.cs`, `AccountsAdminTests.cs`).
+- **Admin Operations**: Item type and season creation with role-based authorization (`AdminTests.cs`, `BaseTypesAdminTests.cs`, `SeasonsAdminTests.cs`, `AdminUsersTests.cs`).
+- **Rate Limiting**: Verifies IP and Account-based limiting, policy management, and dynamic configuration updates (`RateLimitingTests.cs`).
 - **Trading**: Full trade lifecycle, atomic item transfers, concurrent trades (`TradingTests.cs`, `TradingFlowIntegrationTests.cs`).
 - **Void League**: Season creation, hardcore death handling, migration rules (`VoidLeagueEndToEndTests.cs`).
 - **Client SDK**: Validates the `Titan.Client` library against the running API (`TitanClientIntegrationTests.cs`).
 - **Concurrency & Clustering**: Verifies system behavior under load and distributed scenarios (`DistributedClusterIntegrationTests.cs`).
 - **Connection Tracking**: Verifies online presence and session tracking (`ConnectionTrackingTests.cs`).
-- **Infrastructure**: Health checks and silo availability (`ResourceTests.cs`).
+- **Admin Dashboard**: Validates integration between the API and the Admin Dashboard frontend (`DashboardTests.cs`, `AdminMetricsHubTests.cs`).
+- **Infrastructure**: Health checks, silo availability, and persistence (`ResourceTests.cs`, `DatabasePersistenceIntegrationTests.cs`, `SeedDataIntegrationTests.cs`).
 
 ## Running Tests
 These tests are slower than unit tests as they require spinning up Docker containers and multiple .NET processes.

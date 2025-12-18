@@ -6,12 +6,13 @@ A shared library containing standard Aspire service configurations and extension
 
 ### OpenTelemetry
 Automatically configures metrics and tracing.
-- **Metrics**: ASP.NET Core, HttpClient, Runtime.
-- **Tracing**: ASP.NET Core, HttpClient.
+- **Metrics**: ASP.NET Core, HttpClient, Runtime, `Microsoft.Orleans`, and `Titan.RateLimiting`.
+- **Tracing**: ASP.NET Core, HttpClient, and `Microsoft.Orleans.Runtime`.
 - **Exporters**: OTLP (for Aspire Dashboard).
 
 ### Health Checks
-- Adds `/health` and `/alive` endpoints.
+- Adds `/health` (detailed JSON) and `/alive` (simple status) endpoints.
+- `/health`: Returns per-service breakdown of health (DB, Redis, Silo) with duration.
 - Maps default probes for Kubernetes/Container orchestration.
 
 ### Logging

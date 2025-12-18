@@ -17,27 +17,31 @@ Defines the public methods for all Orleans Grains.
 - `ISocialGrain`: Friend lists and social graph.
 - `IPlayerPresenceGrain`: Tracking online status of players.
 - `ISessionLogGrain`: Tracking session history.
+- `IRateLimitConfigGrain`: Singleton for dynamic management of rate limiting policies.
 
 #### Items & Inventory
-- `ICharacterInventoryGrain`: Inventory management for a specific character.
+- `ICharacterInventoryGrain`: Inventory management for a specific character (grid-based).
 - `IAccountStashGrain`: Shared stash storage for a user account.
 - `IBaseTypeRegistryGrain`: Registry for item base definitions (Base Types).
 - `IBaseTypeReaderGrain`: Stateless worker for high-performance base type lookups.
 - `IModifierRegistryGrain`: Registry for item modifiers (Affixes).
 - `IModifierReaderGrain`: Stateless worker for high-performance modifier lookups.
 - `IUniqueRegistryGrain`: Registry for unique item definitions.
-- `IItemGeneratorGrain`: Logic for generating new items.
+- `IItemGeneratorGrain`: Logic for generating new items (RNG, weighting).
 - `IItemHistoryGrain`: Tracking item ownership history.
 
 #### Seasonal
-- `ISeasonRegistryGrain`: Management of game seasons.
+- `ISeasonRegistryGrain`: Management of game seasons and active periods.
 - `ISeasonMigrationGrain`: Handling migration of characters/items between seasons.
 
 ### Models
-Shared data transfer objects (records) used in Grain method signatures.
-- `Models/Items/*`: `Item`, `BaseType`, `ModifierDefinition`, `InventoryGrid`, `StashTab`, `UniqueDefinition`.
-- `Models/TradeModels.cs`: `TradeStatus`, `TradeSession`, `TradeOffer`.
-- `Models/CharacterModels.cs`: `Character`, `CharacterSummary`.
+Shared data transfer objects (records) used in Grain method signatures and API responses. Optimized for serialization via MemoryPack and Orleans.
+- **Items**: `Item`, `BaseType`, `ModifierDefinition`, `InventoryGrid`, `StashTab`, `UniqueDefinition`, `CharacterStats`.
+- **Trade**: `TradeStatus`, `TradeSession`, `TradeOffer`, `TradeResult`.
+- **Character**: `Character`, `CharacterSummary`, `CharacterCreationRequest`.
+- **Identity & Account**: `UserIdentity`, `UserProfile`, `AccountSummary`, `RefreshResult`.
+- **Rate Limiting**: `RateLimitRule`, `RateLimitPolicy`, `RateLimitingConfiguration`, `EndpointRateLimitConfig`.
+- **Season**: `Season`, `SeasonSummary`, `SeasonStatus`.
 
 ### Configuration Options
 Configuration classes mapped to `appsettings.json` sections.

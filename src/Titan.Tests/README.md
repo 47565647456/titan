@@ -14,9 +14,13 @@ The `TestSiloConfigurator` configures all required storage providers:
 
 ### Inventory & Items
 - `CharacterInventoryGrainTests.cs`: Stacking logic, capacity limits.
+- `InventoryGridHelperTests.cs`: Low-level grid placement and collision algorithms.
 - `BaseTypeRegistryTests.cs`: Validation of item definitions.
+- `ModifierRegistryTests.cs`: Affix and modifier logic.
 - `AccountStashGrainTests.cs`: Stash logic.
 - `ItemGeneratorTests.cs`: RNG and item creation logic.
+- `EquipmentValidatorTests.cs`: Rules for item equipment (level requirements, class restrictions).
+- `ItemHistoryGrainTests.cs`: Audit log tracking for individual items.
 
 ### Seasons & Leagues
 - `SeasonTests.cs`: Season lifecycle, SSF/Hardcore restrictions.
@@ -26,11 +30,19 @@ The `TestSiloConfigurator` configures all required storage providers:
 ### Social & Infrastructure
 - `SocialGraphTests.cs`: Friend lists and social interactions.
 - `PlayerPresenceGrainTests.cs`: Online status tracking.
+- `SessionLogGrainTests.cs`: Tracking session metadata and audit logs.
 - `SeedDataLoadingTests.cs`: Verification of initial data seeding.
+- `ConfigurationOptionsTests.cs`: Validates options patterns and `appsettings` binding.
 
-### Serialization
+### Rate Limiting (Unit Tests)
+- `RateLimitServiceTests.cs`: Core logic for partition extraction and policy matching.
+- `RateLimitHistoryTests.cs`: Persistence of rate limit metrics in grain state.
+- `RateLimitModelTests.cs`: Validation of policy and rule models.
+
+### Serialization & Client
 - `MemoryPackSerializationTests.cs`: Roundtrip tests for all `[MemoryPackable]` model types and storage serializer.
 - `SerializationBenchmarkTests.cs`: Performance comparison between MemoryPack and System.Text.Json.
+- `TitanClientTests.cs`: Unit tests for the shared SDK client and authentication flow.
 
 ### Running Benchmarks
 Run benchmarks with detailed output:

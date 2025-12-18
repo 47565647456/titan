@@ -27,7 +27,10 @@ Certificates are stored in a Docker volume and reused across restarts (unless `D
 ### Caching / Clustering
 - **Redis (`orleans-clustering`)**: 
   - Used by Orleans for Silo membership (Clustering) and Grain Directory.
-  - Includes RedisInsight.
+  - Includes RedisInsight for visualization.
+- **Redis (`rate-limiting`)**:
+  - Dedicated instance for tracking request counts and timeout state.
+  - Separate from clustering to avoid interference with core cluster stability.
 
 ## Configuration Parameters
 

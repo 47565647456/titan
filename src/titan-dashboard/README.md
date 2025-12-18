@@ -1,73 +1,55 @@
-# React + TypeScript + Vite
+# Titan Admin Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The administrative nerve center for the Titan distributed game backend. This React-based web application provides real-time monitoring and management of the Titan ecosystem.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Real-Time Metrics**: Live visualization of system performance and rate limiting state via SignalR and Recharts.
+- **Player Management**: View player profiles, characters, and inventory across all seasons.
+- **Season Control**: Create and manage game seasons, including Void Leagues and standard leagues.
+- **Registry Management**: Dynamic management of the item base type registry and modifier definitions.
+- **Rate Limit Orchestration**: SuperAdmin interface for configuring global rate limiting policies and endpoint mappings on the fly.
+- **Role-Based Access**: Secure login with differentiated permissions for Admins and SuperAdmins.
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend**: React 19 + TypeScript + Vite (Rolldown)
+- **Data Fetching**: TanStack Query (React Query) for efficient caching and synchronization.
+- **Communication**: 
+  - Axios for HTTP REST API calls.
+  - @microsoft/signalr for real-time WebSocket updates.
+- **Styling**: Vanilla CSS (modern flex/grid) with a premium custom design system.
+- **Visualization**: Recharts for performance and rate limit metrics.
+- **Icons**: Lucide React.
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Prerequisites
+- Node.js 20+
+- Running Titan API Gateway (connected to AppHost)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Development
+```bash
+# Install dependencies
+npm install
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Start development server
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Build
+```bash
+npm run build
 ```
+
+## Dashboard Sections
+
+| Section | Role Required | Description |
+|---------|---------------|-------------|
+| **Home** | Admin | System overview and key performance indicators. |
+| **Players** | Admin | Search and manage player accounts and character data. |
+| **Seasons** | Admin | Manage game lifecycle and league parameters. |
+| **Base Types** | Admin | CRUD operations on the item definition registry. |
+| **Admin Users** | SuperAdmin | Manage administrative user accounts and roles. |
+| **Rate Limiting** | SuperAdmin | Configure dynamic traffic policies and endpoint rules. |
+| **Metrics** | SuperAdmin | Real-time monitoring of rate limit buckets and timeouts. |

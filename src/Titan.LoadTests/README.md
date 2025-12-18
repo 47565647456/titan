@@ -55,7 +55,9 @@ dotnet run --project Titan.LoadTests -- --scenario auth --users 100 --duration 6
 | `auth` | HTTP login throughput | Logins/second |
 | `character` | Character creation + inventory read | Operations/second |
 | `trading` | Full trade flow (2 users per trade) | Trades/second |
-| `all` | Runs all scenarios concurrently | Combined throughput |
+| `ratelimit` | Stress testing the rate limiting middleware | 429 Error rate |
+| `ratelimit-backoff` | Testing client recovery after rate limit | Recovery Time |
+| `all` | Runs all core scenarios concurrently | Combined throughput |
 
 ## CLI Options
 
@@ -68,7 +70,7 @@ dotnet run --project Titan.LoadTests -- --scenario auth --users 100 --duration 6
 
 ## Output
 
-Reports are saved to `Titan.LoadTests/reports/` in both HTML and Markdown formats.
+Reports are saved to `Titan.LoadTests/reports/` in both HTML and CSV formats.
 
 ### Key Metrics in Report
 

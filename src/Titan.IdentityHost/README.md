@@ -3,15 +3,16 @@
 A dedicated Orleans Silo responsible for hosting Identity, Social, and Meta-Data related grains.
 
 ## Roles
-1. **Identity & Social**: Hosts `UserIdentityGrain`, `SocialGrain`, `PlayerPresenceGrain`.
-2. **Item Metadata**: Hosts `BaseTypeRegistryGrain` and `ModifierRegistryGrain` to provide game data to other grains.
-3. **Seeding**: Runs the `BaseTypeSeedStartupTask` on cluster startup to populate the Base Type Registry from JSON.
+1. **Identity & Social**: Primary silo for `UserIdentityGrain`, `SocialGrain`, `PlayerPresenceGrain`.
+2. **Item Metadata Registry**: Hosts `BaseTypeRegistryGrain`, `ModifierRegistryGrain`, and `UniqueRegistryGrain`.
+3. **Cluster Seeding**: Responsible for executing the initial data seeding via `BaseTypeSeedStartupTask` on cluster startup.
 
 ## Configuration
 - **Base Type Seeding**: Configured via `BaseTypeSeedOptions`.
   - `SeedFilePath`: Path to a JSON seed file. If not set, uses the **embedded** `item-seed-data.json` resource.
-  - `ForceSeed`: Can be enabled to overwrite registry changes.
-- **Item History**: Configured via `ItemHistoryOptions` (retention policies).
+  - `ForceSeed`: Re-runs the seeding process even if data already exists (useful for dev).
+- **Item History**: Configured via `ItemHistoryOptions`.
+- **Registry Cache**: Configured via `ItemRegistryCacheOptions` for the stateless reader grains.
 
 ## Infrastructure
 - **Clustering**: Redis.
