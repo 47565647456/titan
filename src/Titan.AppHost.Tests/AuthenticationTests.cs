@@ -147,11 +147,8 @@ public class AuthenticationTests : IntegrationTestBase
         // Arrange - Login via HTTP and get initial tokens
         var (accessToken, refreshToken, _, userId) = await LoginAsUserAsync();
 
-        // Connect to AuthHub with the access token
-        var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
-            .Build();
-
+        // Connect to AuthHub with the access token using ticket-based auth
+        var authHub = await CreateHubConnectionAsync("/authHub", accessToken);
         await authHub.StartAsync();
 
         try
@@ -181,10 +178,7 @@ public class AuthenticationTests : IntegrationTestBase
         // Arrange - Login and get initial tokens
         var (accessToken, refreshToken, _, _) = await LoginAsUserAsync();
 
-        var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
-            .Build();
-
+        var authHub = await CreateHubConnectionAsync("/authHub", accessToken);
         await authHub.StartAsync();
 
         try
@@ -209,10 +203,7 @@ public class AuthenticationTests : IntegrationTestBase
         // Arrange - Login and get tokens
         var (accessToken, refreshToken, _, _) = await LoginAsUserAsync();
 
-        var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
-            .Build();
-
+        var authHub = await CreateHubConnectionAsync("/authHub", accessToken);
         await authHub.StartAsync();
 
         try
@@ -240,10 +231,8 @@ public class AuthenticationTests : IntegrationTestBase
         // 2. Second login (Device B) - Same user
         var (tokenB, refreshTokenB, _, _) = await LoginAsync($"mock:{userId}");
 
-        // 3. Connect as Device A and Revoke All
-        var authHubA = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={tokenA}")
-            .Build();
+        // 3. Connect as Device A and Revoke All using ticket-based auth
+        var authHubA = await CreateHubConnectionAsync("/authHub", tokenA);
         await authHubA.StartAsync();
         
         try

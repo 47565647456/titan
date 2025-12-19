@@ -24,6 +24,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Register all FluentValidation validators from this assembly
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
+// Register HubValidationService for SignalR hub validation
+builder.Services.AddScoped<Titan.API.Services.HubValidationService>();
+
 
 // Validate configuration early (fails fast if critical config is missing)
 builder.ValidateTitanConfiguration(requireJwtKey: true, requireEosInProduction: true);
@@ -178,26 +181,71 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
         
         // Configure JWT for SignalR WebSocket connections
+        // Uses ticket-based authentication only (no JWT tokens in URLs to prevent log exposure)
         options.Events = new JwtBearerEvents
         {
-            OnMessageReceived = context =>
+            OnMessageReceived = async context =>
             {
-                var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
                 
                 // Match all SignalR hub endpoints
                 var hubPaths = new[] 
                 { 
                     "/accountHub", "/authHub", "/characterHub", 
-                    "/inventoryHub", "/baseTypeHub", "/seasonHub", "/tradeHub" 
+                    "/inventoryHub", "/baseTypeHub", "/seasonHub", "/tradeHub",
+                    "/hubs/admin-metrics"
                 };
                 
-                if (!string.IsNullOrEmpty(accessToken) && 
-                    hubPaths.Any(p => path.StartsWithSegments(p, StringComparison.OrdinalIgnoreCase)))
+                var isHubPath = hubPaths.Any(p => path.StartsWithSegments(p, StringComparison.OrdinalIgnoreCase));
+                if (!isHubPath)
                 {
-                    context.Token = accessToken;
+                    return;
                 }
-                return Task.CompletedTask;
+
+                // Ticket-based authentication (prevents JWT tokens from appearing in server logs)
+                var ticket = context.Request.Query["ticket"].FirstOrDefault();
+                if (string.IsNullOrEmpty(ticket))
+                {
+                    // No ticket provided - auth will fail
+                    return;
+                }
+
+                try
+                {
+                    var clusterClient = context.HttpContext.RequestServices.GetRequiredService<IClusterClient>();
+                    var ticketGrain = clusterClient.GetGrain<Titan.Abstractions.Grains.IConnectionTicketGrain>(ticket);
+                    var validTicket = await ticketGrain.ValidateAndConsumeAsync();
+
+                    if (validTicket != null)
+                    {
+                        // Create claims identity from ticket
+                        var claims = new List<System.Security.Claims.Claim>
+                        {
+                            new(System.Security.Claims.ClaimTypes.NameIdentifier, validTicket.UserId.ToString())
+                        };
+                        claims.AddRange(validTicket.Roles.Select(r => 
+                            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, r)));
+
+                        context.Principal = new System.Security.Claims.ClaimsPrincipal(
+                            new System.Security.Claims.ClaimsIdentity(claims, "Ticket"));
+                        context.Success();
+                        return;
+                    }
+                    else
+                    {
+                        // Ticket grain returned null - ticket not found, expired, or already consumed
+                        var logger = context.HttpContext.RequestServices.GetService<ILogger<Program>>();
+                        logger?.LogWarning("Ticket validation returned null for ticket: {TicketPrefix}... (not found, expired, or consumed)", 
+                            ticket.Length > 8 ? ticket[..8] : ticket);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log ticket validation failure for diagnostics
+                    var logger = context.HttpContext.RequestServices.GetService<ILogger<Program>>();
+                    logger?.LogWarning(ex, "Ticket validation failed for ticket: {TicketPrefix}...", 
+                        ticket.Length > 8 ? ticket[..8] : ticket);
+                }
             }
         };
     });

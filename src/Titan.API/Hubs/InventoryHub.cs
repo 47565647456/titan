@@ -13,9 +13,15 @@ namespace Titan.API.Hubs;
 [Authorize]
 public class InventoryHub : TitanHubBase
 {
-    public InventoryHub(IClusterClient clusterClient, ILogger<InventoryHub> logger)
+    private readonly HubValidationService _validation;
+
+    public InventoryHub(
+        IClusterClient clusterClient, 
+        ILogger<InventoryHub> logger,
+        HubValidationService validation)
         : base(clusterClient, logger)
     {
+        _validation = validation;
     }
 
     /// <summary>
@@ -24,7 +30,7 @@ public class InventoryHub : TitanHubBase
     public async Task<InventoryGrid> GetBagGrid(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateAndThrowAsync(new CharacterSeasonRequest(characterId, seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.GetBagGridAsync();
@@ -36,7 +42,7 @@ public class InventoryHub : TitanHubBase
     public async Task<IReadOnlyDictionary<Guid, Item>> GetBagItems(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateAndThrowAsync(new CharacterSeasonRequest(characterId, seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.GetBagItemsAsync();
@@ -48,7 +54,7 @@ public class InventoryHub : TitanHubBase
     public async Task<IReadOnlyDictionary<EquipmentSlot, Item>> GetEquipped(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateAndThrowAsync(new CharacterSeasonRequest(characterId, seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.GetEquippedAsync();
@@ -60,7 +66,7 @@ public class InventoryHub : TitanHubBase
     public async Task<bool> MoveBagItem(Guid characterId, string seasonId, Guid itemId, int newX, int newY)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateAndThrowAsync(new MoveBagItemRequest(characterId, seasonId, itemId, newX, newY));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.MoveBagItemAsync(itemId, newX, newY);
@@ -72,7 +78,7 @@ public class InventoryHub : TitanHubBase
     public async Task<EquipResult> Equip(Guid characterId, string seasonId, Guid bagItemId, EquipmentSlot slot)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateAndThrowAsync(new EquipRequest(characterId, seasonId, bagItemId, slot));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.EquipAsync(bagItemId, slot);
@@ -84,7 +90,7 @@ public class InventoryHub : TitanHubBase
     public async Task<Item?> Unequip(Guid characterId, string seasonId, EquipmentSlot slot)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateAndThrowAsync(new UnequipRequest(characterId, seasonId, slot));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.UnequipAsync(slot);
@@ -96,10 +102,9 @@ public class InventoryHub : TitanHubBase
     public async Task<CharacterStats> GetStats(Guid characterId, string seasonId)
     {
         await VerifyCharacterOwnershipAsync(characterId);
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateAndThrowAsync(new CharacterSeasonRequest(characterId, seasonId));
 
         var grain = ClusterClient.GetGrain<ICharacterInventoryGrain>(characterId, seasonId);
         return await grain.GetStatsAsync();
     }
 }
-

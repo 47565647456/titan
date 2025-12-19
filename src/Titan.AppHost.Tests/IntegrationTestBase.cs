@@ -149,17 +149,39 @@ public abstract class IntegrationTestBase
     protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsAdminAsync()
         => await LoginAsync($"mock:admin:{Guid.NewGuid()}");
 
-    protected HubConnection CreateHubConnection(string hubPath, string token)
-        => new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}{hubPath}?access_token={token}")
-            .Build();
-
-    protected async Task<HubConnection> ConnectToHubAsync(string hubPath, string token)
+    /// <summary>
+    /// Fetches a short-lived connection ticket for WebSocket authentication.
+    /// Tickets are single-use but allow multiple requests during the SignalR handshake window.
+    /// </summary>
+    protected async Task<string> GetConnectionTicketAsync(string accessToken)
     {
-        var hub = CreateHubConnection(hubPath, token);
+        using var client = new HttpClient { BaseAddress = new Uri(ApiBaseUrl) };
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+        var response = await client.PostAsync("/api/auth/connection-ticket", null);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<ConnectionTicketResponse>();
+        return result?.Ticket ?? throw new InvalidOperationException("Failed to get connection ticket");
+    }
+
+    /// <summary>
+    /// Creates a hub connection using ticket-based authentication.
+    /// </summary>
+    protected async Task<HubConnection> CreateHubConnectionAsync(string hubPath, string accessToken)
+    {
+        var ticket = await GetConnectionTicketAsync(accessToken);
+        return new HubConnectionBuilder()
+            .WithUrl($"{ApiBaseUrl}{hubPath}?ticket={Uri.EscapeDataString(ticket)}")
+            .Build();
+    }
+
+    protected async Task<HubConnection> ConnectToHubAsync(string hubPath, string accessToken)
+    {
+        var hub = await CreateHubConnectionAsync(hubPath, accessToken);
         await hub.StartAsync();
         return hub;
     }
+
+    private record ConnectionTicketResponse(string Ticket);
 
     /// <summary>
     /// Ensures a test base type exists in the registry. Requires admin token.

@@ -252,6 +252,33 @@ public class TitanClient : IAsyncDisposable
         return null;
     }
     
+    /// <summary>
+    /// Fetches a short-lived connection ticket for WebSocket authentication.
+    /// </summary>
+    private async Task<string?> GetConnectionTicketAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(DefaultTimeout);
+            
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/auth/connection-ticket");
+            if (!string.IsNullOrEmpty(AccessToken))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", AccessToken);
+            
+            var response = await SharedHttpClient.SendAsync(request, cts.Token);
+            if (!response.IsSuccessStatusCode)
+                return null;
+            
+            var result = await response.Content.ReadFromJsonAsync<TicketResponse>(cts.Token);
+            return result?.Ticket;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+    
     public async Task<HubConnection> GetHubAsync(string hubPath, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(AccessToken))
@@ -269,8 +296,12 @@ public class TitanClient : IAsyncDisposable
                 _connections.Remove(hubPath);
             }
             
+            // Get a connection ticket for this hub
+            var ticket = await GetConnectionTicketAsync(ct)
+                ?? throw new InvalidOperationException("Failed to get connection ticket");
+            
             var connection = new HubConnectionBuilder()
-                .WithUrl($"{_baseUrl}{hubPath}?access_token={AccessToken}")
+                .WithUrl($"{_baseUrl}{hubPath}?ticket={Uri.EscapeDataString(ticket)}")
                 .WithAutomaticReconnect()  // Auto-reconnect for long-running tests
                 .Build();
             
@@ -286,6 +317,8 @@ public class TitanClient : IAsyncDisposable
             _hubLock.Release();
         }
     }
+    
+    private record TicketResponse(string Ticket);
     
     public Task<HubConnection> GetAccountHubAsync(CancellationToken ct = default) => GetHubAsync("/accountHub", ct);
     public Task<HubConnection> GetInventoryHubAsync(CancellationToken ct = default) => GetHubAsync("/inventoryHub", ct);

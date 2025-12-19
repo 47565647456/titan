@@ -15,11 +15,16 @@ namespace Titan.API.Hubs;
 public class BaseTypeHub : TitanHubBase
 {
     private readonly ILogger<BaseTypeHub> _logger;
+    private readonly HubValidationService _validation;
 
-    public BaseTypeHub(IClusterClient clusterClient, ILogger<BaseTypeHub> logger)
+    public BaseTypeHub(
+        IClusterClient clusterClient, 
+        ILogger<BaseTypeHub> logger,
+        HubValidationService validation)
         : base(clusterClient, logger)
     {
         _logger = logger;
+        _validation = validation;
     }
 
     #region Subscriptions
@@ -58,7 +63,7 @@ public class BaseTypeHub : TitanHubBase
     /// </summary>
     public async Task<BaseType?> Get(string baseTypeId)
     {
-        HubValidation.ValidateId(baseTypeId, nameof(baseTypeId));
+        await _validation.ValidateAndThrowAsync(new IdRequest(baseTypeId));
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
         return await registry.GetAsync(baseTypeId);
     }
@@ -86,7 +91,7 @@ public class BaseTypeHub : TitanHubBase
     /// </summary>
     public async Task<bool> Exists(string baseTypeId)
     {
-        HubValidation.ValidateId(baseTypeId, nameof(baseTypeId));
+        await _validation.ValidateAndThrowAsync(new IdRequest(baseTypeId));
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
         return await registry.ExistsAsync(baseTypeId);
     }
@@ -98,8 +103,7 @@ public class BaseTypeHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<BaseType> Create(BaseType baseType)
     {
-        HubValidation.ValidateId(baseType.BaseTypeId, nameof(baseType.BaseTypeId));
-        HubValidation.ValidateName(baseType.Name, nameof(baseType.Name));
+        await _validation.ValidateAndThrowAsync(new IdRequest(baseType.BaseTypeId));
 
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
 
@@ -122,8 +126,7 @@ public class BaseTypeHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<BaseType> Update(string baseTypeId, BaseType baseType)
     {
-        HubValidation.ValidateId(baseTypeId, nameof(baseTypeId));
-        HubValidation.ValidateName(baseType.Name, nameof(baseType.Name));
+        await _validation.ValidateAndThrowAsync(new IdRequest(baseTypeId));
 
         if (baseType.BaseTypeId != baseTypeId)
             throw new HubException("BaseTypeId in request must match.");
@@ -149,7 +152,7 @@ public class BaseTypeHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task Delete(string baseTypeId)
     {
-        HubValidation.ValidateId(baseTypeId, nameof(baseTypeId));
+        await _validation.ValidateAndThrowAsync(new IdRequest(baseTypeId));
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
 
         if (!await registry.ExistsAsync(baseTypeId))

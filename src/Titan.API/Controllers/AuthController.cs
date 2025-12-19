@@ -41,6 +41,13 @@ public static class AuthController
             .WithName("GetProviders")
             .WithDescription("List available authentication providers (e.g., EOS, Mock).")
             .Produces<IEnumerable<string>>(200);
+
+        group.MapPost("/connection-ticket", GetConnectionTicketAsync)
+            .RequireAuthorization()
+            .WithName("GetConnectionTicket")
+            .WithDescription("Get a short-lived, single-use ticket for WebSocket connection. Use this instead of passing JWTs in query strings.")
+            .Produces<ConnectionTicketResponse>(200)
+            .ProducesProblem(401);
     }
     
     private static async Task<IResult> LoginAsync(
@@ -174,6 +181,35 @@ public static class AuthController
         return Results.Ok();
     }
     
+    private static async Task<IResult> GetConnectionTicketAsync(
+        ClaimsPrincipal user,
+        IClusterClient clusterClient,
+        ILogger<ConnectionTicketResponse> logger)
+    {
+        var userIdClaim = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Results.Unauthorized();
+        }
+
+        // Extract roles from claims
+        var roles = user.Claims
+            .Where(c => c.Type == ClaimTypes.Role)
+            .Select(c => c.Value)
+            .ToArray();
+
+        // Generate a unique ticket ID
+        var ticketId = Guid.NewGuid().ToString("N");
+
+        // Create ticket via grain (30 second lifetime)
+        var ticketGrain = clusterClient.GetGrain<IConnectionTicketGrain>(ticketId);
+        await ticketGrain.CreateTicketAsync(userId, roles, TimeSpan.FromSeconds(30));
+
+        logger.LogDebug("Connection ticket created for user {UserId}: {TicketId}", userId, ticketId);
+
+        return Results.Ok(new ConnectionTicketResponse(ticketId));
+    }
+    
     private static IResult GetProviders(IAuthServiceFactory factory)
     {
         return Results.Ok(factory.GetProviderNames());
@@ -214,3 +250,8 @@ public record LoginResponse(
     string? RefreshToken,
     int? AccessTokenExpiresInSeconds);
 
+/// <summary>
+/// Connection ticket response for WebSocket authentication.
+/// </summary>
+/// <param name="Ticket">The short-lived, single-use ticket ID to use in WebSocket query string.</param>
+public record ConnectionTicketResponse(string Ticket);

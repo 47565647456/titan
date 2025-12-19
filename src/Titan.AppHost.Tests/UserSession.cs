@@ -1,10 +1,12 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Titan.AppHost.Tests;
 
 /// <summary>
 /// Manages a single set of hub connections for a user, reusing connections across operations.
-/// This reduces connection overhead compared to creating new connections per operation.
+/// Uses ticket-based authentication to prevent JWT tokens from appearing in server logs.
 /// </summary>
 public class UserSession : IAsyncDisposable
 {
@@ -26,8 +28,22 @@ public class UserSession : IAsyncDisposable
     }
 
     /// <summary>
+    /// Fetches a short-lived connection ticket for WebSocket authentication.
+    /// </summary>
+    private async Task<string> GetConnectionTicketAsync()
+    {
+        using var client = new HttpClient { BaseAddress = new Uri(_apiBaseUrl) };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+        var response = await client.PostAsync("/api/auth/connection-ticket", null);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<ConnectionTicketResponse>();
+        return result?.Ticket ?? throw new InvalidOperationException("Failed to get connection ticket");
+    }
+
+    /// <summary>
     /// Gets or creates a connected hub connection for the specified hub path.
     /// Connections are lazily created and cached for reuse.
+    /// Uses ticket-based authentication to prevent JWT exposure in logs.
     /// </summary>
     private async Task<HubConnection> GetOrCreateHubAsync(string hubPath)
     {
@@ -41,8 +57,11 @@ public class UserSession : IAsyncDisposable
             _connections.Remove(hubPath);
         }
 
+        // Fetch a new ticket for this connection
+        var ticket = await GetConnectionTicketAsync();
+        
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{_apiBaseUrl}{hubPath}?access_token={Token}")
+            .WithUrl($"{_apiBaseUrl}{hubPath}?ticket={Uri.EscapeDataString(ticket)}")
             .Build();
         
         await connection.StartAsync();
@@ -98,4 +117,6 @@ public class UserSession : IAsyncDisposable
         }
         _connections.Clear();
     }
+
+    private record ConnectionTicketResponse(string Ticket);
 }

@@ -104,7 +104,7 @@ dotnet test Source/Titan.AppHost.Tests
 
 ### Security
 - [ ] **Input Validation** - Server-side verification of game actions (Registry/Rules)
-- [ ] **Grain-Level Authorization** - `ClaimsPrincipal` propagation to Orleans grains (pending [ManagedCode.Orleans.Identity](https://github.com/managed-code-hub/Orleans.Identity) .NET 10 support)
+- [ ] **Grain-Level Authorization** - `ClaimsPrincipal` propagation to Orleans grains (pending [ManagedCode.Orleans.Identity](https://github.com/managedcode/Orleans.Identity) .NET 10 support)
 
 ### Client Integration
 - [x] **Typed Client SDK** - Compile-time safe SignalR hub access via `TypedSignalR.Client`

@@ -34,8 +34,34 @@ interface UseAdminMetricsReturn {
 }
 
 /**
+ * Fetches a short-lived, single-use connection ticket for WebSocket auth.
+ * This avoids exposing JWTs in server logs.
+ */
+async function fetchConnectionTicket(token: string): Promise<string | null> {
+  try {
+    const response = await fetch('/api/auth/connection-ticket', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    if (!response.ok) {
+      console.error('Failed to fetch connection ticket:', response.status);
+      return null;
+    }
+    const data = await response.json();
+    return data.ticket;
+  } catch (err) {
+    console.error('Error fetching connection ticket:', err);
+    return null;
+  }
+}
+
+/**
  * Custom hook for real-time rate limiting metrics via SignalR.
  * Replaces polling with push-based updates from the server.
+ * Uses ticket-based auth to avoid JWT exposure in logs.
  */
 export function useAdminMetrics(): UseAdminMetricsReturn {
   const connectionRef = useRef<signalR.HubConnection | null>(null);
@@ -90,51 +116,63 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
       return;
     }
 
-    // Build connection
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/admin-metrics', {
-        accessTokenFactory: () => token,
-      })
-      .withAutomaticReconnect({
-        nextRetryDelayInMilliseconds: (retryContext) => {
-          // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
-          return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
-        },
-      })
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
+    let isCleanedUp = false;
 
-    connectionRef.current = connection;
-
-    // Handle metrics updates
-    connection.on('MetricsUpdated', (data: RateLimitMetrics) => {
-      setMetrics(data);
-    });
-
-    // Connection state handlers
-    connection.onreconnecting(() => {
-      setConnectionState('connecting');
-    });
-
-    connection.onreconnected(() => {
-      setConnectionState('connected');
-      // Re-subscribe after reconnect
-      connection.invoke('SubscribeToMetrics').catch(console.error);
-    });
-
-    connection.onclose((err) => {
-      setConnectionState('disconnected');
-      if (err) {
-        setError(`Connection closed: ${err.message}`);
-      }
-    });
-
-    // Start connection
+    // Start connection with ticket-based auth
     const startConnection = async () => {
       setConnectionState('connecting');
       setError(null);
       
       try {
+        // Fetch a connection ticket instead of using JWT directly
+        const ticket = await fetchConnectionTicket(token);
+        if (!ticket) {
+          throw new Error('Failed to obtain connection ticket');
+        }
+
+        if (isCleanedUp) return; // Guard against cleanup during async operation
+
+        // Build connection with ticket in URL (not JWT)
+        const connection = new signalR.HubConnectionBuilder()
+          .withUrl(`/hubs/admin-metrics?ticket=${encodeURIComponent(ticket)}`)
+          .withAutomaticReconnect({
+            nextRetryDelayInMilliseconds: (retryContext) => {
+              // On reconnect, check if we're still logged in
+              const newToken = localStorage.getItem('accessToken');
+              if (!newToken) return null; // Stop retrying if logged out
+              
+              // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
+              return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
+            },
+          })
+          .configureLogging(signalR.LogLevel.Warning)
+          .build();
+
+        connectionRef.current = connection;
+
+        // Handle metrics updates
+        connection.on('MetricsUpdated', (data: RateLimitMetrics) => {
+          setMetrics(data);
+        });
+
+        // Connection state handlers
+        connection.onreconnecting(() => {
+          setConnectionState('connecting');
+        });
+
+        connection.onreconnected(() => {
+          setConnectionState('connected');
+          // Re-subscribe after reconnect
+          connection.invoke('SubscribeToMetrics').catch(console.error);
+        });
+
+        connection.onclose((err) => {
+          setConnectionState('disconnected');
+          if (err) {
+            setError(`Connection closed: ${err.message}`);
+          }
+        });
+
         await connection.start();
         setConnectionState('connected');
         
@@ -151,7 +189,9 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
 
     // Cleanup
     return () => {
-      if (connection.state !== signalR.HubConnectionState.Disconnected) {
+      isCleanedUp = true;
+      const connection = connectionRef.current;
+      if (connection && connection.state !== signalR.HubConnectionState.Disconnected) {
         connection.invoke('UnsubscribeFromMetrics').catch(() => {});
         connection.stop().catch(console.error);
       }
