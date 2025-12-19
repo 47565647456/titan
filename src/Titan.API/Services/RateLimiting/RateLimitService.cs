@@ -34,7 +34,7 @@ public partial class RateLimitService
 
     private RateLimitingConfiguration? _cachedConfig;
     private DateTimeOffset _configCacheExpiry;
-    private readonly object _cacheLock = new();
+    private readonly Lock _cacheLock = new();
 
     public RateLimitService(
         [FromKeyedServices("rate-limiting")] IConnectionMultiplexer redis,
@@ -195,7 +195,7 @@ public partial class RateLimitService
     /// </summary>
     public void ClearCache()
     {
-        lock (_cacheLock)
+        using (_cacheLock.EnterScope())
         {
             _cachedConfig = null;
             _configCacheExpiry = DateTimeOffset.MinValue;
@@ -495,7 +495,7 @@ public partial class RateLimitService
     private async Task<RateLimitingConfiguration> GetConfigAsync()
     {
         // Check cache first
-        lock (_cacheLock)
+        using (_cacheLock.EnterScope())
         {
             if (_cachedConfig != null && _configCacheExpiry > DateTimeOffset.UtcNow)
                 return _cachedConfig;
@@ -524,7 +524,7 @@ public partial class RateLimitService
         }
 
         // Cache it
-        lock (_cacheLock)
+        using (_cacheLock.EnterScope())
         {
             _cachedConfig = config;
             _configCacheExpiry = DateTimeOffset.UtcNow.AddSeconds(_options.Value.ConfigCacheSeconds);

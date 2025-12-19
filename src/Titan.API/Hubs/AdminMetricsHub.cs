@@ -157,7 +157,7 @@ public class AdminMetricsBroadcaster : IDisposable
     private readonly ILogger<AdminMetricsBroadcaster> _logger;
     
     private Timer? _debounceTimer;
-    private readonly object _timerLock = new();
+    private readonly Lock _timerLock = new();
     private const int DebounceIntervalMs = 500; // Wait 500ms after last event
 
     public AdminMetricsBroadcaster(
@@ -177,7 +177,7 @@ public class AdminMetricsBroadcaster : IDisposable
     public void TriggerBroadcast()
     {
         // Debounce: reset timer on each call, broadcast when timer fires
-        lock (_timerLock)
+        using (_timerLock.EnterScope())
         {
             _debounceTimer?.Dispose();
             _debounceTimer = new Timer(
@@ -232,7 +232,7 @@ public class AdminMetricsBroadcaster : IDisposable
 
     public void Dispose()
     {
-        lock (_timerLock)
+        using (_timerLock.EnterScope())
         {
             _debounceTimer?.Dispose();
             _debounceTimer = null;
