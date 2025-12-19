@@ -12,24 +12,24 @@ public class HubValidationService
 {
     private readonly IValidator<IdRequest> _idValidator;
     private readonly IValidator<NameRequest> _nameValidator;
-    private readonly IValidator<PositiveValueRequest> _positiveValueValidator;
+    private readonly IValidator<NonNegativeValueRequest> _nonNegativeValueValidator;
 
     public HubValidationService(
         IValidator<IdRequest> idValidator,
         IValidator<NameRequest> nameValidator,
-        IValidator<PositiveValueRequest> positiveValueValidator)
+        IValidator<NonNegativeValueRequest> nonNegativeValueValidator)
     {
         _idValidator = idValidator;
         _nameValidator = nameValidator;
-        _positiveValueValidator = positiveValueValidator;
+        _nonNegativeValueValidator = nonNegativeValueValidator;
     }
 
     /// <summary>
     /// Validates an ID parameter (seasonId, baseTypeId, etc.)
     /// </summary>
-    public async Task ValidateIdAsync(string? id, string parameterName)
+    public void ValidateId(string? id, string parameterName)
     {
-        var result = await _idValidator.ValidateAsync(new IdRequest(id, parameterName));
+        var result = _idValidator.Validate(new IdRequest(id, parameterName));
         if (!result.IsValid)
         {
             throw new HubException(result.Errors[0].ErrorMessage);
@@ -39,9 +39,9 @@ public class HubValidationService
     /// <summary>
     /// Validates a name parameter.
     /// </summary>
-    public async Task ValidateNameAsync(string? name, string parameterName, int maxLength = 200)
+    public void ValidateName(string? name, string parameterName, int maxLength = 200)
     {
-        var result = await _nameValidator.ValidateAsync(new NameRequest(name, parameterName, maxLength));
+        var result = _nameValidator.Validate(new NameRequest(name, parameterName, maxLength));
         if (!result.IsValid)
         {
             throw new HubException(result.Errors[0].ErrorMessage);
@@ -49,14 +49,43 @@ public class HubValidationService
     }
 
     /// <summary>
-    /// Validates a positive integer value.
+    /// Validates a non-negative value (>= 0).
     /// </summary>
-    public async Task ValidatePositiveAsync(long value, string parameterName)
+    public void ValidateNonNegative(long value, string parameterName)
     {
-        var result = await _positiveValueValidator.ValidateAsync(new PositiveValueRequest(value, parameterName));
+        var result = _nonNegativeValueValidator.Validate(new NonNegativeValueRequest(value, parameterName));
         if (!result.IsValid)
         {
             throw new HubException(result.Errors[0].ErrorMessage);
         }
+    }
+
+    // Async versions for backward compatibility with existing hub code
+    
+    /// <summary>
+    /// Validates an ID parameter (seasonId, baseTypeId, etc.)
+    /// </summary>
+    public Task ValidateIdAsync(string? id, string parameterName)
+    {
+        ValidateId(id, parameterName);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Validates a name parameter.
+    /// </summary>
+    public Task ValidateNameAsync(string? name, string parameterName, int maxLength = 200)
+    {
+        ValidateName(name, parameterName, maxLength);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Validates a non-negative value (>= 0).
+    /// </summary>
+    public Task ValidatePositiveAsync(long value, string parameterName)
+    {
+        ValidateNonNegative(value, parameterName);
+        return Task.CompletedTask;
     }
 }

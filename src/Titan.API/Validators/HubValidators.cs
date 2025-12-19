@@ -15,9 +15,9 @@ public record IdRequest(string? Id, string ParameterName);
 public record NameRequest(string? Name, string ParameterName, int MaxLength = 200);
 
 /// <summary>
-/// Request DTO for validating positive value parameters in hubs.
+/// Request DTO for validating non-negative value parameters in hubs.
 /// </summary>
-public record PositiveValueRequest(long Value, string ParameterName);
+public record NonNegativeValueRequest(long Value, string ParameterName);
 
 #endregion
 
@@ -49,18 +49,21 @@ public class NameRequestValidator : AbstractValidator<NameRequest>
     {
         RuleFor(x => x.Name)
             .NotEmpty()
-            .WithMessage(x => $"{x.ParameterName} is required")
-            .Must((request, name) => name == null || name.Length <= request.MaxLength)
-            .WithMessage(x => $"{x.ParameterName} exceeds maximum length of {x.MaxLength}");
+            .WithMessage(x => $"{x.ParameterName} is required");
+
+        RuleFor(x => x.Name)
+            .Must((request, name) => name!.Length <= request.MaxLength)
+            .WithMessage(x => $"{x.ParameterName} exceeds maximum length of {x.MaxLength}")
+            .When(x => !string.IsNullOrEmpty(x.Name));
     }
 }
 
 /// <summary>
-/// Validator for positive value parameters.
+/// Validator for non-negative value parameters (>= 0).
 /// </summary>
-public class PositiveValueRequestValidator : AbstractValidator<PositiveValueRequest>
+public class NonNegativeValueRequestValidator : AbstractValidator<NonNegativeValueRequest>
 {
-    public PositiveValueRequestValidator()
+    public NonNegativeValueRequestValidator()
     {
         RuleFor(x => x.Value)
             .GreaterThanOrEqualTo(0)
