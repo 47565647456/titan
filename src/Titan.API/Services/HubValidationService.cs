@@ -83,7 +83,7 @@ public class HubValidationService
     /// <summary>
     /// Validates a non-negative value (>= 0).
     /// </summary>
-    public Task ValidatePositiveAsync(long value, string parameterName)
+    public Task ValidateNonNegativeAsync(long value, string parameterName)
     {
         ValidateNonNegative(value, parameterName);
         return Task.CompletedTask;

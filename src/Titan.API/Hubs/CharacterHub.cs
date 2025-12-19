@@ -42,7 +42,7 @@ public class CharacterHub : TitanHubBase
     {
         await VerifyCharacterOwnershipAsync(characterId);
         await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
-        await _validation.ValidatePositiveAsync(amount, nameof(amount));
+        await _validation.ValidateNonNegativeAsync(amount, nameof(amount));
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         return await grain.AddExperienceAsync(amount);
@@ -81,7 +81,7 @@ public class CharacterHub : TitanHubBase
         await VerifyCharacterOwnershipAsync(characterId);
         await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         await _validation.ValidateIdAsync(challengeId, nameof(challengeId));
-        await _validation.ValidatePositiveAsync(progress, nameof(progress));
+        await _validation.ValidateNonNegativeAsync(progress, nameof(progress));
         
         var grain = ClusterClient.GetGrain<ICharacterGrain>(characterId, seasonId);
         await grain.UpdateChallengeProgressAsync(challengeId, progress);
