@@ -60,7 +60,7 @@ public class HubValidationService
         }
     }
 
-    // Async versions for backward compatibility with existing hub code
+    // Async versions to maintain async/await pattern in SignalR hub methods
     
     /// <summary>
     /// Validates an ID parameter (seasonId, baseTypeId, etc.)
