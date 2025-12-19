@@ -302,7 +302,6 @@ public class TitanClient : IAsyncDisposable
             
             var connection = new HubConnectionBuilder()
                 .WithUrl($"{_baseUrl}{hubPath}?ticket={Uri.EscapeDataString(ticket)}")
-                .WithAutomaticReconnect()  // Auto-reconnect for long-running tests
                 .Build();
             
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);

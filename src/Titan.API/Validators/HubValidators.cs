@@ -244,3 +244,35 @@ public class TradeItemRequestValidator : AbstractValidator<TradeItemRequest>
 }
 
 #endregion
+
+#region BaseType Hub Validators
+
+/// <summary>
+/// Validator for BaseType model used in SignalR hub Create/Update operations.
+/// Ensures all required fields are present and within valid ranges.
+/// </summary>
+public class BaseTypeModelValidator : AbstractValidator<Titan.Abstractions.Models.Items.BaseType>
+{
+    public BaseTypeModelValidator()
+    {
+        RuleFor(x => x.BaseTypeId)
+            .NotEmpty().WithMessage("BaseTypeId is required")
+            .MaximumLength(100).WithMessage("BaseTypeId must not exceed 100 characters")
+            .Matches(@"^[\w\-\.]+$").WithMessage("BaseTypeId must contain only alphanumeric characters, underscores, hyphens, or periods");
+
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Name is required")
+            .MaximumLength(200).WithMessage("Name must not exceed 200 characters");
+
+        RuleFor(x => x.Width)
+            .InclusiveBetween(1, 100).WithMessage("Width must be between 1 and 100");
+
+        RuleFor(x => x.Height)
+            .InclusiveBetween(1, 100).WithMessage("Height must be between 1 and 100");
+
+        RuleFor(x => x.MaxStackSize)
+            .InclusiveBetween(1, 9999).WithMessage("MaxStackSize must be between 1 and 9999");
+    }
+}
+
+#endregion

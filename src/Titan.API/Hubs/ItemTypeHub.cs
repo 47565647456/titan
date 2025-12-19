@@ -103,7 +103,7 @@ public class BaseTypeHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<BaseType> Create(BaseType baseType)
     {
-        await _validation.ValidateAndThrowAsync(new IdRequest(baseType.BaseTypeId));
+        await _validation.ValidateAndThrowAsync(baseType);
 
         var registry = ClusterClient.GetGrain<IBaseTypeRegistryGrain>("default");
 
@@ -126,7 +126,7 @@ public class BaseTypeHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<BaseType> Update(string baseTypeId, BaseType baseType)
     {
-        await _validation.ValidateAndThrowAsync(new IdRequest(baseTypeId));
+        await _validation.ValidateAndThrowAsync(baseType);
 
         if (baseType.BaseTypeId != baseTypeId)
             throw new HubException("BaseTypeId in request must match.");

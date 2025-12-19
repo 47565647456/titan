@@ -117,15 +117,36 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
     }
 
     let isCleanedUp = false;
+    let retryCount = 0;
+    const maxRetries = 10;
 
     // Start connection with ticket-based auth
+    // Manual reconnection is required because tickets are single-use and passed in URL.
+    // SignalR's withAutomaticReconnect doesn't refresh URL params on reconnect.
     const startConnection = async () => {
+      // Check if we're still logged in before attempting connection
+      const currentToken = localStorage.getItem('accessToken');
+      if (!currentToken || isCleanedUp) {
+        setConnectionState('disconnected');
+        return;
+      }
+
       setConnectionState('connecting');
       setError(null);
       
       try {
-        // Fetch a connection ticket instead of using JWT directly
-        const ticket = await fetchConnectionTicket(token);
+        // Dispose any existing connection before creating a new one
+        if (connectionRef.current) {
+          try {
+            await connectionRef.current.stop();
+          } catch {
+            // Ignore stop errors
+          }
+          connectionRef.current = null;
+        }
+
+        // Fetch a fresh connection ticket for each connection attempt
+        const ticket = await fetchConnectionTicket(currentToken);
         if (!ticket) {
           throw new Error('Failed to obtain connection ticket');
         }
@@ -133,18 +154,9 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
         if (isCleanedUp) return; // Guard against cleanup during async operation
 
         // Build connection with ticket in URL (not JWT)
+        // No withAutomaticReconnect - we handle reconnection manually with fresh tickets
         const connection = new signalR.HubConnectionBuilder()
           .withUrl(`/hubs/admin-metrics?ticket=${encodeURIComponent(ticket)}`)
-          .withAutomaticReconnect({
-            nextRetryDelayInMilliseconds: (retryContext) => {
-              // On reconnect, check if we're still logged in
-              const newToken = localStorage.getItem('accessToken');
-              if (!newToken) return null; // Stop retrying if logged out
-              
-              // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
-              return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
-            },
-          })
           .configureLogging(signalR.LogLevel.Warning)
           .build();
 
@@ -155,26 +167,30 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
           setMetrics(data);
         });
 
-        // Connection state handlers
-        connection.onreconnecting(() => {
-          setConnectionState('connecting');
-        });
-
-        connection.onreconnected(() => {
-          setConnectionState('connected');
-          // Re-subscribe after reconnect
-          connection.invoke('SubscribeToMetrics').catch(console.error);
-        });
-
+        // Manual reconnection on close - creates new connection with fresh ticket
         connection.onclose((err) => {
           setConnectionState('disconnected');
+          
+          if (isCleanedUp) return;
+          
           if (err) {
             setError(`Connection closed: ${err.message}`);
+            
+            // Attempt manual reconnection with exponential backoff
+            if (retryCount < maxRetries) {
+              const delay = Math.min(2000 * Math.pow(2, retryCount), 30000);
+              retryCount++;
+              console.log(`SignalR reconnecting in ${delay}ms (attempt ${retryCount}/${maxRetries})`);
+              setTimeout(() => startConnection(), delay);
+            } else {
+              setError('Connection failed after maximum retries. Please refresh the page.');
+            }
           }
         });
 
         await connection.start();
         setConnectionState('connected');
+        retryCount = 0; // Reset retry counter on successful connection
         
         // Subscribe to metrics updates
         await connection.invoke('SubscribeToMetrics');
@@ -182,6 +198,14 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
         console.error('SignalR connection failed:', err);
         setConnectionState('error');
         setError(err instanceof Error ? err.message : 'Connection failed');
+        
+        // Retry on initial connection failure too
+        if (!isCleanedUp && retryCount < maxRetries) {
+          const delay = Math.min(2000 * Math.pow(2, retryCount), 30000);
+          retryCount++;
+          console.log(`SignalR retrying in ${delay}ms (attempt ${retryCount}/${maxRetries})`);
+          setTimeout(() => startConnection(), delay);
+        }
       }
     };
 
