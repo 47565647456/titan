@@ -10,7 +10,7 @@ public class AuthServiceFactory : IAuthServiceFactory
     private readonly IServiceProvider _serviceProvider;
     private readonly IHostEnvironment _environment;
     private readonly Dictionary<string, IAuthService> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
 
     public AuthServiceFactory(IServiceProvider serviceProvider, IHostEnvironment environment)
     {
@@ -23,7 +23,7 @@ public class AuthServiceFactory : IAuthServiceFactory
         if (string.IsNullOrWhiteSpace(providerName))
             throw new ArgumentException("Provider name cannot be empty.", nameof(providerName));
 
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             if (_cache.TryGetValue(providerName, out var cached))
                 return cached;
@@ -73,7 +73,7 @@ public class AuthServiceFactory : IAuthServiceFactory
         if (string.IsNullOrWhiteSpace(providerName))
             return false;
 
-        lock (_lock)
+        using (_lock.EnterScope())
         {
             if (_cache.ContainsKey(providerName))
                 return true;
