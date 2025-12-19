@@ -197,6 +197,7 @@ public class SeasonHub : TitanHubBase
     /// </summary>
     public async Task<MigrationStatus> MigrateCharacter(string seasonId, Guid characterId)
     {
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         return await grain.MigrateCharacterAsync(characterId);
     }
@@ -208,6 +209,7 @@ public class SeasonHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<MigrationStatus> CancelMigration(string seasonId)
     {
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         await grain.CancelMigrationAsync();
         return await grain.GetStatusAsync();
