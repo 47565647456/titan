@@ -15,9 +15,12 @@ namespace Titan.API.Hubs;
 [Authorize]
 public class SeasonHub : TitanHubBase
 {
-    public SeasonHub(IClusterClient clusterClient, ILogger<SeasonHub> logger)
+    private readonly HubValidationService _validation;
+
+    public SeasonHub(IClusterClient clusterClient, HubValidationService validation, ILogger<SeasonHub> logger)
         : base(clusterClient, logger)
     {
+        _validation = validation;
     }
 
     #region Subscriptions
@@ -27,7 +30,7 @@ public class SeasonHub : TitanHubBase
     /// </summary>
     public async Task JoinSeasonGroup(string seasonId)
     {
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         await Groups.AddToGroupAsync(Context.ConnectionId, $"season-{seasonId}");
     }
 
@@ -36,7 +39,7 @@ public class SeasonHub : TitanHubBase
     /// </summary>
     public async Task LeaveSeasonGroup(string seasonId)
     {
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"season-{seasonId}");
     }
 
@@ -83,7 +86,7 @@ public class SeasonHub : TitanHubBase
     /// </summary>
     public async Task<Season?> GetSeason(string seasonId)
     {
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
         return await registry.GetSeasonAsync(seasonId);
     }
@@ -104,9 +107,9 @@ public class SeasonHub : TitanHubBase
         Dictionary<string, string>? modifiers = null,
         bool isVoid = false)
     {
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
-        HubValidation.ValidateName(name, nameof(name));
-        if (migrationTargetId != null) HubValidation.ValidateId(migrationTargetId, nameof(migrationTargetId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
+        await _validation.ValidateNameAsync(name, nameof(name));
+        if (migrationTargetId != null) await _validation.ValidateIdAsync(migrationTargetId, nameof(migrationTargetId));
 
         var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
 
@@ -137,7 +140,7 @@ public class SeasonHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<Season> EndSeason(string seasonId)
     {
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
         var season = await registry.EndSeasonAsync(seasonId);
         
@@ -153,7 +156,7 @@ public class SeasonHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<Season> UpdateSeasonStatus(string seasonId, SeasonStatus status)
     {
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         var registry = ClusterClient.GetGrain<ISeasonRegistryGrain>("default");
         var season = await registry.UpdateSeasonStatusAsync(seasonId, status);
         
@@ -171,7 +174,7 @@ public class SeasonHub : TitanHubBase
     /// </summary>
     public async Task<MigrationStatus> GetMigrationStatus(string seasonId)
     {
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         return await grain.GetStatusAsync();
     }
@@ -183,8 +186,8 @@ public class SeasonHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<MigrationStatus> StartMigration(string seasonId, string? targetSeasonId = null)
     {
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
-        if (targetSeasonId != null) HubValidation.ValidateId(targetSeasonId, nameof(targetSeasonId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
+        if (targetSeasonId != null) await _validation.ValidateIdAsync(targetSeasonId, nameof(targetSeasonId));
         var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         return await grain.StartMigrationAsync(targetSeasonId ?? "standard");
     }
@@ -194,6 +197,7 @@ public class SeasonHub : TitanHubBase
     /// </summary>
     public async Task<MigrationStatus> MigrateCharacter(string seasonId, Guid characterId)
     {
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         return await grain.MigrateCharacterAsync(characterId);
     }
@@ -205,6 +209,7 @@ public class SeasonHub : TitanHubBase
     [Authorize(Roles = "Admin")]
     public async Task<MigrationStatus> CancelMigration(string seasonId)
     {
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         var grain = ClusterClient.GetGrain<ISeasonMigrationGrain>(seasonId);
         await grain.CancelMigrationAsync();
         return await grain.GetStatusAsync();
