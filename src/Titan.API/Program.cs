@@ -24,6 +24,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Register all FluentValidation validators from this assembly
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 
+// Register validation service for SignalR hubs
+builder.Services.AddScoped<HubValidationService>();
+
 
 // Validate configuration early (fails fast if critical config is missing)
 builder.ValidateTitanConfiguration(requireJwtKey: true, requireEosInProduction: true);

@@ -14,11 +14,13 @@ namespace Titan.API.Hubs;
 public class TradeHub : TitanHubBase
 {
     private readonly TradeStreamSubscriber _streamSubscriber;
+    private readonly HubValidationService _validation;
 
-    public TradeHub(IClusterClient clusterClient, TradeStreamSubscriber streamSubscriber, ILogger<TradeHub> logger)
+    public TradeHub(IClusterClient clusterClient, TradeStreamSubscriber streamSubscriber, HubValidationService validation, ILogger<TradeHub> logger)
         : base(clusterClient, logger)
     {
         _streamSubscriber = streamSubscriber;
+        _validation = validation;
     }
 
     #region Security Helpers
@@ -85,7 +87,7 @@ public class TradeHub : TitanHubBase
     {
         // Verify the caller owns the initiating character
         await VerifyCharacterOwnershipAsync(myCharacterId);
-        HubValidation.ValidateId(seasonId, nameof(seasonId));
+        await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         
         var tradeId = Guid.NewGuid();
         var grain = ClusterClient.GetGrain<ITradeGrain>(tradeId);
