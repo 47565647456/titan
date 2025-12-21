@@ -41,6 +41,8 @@ public class SessionOptions
     /// <summary>
     /// Redis key prefix for session storage.
     /// </summary>
+    [Required]
+    [MinLength(1)]
     public string KeyPrefix { get; set; } = "session";
 }
 

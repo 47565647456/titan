@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using Titan.API.Services.Auth;
 
 namespace Titan.API.Auth;
 
@@ -17,13 +18,13 @@ public class SessionTicketAuthenticationOptions : AuthenticationSchemeOptions
 /// </summary>
 public class SessionTicketAuthenticationHandler : AuthenticationHandler<SessionTicketAuthenticationOptions>
 {
-    private readonly Services.Auth.ISessionService _sessionService;
+    private readonly ISessionService _sessionService;
 
     public SessionTicketAuthenticationHandler(
         IOptionsMonitor<SessionTicketAuthenticationOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder,
-        Services.Auth.ISessionService sessionService)
+        ISessionService sessionService)
         : base(options, logger, encoder)
     {
         _sessionService = sessionService;

@@ -154,11 +154,16 @@ public class TitanClientIntegrationTests : IntegrationTestBase
         Assert.True(client.IsAuthenticated);
 
         // Act
-        await client.Auth.LogoutAsync();
+        var invalidated = await client.Auth.LogoutAsync();
 
         // Assert
+        Assert.True(invalidated, "Expected session to be invalidated on first logout");
         Assert.False(client.IsAuthenticated);
         Assert.Null(client.SessionId);
+        
+        // Second logout should return false
+        var secondInvalidated = await client.Auth.LogoutAsync();
+        Assert.False(secondInvalidated, "Expected false for already invalidated session");
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Aspire.Hosting.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -49,7 +50,8 @@ public class AppHostFixture : IAsyncLifetime
             App.ResourceNotifications.WaitForResourceHealthyAsync("inventory-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("trading-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("api"),
-            App.ResourceNotifications.WaitForResourceHealthyAsync("sessions") // Session storage Redis
+            App.ResourceNotifications.WaitForResourceHealthyAsync("rate-limiting"), // Rate-limiting storage Redis
+            App.ResourceNotifications.WaitForResourceHealthyAsync("sessions")       // Session storage Redis
         ).WaitAsync(DefaultTimeout);
         
         // Give Orleans cluster time to stabilize
@@ -153,6 +155,7 @@ public abstract class IntegrationTestBase
 
     protected HubConnection CreateHubConnection(string hubPath, string sessionId)
         => new HubConnectionBuilder()
+            // Using 'access_token' query param for SignalR authentication compatibility
             .WithUrl($"{ApiBaseUrl}{hubPath}?access_token={sessionId}")
             .Build();
 
@@ -250,6 +253,25 @@ public abstract class IntegrationTestBase
     {
         var (sessionId, expiresAt, userId) = await LoginAsAdminAsync();
         return new UserSession(ApiBaseUrl, sessionId, expiresAt, userId);
+    }
+
+    /// <summary>
+    /// Creates a pre-authenticated HttpClient for admin endpoints.
+    /// </summary>
+    protected async Task<HttpClient> CreateAuthenticatedAdminClientAsync()
+    {
+        var loginResponse = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
+
+        var client = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", login!.SessionId);
+        return client;
     }
 
     #endregion

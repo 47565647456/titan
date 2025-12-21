@@ -34,13 +34,16 @@ public class AuthHub : Hub
     [Authorize]
     public async Task Logout()
     {
-        var userId = Guid.Parse(Context.UserIdentifier!);
         var sessionId = Context.User?.FindFirstValue("session_id");
         
         if (!string.IsNullOrEmpty(sessionId))
         {
             await _sessionService.InvalidateSessionAsync(sessionId);
-            _logger.LogInformation("User {UserId} logged out via hub, session invalidated", userId);
+            _logger.LogInformation("User {UserId} logged out via hub, session invalidated", Context.UserIdentifier);
+        }
+        else
+        {
+            _logger.LogWarning("Logout called but no session_id claim found for user {UserId}", Context.UserIdentifier);
         }
     }
 

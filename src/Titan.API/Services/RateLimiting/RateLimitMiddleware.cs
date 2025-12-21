@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Titan.API.Services.Auth;
 
 namespace Titan.API.Services.RateLimiting;
@@ -45,8 +46,15 @@ public class RateLimitMiddleware
                 return;
             }
 
-            // Get partition key: user ID for authenticated (from session), IP for anonymous
-            var userId = await ExtractUserIdFromSessionAsync(context, sessionService);
+            // Get partition key: user ID for authenticated, IP for anonymous
+            // First check if already authenticated (avoids duplicate session validation)
+            string? userId = context.User?.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+            
+            // Fall back to session validation for unauthenticated requests with tokens
+            if (string.IsNullOrEmpty(userId))
+            {
+                userId = await ExtractUserIdFromSessionAsync(context, sessionService);
+            }
             var partitionKey = !string.IsNullOrEmpty(userId)
                 ? $"user:{userId}"
                 : $"ip:{context.Connection.RemoteIpAddress}";

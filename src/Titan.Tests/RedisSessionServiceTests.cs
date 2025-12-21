@@ -130,8 +130,6 @@ public class RedisSessionServiceTests
         var serialized = MemoryPackSerializer.Serialize(ticket);
         _databaseMock.Setup(db => db.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync((RedisValue)serialized);
-        _databaseMock.Setup(db => db.KeyExpireAsync(It.IsAny<RedisKey>(), It.IsAny<TimeSpan>(), It.IsAny<ExpireWhen>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync(true);
 
         // Act
         var result = await _service.ValidateSessionAsync(ticketId);

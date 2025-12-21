@@ -37,12 +37,21 @@ internal sealed class AuthClient : IAuthClient
         return result;
     }
 
-    public async Task LogoutAsync(CancellationToken ct = default)
+    public async Task<bool> LogoutAsync(CancellationToken ct = default)
     {
         try
         {
             var response = await _httpClient.PostAsync("/api/auth/logout", null, ct);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return false;
+            }
+
             response.EnsureSuccessStatusCode();
+            
+            var result = await response.Content.ReadFromJsonAsync<LogoutResponse>(ct);
+            return result?.SessionInvalidated ?? false;
         }
         finally
         {

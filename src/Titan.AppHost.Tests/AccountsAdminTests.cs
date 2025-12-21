@@ -220,31 +220,6 @@ public class AccountsAdminTests : IntegrationTestBase
 
     #region Helpers
 
-    private async Task<HttpClient> CreateAuthenticatedAdminClientAsync()
-    {
-        var loginResponse = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
-        {
-            email = "admin@titan.local",
-            password = "Admin123!"
-        });
-        loginResponse.EnsureSuccessStatusCode();
-        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
-        
-        var client = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
-        client.DefaultRequestHeaders.Authorization = 
-            new AuthenticationHeaderValue("Bearer", login!.SessionId);
-        return client;
-    }
-
-    private record AdminLoginResponse(
-        bool Success,
-        Guid UserId,
-        string Email,
-        string? DisplayName,
-        List<string> Roles,
-        string SessionId,
-        DateTimeOffset ExpiresAt);
-
     private record AccountSummaryDto(Guid AccountId, DateTimeOffset CreatedAt, int CharacterCount);
     
     private record AccountDetailDto

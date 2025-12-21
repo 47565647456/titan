@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Titan.Abstractions.Contracts;
 using Titan.API.Data;
 using Titan.API.Services.Auth;
 
@@ -26,19 +27,22 @@ public class AdminAuthController : ControllerBase
 
     // Cookie name for httpOnly auth
     private const string SessionCookie = "admin_session";
+    private readonly IHostEnvironment _environment;
 
     public AdminAuthController(
         UserManager<AdminUser> userManager,
         SignInManager<AdminUser> signInManager,
         ISessionService sessionService,
         ILogger<AdminAuthController> logger,
-        IValidator<AdminLoginRequest> loginValidator)
+        IValidator<AdminLoginRequest> loginValidator,
+        IHostEnvironment environment)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _sessionService = sessionService;
         _logger = logger;
         _loginValidator = loginValidator;
+        _environment = environment;
     }
 
     /// <summary>
@@ -96,16 +100,14 @@ public class AdminAuthController : ControllerBase
 
         _logger.LogInformation("Admin {Email} logged in successfully", request.Email);
 
-        return Ok(new AdminLoginResponse
-        {
-            Success = true,
-            UserId = user.Id,
-            Email = user.Email!,
-            DisplayName = user.DisplayName,
-            Roles = roles.ToList(),
-            SessionId = session.TicketId,
-            ExpiresAt = session.ExpiresAt
-        });
+        return Ok(new AdminLoginResponse(
+            Success: true,
+            UserId: user.Id,
+            Email: user.Email!,
+            DisplayName: user.DisplayName,
+            Roles: roles.ToList(),
+            SessionId: session.TicketId,
+            ExpiresAt: session.ExpiresAt));
     }
 
     /// <summary>
@@ -156,14 +158,15 @@ public class AdminAuthController : ControllerBase
     {
         var sessionId = User.FindFirstValue("session_id");
 
+        bool invalidated = false;
         if (!string.IsNullOrEmpty(sessionId))
         {
-            await _sessionService.InvalidateSessionAsync(sessionId);
-            _logger.LogInformation("Admin session invalidated");
+            invalidated = await _sessionService.InvalidateSessionAsync(sessionId);
+            _logger.LogInformation("Admin session invalidated: {Invalidated}", invalidated);
         }
 
         ClearSessionCookie();
-        return Ok(new { success = true });
+        return Ok(new LogoutResponse(true, invalidated));
     }
 
     /// <summary>
@@ -194,10 +197,7 @@ public class AdminAuthController : ControllerBase
 
     private void SetSessionCookie(string sessionId, DateTimeOffset expiresAt)
     {
-        var isProduction = !string.Equals(
-            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
-            "Development",
-            StringComparison.OrdinalIgnoreCase);
+        var isProduction = !_environment.IsDevelopment();
 
         Response.Cookies.Append(SessionCookie, sessionId, new CookieOptions
         {
@@ -211,16 +211,14 @@ public class AdminAuthController : ControllerBase
 
     private void ClearSessionCookie()
     {
-        var isProduction = !string.Equals(
-            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
-            "Development",
-            StringComparison.OrdinalIgnoreCase);
+        var isProduction = !_environment.IsDevelopment();
 
         Response.Cookies.Delete(SessionCookie, new CookieOptions
         {
             Path = "/",
             Secure = isProduction,
-            HttpOnly = true
+            HttpOnly = true,
+            SameSite = SameSiteMode.Strict
         });
     }
     #endregion
@@ -232,17 +230,6 @@ public record AdminLoginRequest
 {
     public required string Email { get; init; }
     public required string Password { get; init; }
-}
-
-public record AdminLoginResponse
-{
-    public bool Success { get; init; }
-    public Guid UserId { get; init; }
-    public required string Email { get; init; }
-    public string? DisplayName { get; init; }
-    public required List<string> Roles { get; init; }
-    public required string SessionId { get; init; }
-    public DateTimeOffset ExpiresAt { get; init; }
 }
 
 public record AdminUserInfo

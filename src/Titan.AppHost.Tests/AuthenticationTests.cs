@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.SignalR.Client;
+using Titan.Abstractions.Contracts;
 
 namespace Titan.AppHost.Tests;
 
@@ -90,6 +91,32 @@ public class AuthenticationTests : IntegrationTestBase
         {
             await authHub.DisposeAsync();
         }
+    }
+
+    [Fact]
+    public async Task Logout_HTTP_ReturnsSessionInvalidated()
+    {
+        // 1. Arrange - Login first
+        var userId = Guid.NewGuid();
+        var (sessionId, _, _) = await LoginAsync($"mock:{userId}");
+
+        // 2. Act - Logout via HTTP
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sessionId);
+        
+        var response = await HttpClient.PostAsync("/api/auth/logout", null);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<LogoutResponse>();
+        
+        // 3. Assert
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.True(result.SessionInvalidated);
+
+        // 4. Second logout should return 401 Unauthorized (because session is gone)
+        var secondResponse = await HttpClient.PostAsync("/api/auth/logout", null);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, secondResponse.StatusCode);
     }
 
     #endregion

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using FluentValidation;
+using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services.Auth;
@@ -127,12 +128,13 @@ public static class AuthController
         
         if (!string.IsNullOrEmpty(sessionId))
         {
-            await sessionService.InvalidateSessionAsync(sessionId);
+            var invalidated = await sessionService.InvalidateSessionAsync(sessionId);
+            logger.LogInformation("User {UserId} logged out, session invalidated: {Invalidated}", userId, invalidated);
+            return Results.Ok(new LogoutResponse(true, invalidated));
         }
         
-        logger.LogInformation("User {UserId} logged out, session invalidated", userId);
-        
-        return Results.Ok(new { success = true });
+        logger.LogInformation("User {UserId} logged out, no session to invalidate", userId);
+        return Results.Ok(new LogoutResponse(true, false));
     }
     
     private static async Task<IResult> LogoutAllAsync(
