@@ -195,3 +195,22 @@ export interface RateLimitMetrics {
   buckets: RateLimitBucket[];
   timeouts: RateLimitTimeout[];
 }
+
+// Session Types
+export interface SessionInfo {
+  ticketId: string;
+  userId: string;
+  provider: string;
+  roles: string[];
+  createdAt: string;
+  expiresAt: string;
+  lastActivityAt: string;
+  isAdmin: boolean;
+}
+
+export interface SessionListResponse {
+  sessions: SessionInfo[];
+  totalCount: number;
+  skip: number;
+  take: number;
+}

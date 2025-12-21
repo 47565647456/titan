@@ -12,7 +12,8 @@ import {
   User,
   LogOut,
   Menu,
-  X
+  X,
+  Key
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './MainLayout.css';
@@ -75,6 +76,11 @@ export function MainLayout() {
               <NavLink to="/rate-limiting/metrics" className="nav-link nav-link-sub" onClick={closeMobileNav}>
                 <BarChart3 size={18} />
                 <span>RL Metrics</span>
+              </NavLink>
+              
+              <NavLink to="/sessions" className="nav-link" onClick={closeMobileNav}>
+                <Key size={18} />
+                <span>Sessions</span>
               </NavLink>
             </>
           )}

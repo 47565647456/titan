@@ -76,6 +76,15 @@ export function HomePage() {
               </div>
               <span className="quick-link-arrow">→</span>
             </Link>
+
+            <Link to="/sessions" className="quick-link-card">
+              <span className="quick-link-icon">🔑</span>
+              <div className="quick-link-content">
+                <h3>Sessions</h3>
+                <p>View and manage active user sessions</p>
+              </div>
+              <span className="quick-link-arrow">→</span>
+            </Link>
           </>
         )}
       </div>
