@@ -106,12 +106,16 @@ public class RedisSessionService : ISessionService
         if (newExpiry > ticket.ExpiresAt)
         {
             // Cap at maximum lifetime from creation (use correct lifetime based on session type)
+            // The 2x multiplier allows sliding expiration to extend sessions beyond the initial TTL,
+            // up to double the configured lifetime with continuous activity. This is intentional:
+            // e.g., 30min session + 30min sliding = 60min max absolute lifetime.
             var maxLifetimeMinutes = ticket.IsAdmin 
                 ? _options.AdminSessionLifetimeMinutes 
                 : _options.SessionLifetimeMinutes;
             var maxExpiry = ticket.CreatedAt.Add(
                 TimeSpan.FromMinutes(maxLifetimeMinutes * 2));
             newExpiry = newExpiry > maxExpiry ? maxExpiry : newExpiry;
+
 
             var updatedTicket = ticket with 
             { 
