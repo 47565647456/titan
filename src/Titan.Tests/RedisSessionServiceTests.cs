@@ -103,7 +103,15 @@ public class RedisSessionServiceTests
             It.Is<RedisKey>(k => k.ToString()!.StartsWith("session:user:")),
             It.IsAny<RedisValue>(),
             It.IsAny<CommandFlags>()), Times.Once);
+        
+        // Verify user sessions key TTL is set (lifetime + 5 min buffer)
+        _databaseMock.Verify(db => db.KeyExpireAsync(
+            It.Is<RedisKey>(k => k.ToString()!.StartsWith("session:user:")),
+            It.IsAny<TimeSpan>(),
+            It.IsAny<ExpireWhen>(),
+            It.IsAny<CommandFlags>()), Times.Once);
     }
+
 
     #endregion
 
@@ -188,7 +196,6 @@ public class RedisSessionServiceTests
         // Arrange
         var ticketId = "sliding-test";
         var now = DateTimeOffset.UtcNow;
-        var slidingMinutes = _options.SlidingExpirationMinutes;
         
         var ticket = new SessionTicket
         {
@@ -202,8 +209,6 @@ public class RedisSessionServiceTests
         var serialized = MemoryPackSerializer.Serialize(ticket);
         _databaseMock.Setup(db => db.StringGetAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync((RedisValue)serialized);
-        _databaseMock.Setup(db => db.KeyExpireAsync(It.IsAny<RedisKey>(), It.IsAny<TimeSpan>(), It.IsAny<ExpireWhen>(), It.IsAny<CommandFlags>()))
-            .ReturnsAsync(true);
 
         // Act
         await _service.ValidateSessionAsync(ticketId);

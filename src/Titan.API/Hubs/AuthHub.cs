@@ -56,7 +56,7 @@ public class AuthHub : Hub
         if (!Guid.TryParse(Context.UserIdentifier, out var userId))
         {
             _logger.LogWarning("RevokeAllSessions called with invalid UserIdentifier: {UserIdentifier}", Context.UserIdentifier);
-            return 0;
+            throw new HubException("Invalid user identifier");
         }
         
         var count = await _sessionService.InvalidateAllSessionsAsync(userId);
