@@ -236,6 +236,9 @@ builder.Services.AddHostedService<RateLimitConfigInitializer>();
 // Register admin metrics broadcaster for SignalR push updates
 builder.Services.AddSingleton<AdminMetricsBroadcaster>();
 
+// Register server broadcast service for sending messages to all players
+builder.Services.AddSingleton<ServerBroadcastService>();
+
 var app = builder.Build();
 
 // Seed default admin user if none exists
@@ -343,6 +346,7 @@ app.MapHub<InventoryHub>("/inventoryHub");
 app.MapHub<BaseTypeHub>("/baseTypeHub");
 app.MapHub<SeasonHub>("/seasonHub");
 app.MapHub<TradeHub>("/tradeHub");
+app.MapHub<BroadcastHub>("/broadcastHub");
 
 // Admin dashboard SignalR hub for real-time metrics
 app.MapHub<AdminMetricsHub>("/hubs/admin-metrics");
