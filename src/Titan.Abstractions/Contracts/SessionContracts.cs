@@ -7,7 +7,7 @@ public record SessionInfoDto(
     string TicketId,
     string UserId,
     string Provider,
-    List<string> Roles,
+    IReadOnlyList<string> Roles,
     DateTimeOffset CreatedAt,
     DateTimeOffset ExpiresAt,
     DateTimeOffset LastActivityAt,
@@ -17,7 +17,7 @@ public record SessionInfoDto(
 /// Paginated session list response.
 /// </summary>
 public record SessionListDto(
-    List<SessionInfoDto> Sessions,
+    IReadOnlyList<SessionInfoDto> Sessions,
     int TotalCount,
     int Skip,
     int Take);

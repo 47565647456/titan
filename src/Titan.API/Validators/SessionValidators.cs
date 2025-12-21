@@ -18,6 +18,6 @@ public class InvalidateSessionRequestValidator : AbstractValidator<InvalidateSes
             .NotEmpty().WithMessage("Ticket ID is required")
             .MinimumLength(10).WithMessage("Ticket ID must be at least 10 characters")
             .MaximumLength(200).WithMessage("Ticket ID must not exceed 200 characters")
-            .Must(id => !id.Any(char.IsControl)).WithMessage("Ticket ID contains invalid characters");
+            .Must(id => id != null && !id.Any(char.IsControl)).WithMessage("Ticket ID contains invalid characters");
     }
 }

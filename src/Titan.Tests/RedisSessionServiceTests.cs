@@ -625,6 +625,7 @@ public class RedisSessionServiceTests
         Assert.Equal(5, result.TotalCount); // Total is 5
         Assert.Equal(2, result.Skip);
         Assert.Equal(2, result.Take);
+        Assert.Equal(2, result.Sessions.Count); // Should return 2 sessions for this page
     }
 
     #endregion

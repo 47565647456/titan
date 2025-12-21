@@ -110,7 +110,7 @@ public class SessionsAdminTests : IntegrationTestBase
     #region Session Invalidation Tests
 
     [Fact]
-    public async Task InvalidateSession_NonExistent_ReturnsSuccess()
+    public async Task InvalidateSession_NonExistent_ReturnsSuccessFalse()
     {
         // Arrange
         using var client = await CreateAuthenticatedAdminClientAsync();
