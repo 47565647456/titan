@@ -13,7 +13,8 @@ import {
   LogOut,
   Menu,
   X,
-  Key
+  Key,
+  Radio
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import './MainLayout.css';
@@ -81,6 +82,11 @@ export function MainLayout() {
               <NavLink to="/sessions" className="nav-link" onClick={closeMobileNav}>
                 <Key size={18} />
                 <span>Sessions</span>
+              </NavLink>
+              
+              <NavLink to="/broadcasting" className="nav-link" onClick={closeMobileNav}>
+                <Radio size={18} />
+                <span>Broadcasting</span>
               </NavLink>
             </>
           )}

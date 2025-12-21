@@ -18,7 +18,9 @@ import type {
   EndpointRateLimitConfig,
   RateLimitMetrics,
   SessionInfo,
-  SessionListResponse
+  SessionListResponse,
+  ServerMessage,
+  SendBroadcastRequest
 } from '../types';
 
 // Create axios instance with base configuration
@@ -272,6 +274,14 @@ export const sessionsApi = {
 
   invalidateAllForUser: async (userId: string): Promise<{ count: number }> => {
     const response = await api.delete<{ count: number }>(`/admin/sessions/user/${userId}`);
+    return response.data;
+  },
+};
+
+// Broadcast API
+export const broadcastApi = {
+  send: async (request: SendBroadcastRequest): Promise<ServerMessage> => {
+    const response = await api.post<ServerMessage>('/admin/broadcast', request);
     return response.data;
   },
 };

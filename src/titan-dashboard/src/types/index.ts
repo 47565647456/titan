@@ -214,3 +214,33 @@ export interface SessionListResponse {
   skip: number;
   take: number;
 }
+
+// Broadcasting Types
+export const ServerMessageType = {
+  Info: 0,
+  Warning: 1,
+  Error: 2,
+  Achievement: 3,
+  Maintenance: 4,
+  Custom: 5,
+} as const;
+export type ServerMessageType = (typeof ServerMessageType)[keyof typeof ServerMessageType];
+
+export interface ServerMessage {
+  messageId: string;
+  content: string;
+  type: ServerMessageType;
+  title: string | null;
+  iconId: string | null;
+  durationSeconds: number | null;
+  timestamp: string;
+}
+
+export interface SendBroadcastRequest {
+  content: string;
+  type?: ServerMessageType;
+  title?: string;
+  iconId?: string;
+  durationSeconds?: number;
+}
+
