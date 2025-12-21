@@ -249,6 +249,7 @@ export function SessionsPage() {
                 className="btn btn-sm btn-secondary"
                 onClick={() => setPage(p => Math.max(0, p - 1))}
                 disabled={page === 0}
+                aria-label="Go to previous page"
               >
                 Previous
               </button>
@@ -260,6 +261,7 @@ export function SessionsPage() {
                 className="btn btn-sm btn-secondary"
                 onClick={() => setPage(p => p + 1)}
                 disabled={page >= totalPages - 1}
+                aria-label="Go to next page"
               >
                 Next
               </button>

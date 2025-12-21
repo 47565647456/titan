@@ -275,6 +275,8 @@ public class RedisSessionService : ISessionService
     /// Scans Redis for all session keys (excluding user tracking keys).
     /// Note: For very large deployments (100k+ sessions), this loads all keys into memory.
     /// Consider cursor-based pagination if memory becomes a concern at scale.
+    /// Note: This uses the first available Redis server. In cluster deployments,
+    /// ensure sessions are on a single node or iterate all servers if needed.
     /// </summary>
     private async Task<List<RedisKey>> GetSessionKeysAsync()
     {
