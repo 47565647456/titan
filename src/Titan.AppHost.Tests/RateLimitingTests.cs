@@ -237,12 +237,12 @@ public class RateLimitingTests : RateLimitingTestBase
             $"Login should succeed. Status: {loginResponse.StatusCode}");
         
         var loginResult = await loginResponse.Content.ReadFromJsonAsync<LoginResult>();
-        Assert.NotNull(loginResult?.AccessToken);
+        Assert.NotNull(loginResult?.SessionId);
         
-        // Act - make an authenticated request with the JWT token
+        // Act - make an authenticated request with the session token
         using var authClient = new HttpClient { BaseAddress = HttpClient.BaseAddress };
         authClient.DefaultRequestHeaders.Authorization = 
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResult.AccessToken);
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResult.SessionId);
         
         var response = await authClient.GetAsync("/health");
         
@@ -346,7 +346,7 @@ public class RateLimitingTests : RateLimitingTestBase
         }
     }
 
-    private record LoginResult(bool Success, string? AccessToken, string? RefreshToken);
+    private record LoginResult(bool Success, string? SessionId, DateTimeOffset? ExpiresAt);
 }
 
 /// <summary>
@@ -747,7 +747,7 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
         // Make authenticated request to non-auth admin endpoint
         using var authenticatedClient = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
         authenticatedClient.DefaultRequestHeaders.Authorization = 
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResult!.AccessToken);
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResult!.SessionId);
         
         var response = await authenticatedClient.GetAsync("/api/admin/accounts");
         
@@ -761,13 +761,12 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
 
     private record AdminLoginResult(
         bool Success,
-        string UserId,
+        Guid UserId,
         string Email,
         string? DisplayName,
         List<string> Roles,
-        string AccessToken,
-        string RefreshToken,
-        int ExpiresInSeconds);
+        string SessionId,
+        DateTimeOffset ExpiresAt);
 
     #region Clear Bucket Tests
 
@@ -788,7 +787,7 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
         // Make some authenticated requests to create rate limit buckets
         using var authenticatedClient = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
         authenticatedClient.DefaultRequestHeaders.Authorization = 
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResult!.AccessToken);
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResult!.SessionId);
         
         for (int i = 0; i < 5; i++)
         {
@@ -811,7 +810,7 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
         var connection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
             .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
             {
-                options.AccessTokenProvider = () => Task.FromResult<string?>(loginResult.AccessToken);
+                options.AccessTokenProvider = () => Task.FromResult<string?>(loginResult.SessionId);
             })
             .Build();
 
@@ -880,7 +879,7 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
         var connection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
             .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
             {
-                options.AccessTokenProvider = () => Task.FromResult<string?>(loginResult!.AccessToken);
+                options.AccessTokenProvider = () => Task.FromResult<string?>(loginResult!.SessionId);
             })
             .Build();
 
@@ -1364,7 +1363,7 @@ public abstract class RateLimitingTestBase
         Fixture = fixture;
     }
 
-    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsUserAsync()
+    protected async Task<(string SessionId, DateTimeOffset ExpiresAt, Guid UserId)> LoginAsUserAsync()
     {
         var request = new { token = $"mock:{Guid.NewGuid()}", provider = "Mock" };
         var response = await HttpClient.PostAsJsonAsync("/api/auth/login", request);
@@ -1373,10 +1372,10 @@ public abstract class RateLimitingTestBase
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>()
             ?? throw new InvalidOperationException("Failed to parse login response");
         
-        if (!result.Success || string.IsNullOrEmpty(result.AccessToken))
+        if (!result.Success || string.IsNullOrEmpty(result.SessionId))
             throw new InvalidOperationException("Login failed");
         
-        return (result.AccessToken, result.RefreshToken!, result.AccessTokenExpiresInSeconds!.Value, result.UserId!.Value);
+        return (result.SessionId, result.ExpiresAt!.Value, result.UserId!.Value);
     }
 
     /// <summary>
@@ -1402,19 +1401,18 @@ public abstract class RateLimitingTestBase
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>()
             ?? throw new InvalidOperationException("Failed to parse login response");
         
-        if (!result.Success || string.IsNullOrEmpty(result.AccessToken))
+        if (!result.Success || string.IsNullOrEmpty(result.SessionId))
             throw new InvalidOperationException("Admin login failed");
         
         // Set authorization header for subsequent requests
         HttpClient.DefaultRequestHeaders.Authorization = 
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", result.AccessToken);
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", result.SessionId);
     }
 
     private record LoginResponse(
         bool Success, 
-        string? AccessToken, 
-        string? RefreshToken, 
-        int? AccessTokenExpiresInSeconds,
+        string? SessionId, 
+        DateTimeOffset? ExpiresAt,
         Guid? UserId);
 }
 

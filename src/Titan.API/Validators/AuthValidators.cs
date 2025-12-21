@@ -16,25 +16,11 @@ public class LoginRequestValidator : AbstractValidator<Controllers.LoginRequest>
     }
 }
 
-public class RefreshRequestValidator : AbstractValidator<Controllers.RefreshRequest>
-{
-    public RefreshRequestValidator()
-    {
-        RuleFor(x => x.RefreshToken)
-            .NotEmpty().WithMessage("RefreshToken is required")
-            .MaximumLength(500).WithMessage("RefreshToken must not exceed 500 characters");
-
-        RuleFor(x => x.UserId)
-            .NotEmpty().WithMessage("UserId is required");
-    }
-}
-
+// LogoutRequest no longer needs validation (no parameters)
 public class LogoutRequestValidator : AbstractValidator<Controllers.LogoutRequest>
 {
     public LogoutRequestValidator()
     {
-        RuleFor(x => x.RefreshToken)
-            .NotEmpty().WithMessage("RefreshToken is required")
-            .MaximumLength(500).WithMessage("RefreshToken must not exceed 500 characters");
+        // No validation needed - logout uses session from auth context
     }
 }

@@ -23,8 +23,9 @@ public sealed class TitanClient : IAsyncDisposable
     private HubConnection? _seasonHub;
     private HubConnection? _authHub;
 
-    private string? _currentAccessToken;
+    private string? _currentSessionId;
     private Guid? _currentUserId;
+    private DateTimeOffset? _sessionExpiresAt;
 
     /// <summary>
     /// HTTP authentication client.
@@ -37,14 +38,19 @@ public sealed class TitanClient : IAsyncDisposable
     public Guid? UserId => _currentUserId;
 
     /// <summary>
-    /// Current access token after successful login.
+    /// Current session ID after successful login.
     /// </summary>
-    public string? AccessToken => _currentAccessToken;
+    public string? SessionId => _currentSessionId;
+
+    /// <summary>
+    /// Session expiration time.
+    /// </summary>
+    public DateTimeOffset? SessionExpiresAt => _sessionExpiresAt;
 
     /// <summary>
     /// Whether the client is authenticated.
     /// </summary>
-    public bool IsAuthenticated => !string.IsNullOrEmpty(_currentAccessToken);
+    public bool IsAuthenticated => !string.IsNullOrEmpty(_currentSessionId);
 
     /// <summary>
     /// Creates a new TitanClient with the specified options.
@@ -59,14 +65,36 @@ public sealed class TitanClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Sets the authentication state after login.
+    /// Sets the session state after login.
     /// Called internally by AuthClient.
     /// </summary>
-    internal void SetAuthState(string accessToken, Guid userId)
+    internal void SetSession(string sessionId, Guid userId, DateTimeOffset expiresAt)
     {
-        _currentAccessToken = accessToken;
+        _currentSessionId = sessionId;
         _currentUserId = userId;
-        _logger?.LogDebug("Authentication state updated for user {UserId}", userId);
+        _sessionExpiresAt = expiresAt;
+        
+        // Set Authorization header for subsequent HTTP requests
+        _httpClient.DefaultRequestHeaders.Authorization = 
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sessionId);
+        
+        _logger?.LogDebug("Session created for user {UserId}, expires {ExpiresAt}", userId, expiresAt);
+    }
+
+    /// <summary>
+    /// Clears the session state after logout.
+    /// Called internally by AuthClient.
+    /// </summary>
+    internal void ClearSession()
+    {
+        _currentSessionId = null;
+        _currentUserId = null;
+        _sessionExpiresAt = null;
+        
+        // Clear Authorization header
+        _httpClient.DefaultRequestHeaders.Authorization = null;
+        
+        _logger?.LogDebug("Session cleared");
     }
 
     /// <summary>
@@ -150,13 +178,14 @@ public sealed class TitanClient : IAsyncDisposable
 
     private async Task<HubConnection> CreateAndConnectHubAsync(string hubPath)
     {
-        if (string.IsNullOrEmpty(_currentAccessToken))
+        if (string.IsNullOrEmpty(_currentSessionId))
             throw new InvalidOperationException("Client is not authenticated. Call Auth.LoginAsync first.");
 
         var builder = new HubConnectionBuilder()
             .WithUrl($"{_options.BaseUrl}{hubPath}", options =>
             {
-                options.AccessTokenProvider = () => Task.FromResult<string?>(_currentAccessToken);
+                // Session ticket is passed via access_token query parameter for SignalR
+                options.AccessTokenProvider = () => Task.FromResult<string?>(_currentSessionId);
             });
 
         if (_options.EnableAutoReconnect)

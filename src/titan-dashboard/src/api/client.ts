@@ -19,14 +19,6 @@ import type {
   RateLimitMetrics
 } from '../types';
 
-// Response type for token refresh
-export interface RefreshResponse {
-  success: boolean;
-  accessToken: string;
-  refreshToken: string;
-  expiresInSeconds: number;
-}
-
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -36,92 +28,22 @@ const api = axios.create({
   withCredentials: true, // Send httpOnly cookies with requests
 });
 
-// Request interceptor to add auth token from localStorage (fallback for backward compatibility)
+// Request interceptor to add auth token from localStorage
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const sessionId = localStorage.getItem('sessionId');
+  if (sessionId) {
+    config.headers.Authorization = `Bearer ${sessionId}`;
   }
   return config;
 });
 
-// Track if we're currently refreshing to prevent multiple simultaneous refresh attempts
-let isRefreshing = false;
-let refreshSubscribers: ((error: Error | null) => void)[] = [];
-
-const subscribeTokenRefresh = (cb: (error: Error | null) => void) => {
-  refreshSubscribers.push(cb);
-};
-
-const onRefreshComplete = (error: Error | null) => {
-  refreshSubscribers.forEach(cb => cb(error));
-  refreshSubscribers = [];
-};
-
-// Response interceptor for handling 401s with automatic refresh
+// Response interceptor for handling 401s - redirect to login (no refresh with session auth)
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
-
-    // If 401 and not already retrying
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      // If we're already refreshing, wait for it to complete
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          subscribeTokenRefresh((refreshError) => {
-            if (refreshError) {
-              reject(refreshError);
-            } else {
-              // Retry the original request
-              resolve(api(originalRequest));
-            }
-          });
-        });
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        // Attempt to refresh the token
-        const refreshResponse = await api.post<RefreshResponse>('/admin/auth/refresh');
-        
-        if (refreshResponse.data.success) {
-          // Update localStorage with new tokens (for backward compatibility)
-          localStorage.setItem('accessToken', refreshResponse.data.accessToken);
-          localStorage.setItem('refreshToken', refreshResponse.data.refreshToken);
-          localStorage.setItem('tokenExpiry', 
-            (Date.now() + refreshResponse.data.expiresInSeconds * 1000).toString());
-          
-          // Update authorization header
-          originalRequest.headers.Authorization = `Bearer ${refreshResponse.data.accessToken}`;
-          
-          isRefreshing = false;
-          onRefreshComplete(null);
-          
-          // Retry the original request
-          return api(originalRequest);
-        }
-      } catch (refreshError) {
-        isRefreshing = false;
-        onRefreshComplete(refreshError as Error);
-        
-        // Refresh failed, clear auth state and redirect to login
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('tokenExpiry');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
-        return Promise.reject(refreshError);
-      }
-    }
-
-    // If it's a 401 and we already retried, redirect to login
+    // If 401, session is invalid/expired - redirect to login
     if (error.response?.status === 401) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('tokenExpiry');
+      localStorage.removeItem('sessionId');
       localStorage.removeItem('user');
       window.location.href = '/login';
     }
@@ -134,11 +56,6 @@ api.interceptors.response.use(
 export const authApi = {
   login: async (data: LoginRequest): Promise<LoginResponse> => {
     const response = await api.post<LoginResponse>('/admin/auth/login', data);
-    return response.data;
-  },
-  
-  refresh: async (): Promise<RefreshResponse> => {
-    const response = await api.post<RefreshResponse>('/admin/auth/refresh');
     return response.data;
   },
   

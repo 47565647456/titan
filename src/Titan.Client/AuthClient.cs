@@ -7,6 +7,7 @@ namespace Titan.Client;
 /// <summary>
 /// HTTP client for authentication operations.
 /// Implements IAuthClient for login/logout via HTTP.
+/// Session-based authentication.
 /// </summary>
 internal sealed class AuthClient : IAuthClient
 {
@@ -28,33 +29,30 @@ internal sealed class AuthClient : IAuthClient
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>(ct)
             ?? throw new InvalidOperationException("Invalid login response");
 
-        if (result.Success && result.AccessToken != null && result.UserId.HasValue)
+        if (result.Success && result.SessionId != null && result.UserId.HasValue && result.ExpiresAt.HasValue)
         {
-            _parent.SetAuthState(result.AccessToken, result.UserId.Value);
+            _parent.SetSession(result.SessionId, result.UserId.Value, result.ExpiresAt.Value);
         }
 
         return result;
     }
 
-    public async Task<RefreshResult> RefreshAsync(string refreshToken, Guid userId, CancellationToken ct = default)
+    public async Task LogoutAsync(CancellationToken ct = default)
     {
-        var request = new { refreshToken, userId };
-        var response = await _httpClient.PostAsJsonAsync("/api/auth/refresh", request, ct);
+        var response = await _httpClient.PostAsync("/api/auth/logout", null, ct);
         response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<RefreshResult>(ct)
-            ?? throw new InvalidOperationException("Invalid refresh response");
-
-        _parent.SetAuthState(result.AccessToken, userId);
-
-        return result;
+        _parent.ClearSession();
     }
 
-    public async Task LogoutAsync(string refreshToken, CancellationToken ct = default)
+    public async Task<int> LogoutAllAsync(CancellationToken ct = default)
     {
-        var request = new { refreshToken };
-        var response = await _httpClient.PostAsJsonAsync("/api/auth/logout", request, ct);
+        var response = await _httpClient.PostAsync("/api/auth/logout-all", null, ct);
         response.EnsureSuccessStatusCode();
+        
+        var result = await response.Content.ReadFromJsonAsync<LogoutAllResult>(ct);
+        _parent.ClearSession();
+        
+        return result?.SessionsInvalidated ?? 0;
     }
 
     public async Task<IReadOnlyList<string>> GetProvidersAsync(CancellationToken ct = default)
@@ -62,4 +60,6 @@ internal sealed class AuthClient : IAuthClient
         return await _httpClient.GetFromJsonAsync<IReadOnlyList<string>>("/api/auth/providers", ct)
             ?? Array.Empty<string>();
     }
+
+    private record LogoutAllResult(int SessionsInvalidated);
 }

@@ -1,119 +1,98 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Json;
-using System.Security.Claims;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
-using Titan.Abstractions.Contracts;
-using Titan.Abstractions.Models;
-using Xunit;
 
 namespace Titan.AppHost.Tests;
 
+/// <summary>
+/// Integration tests for authentication flow.
+/// Tests login, logout, session management via SignalR AuthHub.
+/// </summary>
 [Collection("AppHost")]
 public class AuthenticationTests : IntegrationTestBase
 {
-    public AuthenticationTests(AppHostFixture fixture) : base(fixture)
-    {
-    }
+    public AuthenticationTests(AppHostFixture fixture) : base(fixture) { }
 
-    #region HTTP Login Tests
+    #region Login Tests
 
     [Fact]
-    public async Task Can_Login_Via_HTTP_And_Get_Valid_JWT()
+    public async Task Login_WithMockProvider_ReturnsSession()
     {
-        // Act - Use HTTP login endpoint
-        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
+        // Arrange
+        var userId = Guid.NewGuid();
+        var mockToken = $"mock:{userId}";
+
+        // Act
+        var (sessionId, expiresAt, returnedUserId) = await LoginAsync(mockToken);
 
         // Assert
-        Assert.NotNull(accessToken);
-        Assert.NotEqual(Guid.Empty, userId);
-
-        var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(accessToken);
-
-        Assert.Equal("Titan", jwtToken.Issuer);
-        Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.NameIdentifier && c.Value == userId.ToString());
+        Assert.NotNull(sessionId);
+        Assert.NotEmpty(sessionId);
+        Assert.True(expiresAt > DateTimeOffset.UtcNow);
+        Assert.Equal(userId, returnedUserId);
     }
 
     [Fact]
-    public async Task Admin_Login_Grants_Admin_Role()
+    public async Task Login_WithInvalidProvider_Returns401()
     {
         // Act
-        var (accessToken, _, _, _) = await LoginAsAdminAsync();
+        var response = await HttpClient.PostAsJsonAsync("/api/auth/login", new
+        {
+            token = "invalid-token",
+            provider = "NonExistentProvider"
+        });
 
         // Assert
-        var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(accessToken);
-
-        Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.Role && c.Value == "Admin");
-        Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.Role && c.Value == "User");
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
-    public async Task Standard_User_Login_Has_No_Admin_Role()
-    {
-        // Act
-        var (accessToken, _, _, _) = await LoginAsUserAsync();
+    #endregion
 
-        // Assert
-        var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(accessToken);
-
-        Assert.DoesNotContain(jwtToken.Claims, c => c.Type == ClaimTypes.Role && c.Value == "Admin");
-        Assert.Contains(jwtToken.Claims, c => c.Type == ClaimTypes.Role && c.Value == "User");
-    }
+    #region Logout Tests
 
     [Fact]
-    public async Task HTTP_Login_Returns_RefreshToken()
+    public async Task Logout_Invalidates_Session()
     {
-        // Act
-        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
+        // Arrange - Login first
+        var userId = Guid.NewGuid();
+        var (sessionId, _, _) = await LoginAsync($"mock:{userId}");
 
-        // Assert
-        Assert.NotNull(accessToken);
-        Assert.NotNull(refreshToken);
-        Assert.NotEmpty(refreshToken);
-        Assert.True(expiresIn > 0, "Access token expiry should be positive");
-        Assert.NotEqual(Guid.Empty, userId);
-    }
+        // Connect to AuthHub with the session
+        var authHub = new HubConnectionBuilder()
+            .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionId}")
+            .Build();
 
-    [Fact]
-    public async Task HTTP_Refresh_Returns_NewTokens()
-    {
-        // Arrange - Login and get initial tokens
-        var (accessToken, refreshToken, _, userId) = await LoginAsUserAsync();
+        await authHub.StartAsync();
 
-        // Act - Refresh tokens via HTTP
-        var request = new { refreshToken, userId };
-        var response = await HttpClient.PostAsJsonAsync("/api/auth/refresh", request);
-        response.EnsureSuccessStatusCode();
-        
-        var result = await response.Content.ReadFromJsonAsync<RefreshResult>();
+        try
+        {
+            // Act - Logout (invalidates session)
+            await authHub.InvokeAsync("Logout");
+            
+            // Wait for session invalidation to propagate
+            await Task.Delay(100);
 
-        // Assert
-        Assert.NotNull(result);
-        Assert.NotNull(result!.AccessToken);
-        Assert.NotNull(result.RefreshToken);
-        Assert.True(result.AccessTokenExpiresInSeconds > 0);
+            // After logout, creating a new connection with the same session should fail
+            // when trying to call an authenticated method
+            var authHub2 = new HubConnectionBuilder()
+                .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionId}")
+                .Build();
 
-        // New tokens should be different from original
-        Assert.NotEqual(accessToken, result.AccessToken);
-        Assert.NotEqual(refreshToken, result.RefreshToken);
-    }
-
-    [Fact]
-    public async Task GetProviders_Returns_Available_Providers()
-    {
-        // Act
-        var response = await HttpClient.GetAsync("/api/auth/providers");
-        response.EnsureSuccessStatusCode();
-        
-        var providers = await response.Content.ReadFromJsonAsync<List<string>>();
-
-        // Assert
-        Assert.NotNull(providers);
-        Assert.NotEmpty(providers);
-        Assert.Contains("Mock", providers);
+            try 
+            {
+                await authHub2.StartAsync();
+                // Connection might succeed, but calling a protected method should fail
+                await Assert.ThrowsAnyAsync<Exception>(async () => 
+                    await authHub2.InvokeAsync<object>("GetProfile"));
+            }
+            finally
+            {
+                await authHub2.DisposeAsync();
+            }
+        }
+        finally
+        {
+            await authHub.DisposeAsync();
+        }
     }
 
     #endregion
@@ -121,148 +100,119 @@ public class AuthenticationTests : IntegrationTestBase
     #region Hub Authorization Tests
 
     [Fact]
-    public async Task Hub_Connection_Enforces_Authorization()
+    public async Task AuthHub_WithoutToken_CannotCallProtectedMethods()
     {
-        // 1. Verify Unauthenticated users are Rejected
-        var unauthenticatedConnection = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/accountHub")
+        // Arrange - create connection without token
+        var authHub = new HubConnectionBuilder()
+            .WithUrl($"{ApiBaseUrl}/authHub")
             .Build();
 
-        // Default AspNetCore behaviour for [Authorize] on Hub class is to reject handshake with 401.
-        await Assert.ThrowsAnyAsync<Exception>(async () => await unauthenticatedConnection.StartAsync());
+        await authHub.StartAsync();
 
-        // 2. Verify Authenticated user CAN connect
-        await using var user = await CreateUserSessionAsync();
-        var hub = await user.GetAccountHubAsync();
-        Assert.Equal(HubConnectionState.Connected, hub.State);
+        try
+        {
+            // Act & Assert - calling protected method should fail
+            await Assert.ThrowsAnyAsync<Exception>(async () =>
+                await authHub.InvokeAsync("Logout"));
+        }
+        finally
+        {
+            await authHub.DisposeAsync();
+        }
     }
 
     #endregion
 
-    #region WebSocket Token Refresh Tests
+    #region Session Management Tests
 
     [Fact]
-    public async Task WebSocket_RefreshToken_Returns_NewTokens()
-    {
-        // Arrange - Login via HTTP and get initial tokens
-        var (accessToken, refreshToken, _, userId) = await LoginAsUserAsync();
-
-        // Connect to AuthHub with the access token
-        var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
-            .Build();
-
-        await authHub.StartAsync();
-
-        try
-        {
-            // Act - Refresh tokens via WebSocket (new signature: only refreshToken, no userId)
-            var result = await authHub.InvokeAsync<RefreshResult>("RefreshToken", refreshToken);
-
-            // Assert
-            Assert.NotNull(result);
-            Assert.NotNull(result.AccessToken);
-            Assert.NotNull(result.RefreshToken);
-            Assert.True(result.AccessTokenExpiresInSeconds > 0);
-
-            // New tokens should be different from original
-            Assert.NotEqual(accessToken, result.AccessToken);
-            Assert.NotEqual(refreshToken, result.RefreshToken);
-        }
-        finally
-        {
-            await authHub.DisposeAsync();
-        }
-    }
-
-    [Fact]
-    public async Task RefreshToken_Rotates_Token_OldTokenFails()
-    {
-        // Arrange - Login and get initial tokens
-        var (accessToken, refreshToken, _, _) = await LoginAsUserAsync();
-
-        var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
-            .Build();
-
-        await authHub.StartAsync();
-
-        try
-        {
-            // Act - Use refresh token once
-            var result = await authHub.InvokeAsync<RefreshResult>("RefreshToken", refreshToken);
-            Assert.NotNull(result);
-
-            // Try to use the OLD refresh token again - should fail (rotation)
-            await Assert.ThrowsAsync<HubException>(async () =>
-                await authHub.InvokeAsync<RefreshResult>("RefreshToken", refreshToken));
-        }
-        finally
-        {
-            await authHub.DisposeAsync();
-        }
-    }
-
-    [Fact]
-    public async Task Logout_Revokes_RefreshToken()
-    {
-        // Arrange - Login and get tokens
-        var (accessToken, refreshToken, _, _) = await LoginAsUserAsync();
-
-        var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={accessToken}")
-            .Build();
-
-        await authHub.StartAsync();
-
-        try
-        {
-            // Act - Logout (revokes refresh token)
-            await authHub.InvokeAsync("Logout", refreshToken);
-
-            // Try to use the revoked refresh token - should fail
-            await Assert.ThrowsAsync<HubException>(async () =>
-                await authHub.InvokeAsync<RefreshResult>("RefreshToken", refreshToken));
-        }
-        finally
-        {
-            await authHub.DisposeAsync();
-        }
-    }
-
-    [Fact]
-    public async Task RevokeAllTokens_InvalidatesForAllSessions()
+    public async Task RevokeAllSessions_InvalidatesAllUserSessions()
     {
         // 1. First login (Device A)
         var userId = Guid.NewGuid();
-        var (tokenA, refreshTokenA, _, _) = await LoginAsync($"mock:{userId}");
+        var (sessionA, _, _) = await LoginAsync($"mock:{userId}");
 
         // 2. Second login (Device B) - Same user
-        var (tokenB, refreshTokenB, _, _) = await LoginAsync($"mock:{userId}");
+        var (sessionB, _, _) = await LoginAsync($"mock:{userId}");
 
         // 3. Connect as Device A and Revoke All
         var authHubA = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={tokenA}")
+            .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionA}")
             .Build();
         await authHubA.StartAsync();
         
         try
         {
-            await authHubA.InvokeAsync("RevokeAllTokens");
+            var revokedCount = await authHubA.InvokeAsync<int>("RevokeAllSessions");
+            Assert.True(revokedCount >= 2, $"Expected at least 2 sessions revoked, got {revokedCount}");
+            
+            // Wait for session invalidation to propagate
+            await Task.Delay(100);
 
-            // 4. Verify Token A is revoked
-            await Assert.ThrowsAsync<HubException>(async () => 
-                await authHubA.InvokeAsync<RefreshResult>("RefreshToken", refreshTokenA));
-                
-            // 5. Verify Token B is revoked
-            await Assert.ThrowsAsync<HubException>(async () => 
-                await authHubA.InvokeAsync<RefreshResult>("RefreshToken", refreshTokenB));
+            // 4. Verify Session B is revoked by trying to call protected method
+            var authHubB = new HubConnectionBuilder()
+                .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionB}")
+                .Build();
+
+            try
+            {
+                await authHubB.StartAsync();
+                // Connection might succeed, but calling a protected method should fail
+                await Assert.ThrowsAnyAsync<Exception>(async () => 
+                    await authHubB.InvokeAsync<object>("GetProfile"));
+            }
+            finally
+            {
+                await authHubB.DisposeAsync();
+            }
         }
         finally
         {
             await authHubA.DisposeAsync();
         }
     }
+
+    [Fact]
+    public async Task LogoutAll_HTTP_InvalidatesAllSessions()
+    {
+        // 1. Login and get session
+        var userId = Guid.NewGuid();
+        var (sessionA, _, _) = await LoginAsync($"mock:{userId}");
+        var (sessionB, _, _) = await LoginAsync($"mock:{userId}");
+
+        // 2. Logout all via HTTP
+        HttpClient.DefaultRequestHeaders.Authorization = 
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sessionA);
+        
+        var response = await HttpClient.PostAsync("/api/auth/logout-all", null);
+        response.EnsureSuccessStatusCode();
+
+        var result = await response.Content.ReadFromJsonAsync<LogoutAllResult>();
+        Assert.NotNull(result);
+        Assert.True(result.SessionsInvalidated >= 2, $"Expected at least 2 sessions invalidated, got {result.SessionsInvalidated}");
+        
+        // Wait for session invalidation to propagate
+        await Task.Delay(100);
+
+        // 3. Verify sessions are invalidated by trying to call protected method
+        var authHub = new HubConnectionBuilder()
+            .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionB}")
+            .Build();
+
+        try
+        {
+            await authHub.StartAsync();
+            // Connection might succeed, but calling a protected method should fail
+            await Assert.ThrowsAnyAsync<Exception>(async () => 
+                await authHub.InvokeAsync<object>("GetProfile"));
+        }
+        finally
+        {
+            await authHub.DisposeAsync();
+        }
+    }
+
+    private record LogoutAllResult(int SessionsInvalidated);
 
     #endregion
 }

@@ -1,12 +1,10 @@
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Orleans.Configuration;
 using Scalar.AspNetCore;
-using System.Text;
 using Titan.Abstractions;
+using Titan.API.Auth;
 using Titan.API.Data;
 using Titan.API.Hubs;
 using Titan.API.Services;
@@ -29,7 +27,7 @@ builder.Services.AddScoped<HubValidationService>();
 
 
 // Validate configuration early (fails fast if critical config is missing)
-builder.ValidateTitanConfiguration(requireJwtKey: true, requireEosInProduction: true);
+builder.ValidateTitanConfiguration(requireJwtKey: false, requireEosInProduction: true);
 
 // Add Aspire ServiceDefaults (OpenTelemetry, Health Checks, Service Discovery)
 builder.AddServiceDefaults();
@@ -41,6 +39,9 @@ builder.AddKeyedRedisClient("orleans-clustering");
 // Add Redis client for rate limiting state
 builder.AddKeyedRedisClient("rate-limiting");
 
+// Add Redis client for session storage (separate from rate limiting)
+builder.AddKeyedRedisClient("sessions");
+
 // Configure EF Core with PostgreSQL for Admin Identity
 var adminConnectionString = builder.Configuration.GetConnectionString("titan-admin");
 if (!string.IsNullOrEmpty(adminConnectionString))
@@ -48,8 +49,8 @@ if (!string.IsNullOrEmpty(adminConnectionString))
     builder.Services.AddDbContext<AdminDbContext>(options =>
         options.UseNpgsql(adminConnectionString));
     
-    // Use AddIdentityCore instead of AddIdentity to avoid overriding the default JWT auth scheme
-    // AddIdentity sets up cookie auth as default, which breaks our JWT-based SignalR hubs
+    // Use AddIdentityCore instead of AddIdentity to avoid overriding the default session auth scheme
+    // AddIdentity sets up cookie auth as default, which breaks our session-based SignalR hubs
     builder.Services.AddIdentityCore<AdminUser>(options =>
     {
         options.Password.RequireDigit = true;
@@ -133,8 +134,8 @@ builder.Services.AddOpenApi(options =>
 });
 
 // Register and Bind Options
-builder.Services.AddOptions<JwtOptions>()
-    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+builder.Services.AddOptions<Titan.API.Config.SessionOptions>()
+    .Bind(builder.Configuration.GetSection(Titan.API.Config.SessionOptions.SectionName))
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
@@ -158,52 +159,12 @@ if (eosSection.Exists() && !string.IsNullOrEmpty(eosSection["ClientId"]))
         .ValidateOnStart();
 }
 
-// JWT Authentication for secured hub methods
-// Fail fast in production if key not configured
-var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>();
-if (jwtOptions == null || string.IsNullOrEmpty(jwtOptions.Key))
-{
-    throw new InvalidOperationException("Jwt:Key must be configured.");
-}
+// Session-based Authentication
+// Uses Redis-backed session tickets instead of JWTs
+builder.Services.AddScoped<ISessionService, RedisSessionService>();
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtOptions.Issuer,
-            ValidAudience = jwtOptions.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key))
-        };
-        
-        // Configure JWT for SignalR WebSocket connections
-        options.Events = new JwtBearerEvents
-        {
-            OnMessageReceived = context =>
-            {
-                var accessToken = context.Request.Query["access_token"];
-                var path = context.HttpContext.Request.Path;
-                
-                // Match all SignalR hub endpoints
-                var hubPaths = new[] 
-                { 
-                    "/accountHub", "/authHub", "/characterHub", 
-                    "/inventoryHub", "/baseTypeHub", "/seasonHub", "/tradeHub" 
-                };
-                
-                if (!string.IsNullOrEmpty(accessToken) && 
-                    hubPaths.Any(p => path.StartsWithSegments(p, StringComparison.OrdinalIgnoreCase)))
-                {
-                    context.Token = accessToken;
-                }
-                return Task.CompletedTask;
-            }
-        };
-    });
+builder.Services.AddAuthentication("SessionTicket")
+    .AddScheme<SessionTicketAuthenticationOptions, SessionTicketAuthenticationHandler>("SessionTicket", null);
 builder.Services.AddAuthorization(options =>
 {
     // SuperAdmin policy - requires "admin" or "superadmin" role claim
@@ -228,7 +189,6 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddControllers();
 
 // Register Auth Services
-builder.Services.AddSingleton<ITokenService, TokenService>();
 builder.Services.AddHttpClient<EosConnectService>();
 
 // Register auth providers as keyed services

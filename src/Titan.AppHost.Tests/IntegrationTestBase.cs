@@ -6,6 +6,7 @@ using Npgsql;
 using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Models;
 using Titan.Abstractions.Models.Items;
+using LoginResponse = Titan.Abstractions.Contracts.LoginResponse;
 
 namespace Titan.AppHost.Tests;
 
@@ -42,12 +43,13 @@ public class AppHostFixture : IAsyncLifetime
         App = await appHost.BuildAsync();
         await App.StartAsync();
             
-        // Wait for ALL Orleans silo hosts to be healthy
+        // Wait for ALL Orleans silo hosts and Redis to be healthy
         await Task.WhenAll(
             App.ResourceNotifications.WaitForResourceHealthyAsync("identity-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("inventory-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("trading-host"),
-            App.ResourceNotifications.WaitForResourceHealthyAsync("api")
+            App.ResourceNotifications.WaitForResourceHealthyAsync("api"),
+            App.ResourceNotifications.WaitForResourceHealthyAsync("sessions") // Session storage Redis
         ).WaitAsync(DefaultTimeout);
         
         // Give Orleans cluster time to stabilize
@@ -125,10 +127,10 @@ public abstract class IntegrationTestBase
     #region Authentication Helpers
 
     /// <summary>
-    /// Login via HTTP API and return the access token, refresh token, and expiry info.
+    /// Login via HTTP API and return the session ID, expiry, and user ID.
     /// Uses the new /api/auth/login endpoint.
     /// </summary>
-    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsync(string mockToken, string provider = "Mock")
+    protected async Task<(string SessionId, DateTimeOffset ExpiresAt, Guid UserId)> LoginAsync(string mockToken, string provider = "Mock")
     {
         var request = new { token = mockToken, provider };
         var response = await HttpClient.PostAsJsonAsync("/api/auth/login", request);
@@ -137,26 +139,26 @@ public abstract class IntegrationTestBase
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>()
             ?? throw new InvalidOperationException("Failed to parse login response");
         
-        if (!result.Success || string.IsNullOrEmpty(result.AccessToken))
+        if (!result.Success || string.IsNullOrEmpty(result.SessionId))
             throw new InvalidOperationException($"Login failed");
         
-        return (result.AccessToken, result.RefreshToken!, result.AccessTokenExpiresInSeconds!.Value, result.UserId!.Value);
+        return (result.SessionId, result.ExpiresAt!.Value, result.UserId!.Value);
     }
 
-    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsUserAsync()
+    protected async Task<(string SessionId, DateTimeOffset ExpiresAt, Guid UserId)> LoginAsUserAsync()
         => await LoginAsync($"mock:{Guid.NewGuid()}");
 
-    protected async Task<(string AccessToken, string RefreshToken, int ExpiresInSeconds, Guid UserId)> LoginAsAdminAsync()
+    protected async Task<(string SessionId, DateTimeOffset ExpiresAt, Guid UserId)> LoginAsAdminAsync()
         => await LoginAsync($"mock:admin:{Guid.NewGuid()}");
 
-    protected HubConnection CreateHubConnection(string hubPath, string token)
+    protected HubConnection CreateHubConnection(string hubPath, string sessionId)
         => new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}{hubPath}?access_token={token}")
+            .WithUrl($"{ApiBaseUrl}{hubPath}?access_token={sessionId}")
             .Build();
 
-    protected async Task<HubConnection> ConnectToHubAsync(string hubPath, string token)
+    protected async Task<HubConnection> ConnectToHubAsync(string hubPath, string sessionId)
     {
-        var hub = CreateHubConnection(hubPath, token);
+        var hub = CreateHubConnection(hubPath, sessionId);
         await hub.StartAsync();
         return hub;
     }
@@ -236,8 +238,8 @@ public abstract class IntegrationTestBase
     /// </summary>
     protected async Task<UserSession> CreateUserSessionAsync()
     {
-        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsUserAsync();
-        return new UserSession(ApiBaseUrl, accessToken, refreshToken, expiresIn, userId);
+        var (sessionId, expiresAt, userId) = await LoginAsUserAsync();
+        return new UserSession(ApiBaseUrl, sessionId, expiresAt, userId);
     }
 
     /// <summary>
@@ -246,8 +248,8 @@ public abstract class IntegrationTestBase
     /// </summary>
     protected async Task<UserSession> CreateAdminSessionAsync()
     {
-        var (accessToken, refreshToken, expiresIn, userId) = await LoginAsAdminAsync();
-        return new UserSession(ApiBaseUrl, accessToken, refreshToken, expiresIn, userId);
+        var (sessionId, expiresAt, userId) = await LoginAsAdminAsync();
+        return new UserSession(ApiBaseUrl, sessionId, expiresAt, userId);
     }
 
     #endregion

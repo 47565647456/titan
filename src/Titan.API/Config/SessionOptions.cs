@@ -1,0 +1,44 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Titan.API.Config;
+
+/// <summary>
+/// Session-based authentication configuration options.
+/// </summary>
+public class SessionOptions
+{
+    public const string SectionName = "Session";
+
+    /// <summary>
+    /// Session lifetime in minutes. Default: 60 minutes (1 hour).
+    /// </summary>
+    [Range(5, 1440)]
+    public int SessionLifetimeMinutes { get; set; } = 60;
+
+    /// <summary>
+    /// Sliding expiration in minutes. Activity extends session by this amount.
+    /// Default: 15 minutes.
+    /// </summary>
+    [Range(1, 60)]
+    public int SlidingExpirationMinutes { get; set; } = 15;
+
+    /// <summary>
+    /// Maximum concurrent sessions per user. 0 = unlimited.
+    /// When limit is reached, oldest session is invalidated.
+    /// Default: 5.
+    /// </summary>
+    [Range(0, 100)]
+    public int MaxSessionsPerUser { get; set; } = 5;
+
+    /// <summary>
+    /// Admin session lifetime in minutes. Shorter for security.
+    /// Default: 30 minutes.
+    /// </summary>
+    [Range(5, 120)]
+    public int AdminSessionLifetimeMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// Redis key prefix for session storage.
+    /// </summary>
+    public string KeyPrefix { get; set; } = "session";
+}

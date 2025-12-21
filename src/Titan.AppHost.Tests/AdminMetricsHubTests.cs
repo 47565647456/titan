@@ -325,18 +325,17 @@ public class AdminMetricsHubTests : IntegrationTestBase
         loginResponse.EnsureSuccessStatusCode();
         
         var login = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
-        return login!.AccessToken;
+        return login!.SessionId;
     }
 
     private record LoginResponse(
         bool Success,
-        string UserId,
+        Guid UserId,
         string Email,
         string? DisplayName,
         List<string> Roles,
-        string AccessToken,
-        string RefreshToken,
-        int ExpiresInSeconds);
+        string SessionId,
+        DateTimeOffset ExpiresAt);
 
     private record MetricsDto
     {

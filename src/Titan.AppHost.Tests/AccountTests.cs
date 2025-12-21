@@ -76,7 +76,7 @@ public class AccountTests : IntegrationTestBase
     {
         // Step 1: Create session (login happens automatically)
         await using var user = await CreateUserSessionAsync();
-        Assert.NotNull(user.Token);
+        Assert.NotNull(user.SessionId);
 
         // Step 2: Create character
         var accountHub = await user.GetAccountHubAsync();

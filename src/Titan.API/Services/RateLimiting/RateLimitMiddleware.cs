@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+using Titan.API.Services.Auth;
 
 namespace Titan.API.Services.RateLimiting;
 
@@ -10,7 +10,6 @@ public class RateLimitMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<RateLimitMiddleware> _logger;
-    private readonly JwtSecurityTokenHandler _tokenHandler = new();
 
     public RateLimitMiddleware(RequestDelegate next, ILogger<RateLimitMiddleware> logger)
     {
@@ -18,7 +17,7 @@ public class RateLimitMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, RateLimitService rateLimitService)
+    public async Task InvokeAsync(HttpContext context, RateLimitService rateLimitService, ISessionService sessionService)
     {
         // Skip for SignalR websocket connections (handled by hub filter)
         if (context.WebSockets.IsWebSocketRequest || 
@@ -46,10 +45,8 @@ public class RateLimitMiddleware
                 return;
             }
 
-            // Get partition key: user ID for authenticated (from JWT), IP for anonymous
-            // We extract the user ID directly from the JWT token since this middleware
-            // runs before UseAuthentication() in the pipeline.
-            var userId = ExtractUserIdFromToken(context);
+            // Get partition key: user ID for authenticated (from session), IP for anonymous
+            var userId = await ExtractUserIdFromSessionAsync(context, sessionService);
             var partitionKey = !string.IsNullOrEmpty(userId)
                 ? $"user:{userId}"
                 : $"ip:{context.Connection.RemoteIpAddress}";
@@ -95,11 +92,10 @@ public class RateLimitMiddleware
     }
 
     /// <summary>
-    /// Extracts the user ID from a JWT Bearer token without full validation.
-    /// This allows rate limiting by account before authentication middleware runs.
+    /// Extracts the user ID from a session ticket stored in Redis.
     /// Checks both Authorization header and query string (for SignalR connections).
     /// </summary>
-    private string? ExtractUserIdFromToken(HttpContext context)
+    private async Task<string?> ExtractUserIdFromSessionAsync(HttpContext context, ISessionService sessionService)
     {
         try
         {
@@ -123,20 +119,19 @@ public class RateLimitMiddleware
                 return null;
             }
 
-            // Read the token without validation - we just need the user ID for partitioning
-            // The actual authentication middleware will validate the token later
-            var jwt = _tokenHandler.ReadJwtToken(token);
-            
-            // Try to get the NameIdentifier claim (standard for user ID)
-            var userId = jwt.Claims.FirstOrDefault(c => 
-                c.Type == System.Security.Claims.ClaimTypes.NameIdentifier ||
-                c.Type == "sub")?.Value;
+            // Validate session and get user ID
+            // ValidateSessionAsync also handles sliding expiration
+            var session = await sessionService.ValidateSessionAsync(token);
+            if (session == null)
+            {
+                return null;
+            }
 
-            return userId;
+            return session.UserId.ToString();
         }
         catch
         {
-            // If token parsing fails for any reason, fall back to IP-based limiting
+            // If session validation fails for any reason, fall back to IP-based limiting
             return null;
         }
     }

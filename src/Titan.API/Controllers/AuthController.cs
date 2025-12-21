@@ -8,7 +8,8 @@ namespace Titan.API.Controllers;
 
 /// <summary>
 /// HTTP authentication endpoints following industry standards.
-/// Login/logout use stateless HTTP requests; real-time operations use WebSocket.
+/// Login/logout use HTTP requests; real-time operations use WebSocket.
+/// Session-based authentication with Redis-backed tickets.
 /// </summary>
 public static class AuthController
 {
@@ -19,22 +20,23 @@ public static class AuthController
         
         group.MapPost("/login", LoginAsync)
             .WithName("Login")
-            .WithDescription("Authenticate with a provider token. Returns JWT access token and refresh token.")
+            .WithDescription("Authenticate with a provider token. Returns session ticket.")
             .Produces<LoginResponse>(200)
             .ProducesProblem(400)
-            .ProducesProblem(401);
-        
-        group.MapPost("/refresh", RefreshAsync)
-            .WithName("RefreshToken")
-            .WithDescription("Exchange a valid refresh token for new access and refresh tokens (token rotation).")
-            .Produces<RefreshResult>(200)
             .ProducesProblem(401);
         
         group.MapPost("/logout", LogoutAsync)
             .RequireAuthorization()
             .WithName("Logout")
-            .WithDescription("Revoke the specified refresh token.")
+            .WithDescription("Invalidate the current session.")
             .Produces(200)
+            .ProducesProblem(401);
+        
+        group.MapPost("/logout-all", LogoutAllAsync)
+            .RequireAuthorization()
+            .WithName("LogoutAll")
+            .WithDescription("Invalidate all sessions for the current user.")
+            .Produces<LogoutAllResponse>(200)
             .ProducesProblem(401);
         
         group.MapGet("/providers", GetProviders)
@@ -48,7 +50,7 @@ public static class AuthController
         IValidator<LoginRequest> validator,
         IAuthServiceFactory authServiceFactory,
         IClusterClient clusterClient,
-        ITokenService tokenService,
+        ISessionService sessionService,
         ILogger<LoginRequest> logger)
     {
         var validationResult = await validator.ValidateAsync(request);
@@ -91,87 +93,65 @@ public static class AuthController
             roles.Add("Admin");
         }
         
-        // Generate access token
-        var accessToken = tokenService.GenerateAccessToken(result.UserId!.Value, result.ProviderName!, roles);
-        var expiresInSeconds = (int)tokenService.AccessTokenExpiration.TotalSeconds;
-        
-        // Generate refresh token via grain
-        var refreshTokenGrain = clusterClient.GetGrain<IRefreshTokenGrain>(result.UserId!.Value);
-        var refreshTokenInfo = await refreshTokenGrain.CreateTokenAsync(result.ProviderName!, roles);
+        // Create session
+        var session = await sessionService.CreateSessionAsync(
+            result.UserId!.Value, 
+            result.ProviderName!, 
+            roles);
         
         logger.LogInformation(
-            "Login successful. UserId: {UserId}, Provider: {Provider}, ExternalId: {ExternalId}",
-            result.UserId, result.ProviderName, result.ExternalId);
+            "Login successful. UserId: {UserId}, Provider: {Provider}, SessionExpires: {ExpiresAt}",
+            result.UserId, result.ProviderName, session.ExpiresAt);
         
         return Results.Ok(new LoginResponse(
             Success: true,
             UserId: result.UserId,
             Provider: result.ProviderName,
             Identity: identity,
-            AccessToken: accessToken,
-            RefreshToken: refreshTokenInfo.TokenId,
-            AccessTokenExpiresInSeconds: expiresInSeconds));
-    }
-    
-    private static async Task<IResult> RefreshAsync(
-        RefreshRequest request,
-        IValidator<RefreshRequest> validator,
-        IClusterClient clusterClient,
-        ITokenService tokenService,
-        ILogger<RefreshRequest> logger)
-    {
-        var validationResult = await validator.ValidateAsync(request);
-        if (!validationResult.IsValid)
-        {
-            return Results.BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
-        }
-
-        var grain = clusterClient.GetGrain<IRefreshTokenGrain>(request.UserId);
-        var tokenInfo = await grain.ConsumeTokenAsync(request.RefreshToken);
-        
-        if (tokenInfo == null)
-        {
-            logger.LogWarning("Refresh token invalid or expired for user {UserId}", request.UserId);
-            return Results.Unauthorized();
-        }
-        
-        // Generate new access token with stored roles
-        var accessToken = tokenService.GenerateAccessToken(request.UserId, tokenInfo.Provider, tokenInfo.Roles);
-        var expiresInSeconds = (int)tokenService.AccessTokenExpiration.TotalSeconds;
-        
-        // Generate new refresh token (rotation)
-        var newRefreshTokenInfo = await grain.CreateTokenAsync(tokenInfo.Provider, tokenInfo.Roles);
-        
-        logger.LogDebug("Token refreshed for user {UserId}", request.UserId);
-        
-        return Results.Ok(new RefreshResult(accessToken, newRefreshTokenInfo.TokenId, expiresInSeconds));
+            SessionId: session.TicketId,
+            ExpiresAt: session.ExpiresAt));
     }
     
     private static async Task<IResult> LogoutAsync(
-        LogoutRequest request,
-        IValidator<LogoutRequest> validator,
         ClaimsPrincipal user,
-        IClusterClient clusterClient,
+        ISessionService sessionService,
         ILogger<LogoutRequest> logger)
     {
-        var validationResult = await validator.ValidateAsync(request);
-        if (!validationResult.IsValid)
-        {
-            return Results.BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
-        }
-
         var userIdClaim = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sessionId = user.FindFirstValue("session_id");
+        
         if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
         {
             return Results.Unauthorized();
         }
         
-        var grain = clusterClient.GetGrain<IRefreshTokenGrain>(userId);
-        await grain.RevokeTokenAsync(request.RefreshToken);
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            await sessionService.InvalidateSessionAsync(sessionId);
+        }
         
-        logger.LogInformation("User {UserId} logged out, refresh token revoked", userId);
+        logger.LogInformation("User {UserId} logged out, session invalidated", userId);
         
-        return Results.Ok();
+        return Results.Ok(new { success = true });
+    }
+    
+    private static async Task<IResult> LogoutAllAsync(
+        ClaimsPrincipal user,
+        ISessionService sessionService,
+        ILogger<LogoutRequest> logger)
+    {
+        var userIdClaim = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Results.Unauthorized();
+        }
+        
+        var count = await sessionService.InvalidateAllSessionsAsync(userId);
+        
+        logger.LogInformation("User {UserId} logged out of all {Count} sessions", userId, count);
+        
+        return Results.Ok(new LogoutAllResponse(count));
     }
     
     private static IResult GetProviders(IAuthServiceFactory factory)
@@ -190,27 +170,22 @@ public static class AuthController
 public record LoginRequest(string Token, string Provider = "EOS");
 
 /// <summary>
-/// Refresh token request.
+/// Logout request (kept for validator compatibility).
 /// </summary>
-/// <param name="RefreshToken">The refresh token from a previous login or refresh.</param>
-/// <param name="UserId">The user ID associated with the refresh token.</param>
-public record RefreshRequest(string RefreshToken, Guid UserId);
+public record LogoutRequest();
 
 /// <summary>
-/// Logout request.
-/// </summary>
-/// <param name="RefreshToken">The refresh token to revoke.</param>
-public record LogoutRequest(string RefreshToken);
-
-/// <summary>
-/// Login response with tokens and user info.
+/// Login response with session ticket and user info.
 /// </summary>
 public record LoginResponse(
     bool Success,
     Guid? UserId,
     string? Provider,
     UserIdentity? Identity,
-    string? AccessToken,
-    string? RefreshToken,
-    int? AccessTokenExpiresInSeconds);
+    string? SessionId,
+    DateTimeOffset? ExpiresAt);
 
+/// <summary>
+/// Logout all response.
+/// </summary>
+public record LogoutAllResponse(int SessionsInvalidated);

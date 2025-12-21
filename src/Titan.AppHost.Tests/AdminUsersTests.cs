@@ -383,19 +383,18 @@ public class AdminUsersTests : IntegrationTestBase
         
         var client = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
         client.DefaultRequestHeaders.Authorization = 
-            new AuthenticationHeaderValue("Bearer", login!.AccessToken);
+            new AuthenticationHeaderValue("Bearer", login!.SessionId);
         return client;
     }
 
     private record AdminLoginResponse(
         bool Success,
-        string UserId,
+        Guid UserId,
         string Email,
         string? DisplayName,
         List<string> Roles,
-        string AccessToken,
-        string RefreshToken,
-        int ExpiresInSeconds);
+        string SessionId,
+        DateTimeOffset ExpiresAt);
 
     private record AdminUserDto
     {

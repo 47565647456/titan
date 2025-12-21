@@ -27,7 +27,7 @@ public class TitanClientIntegrationTests : IntegrationTestBase
         // Assert
         Assert.True(result.Success);
         Assert.True(client.IsAuthenticated);
-        Assert.NotNull(client.AccessToken);
+        Assert.NotNull(client.SessionId);
         Assert.NotNull(client.UserId);
         Assert.Equal(result.UserId, client.UserId);
     }
@@ -143,24 +143,22 @@ public class TitanClientIntegrationTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task TitanClient_Refresh_UpdatesToken()
+    public async Task TitanClient_Logout_ClearsSession()
     {
         // Arrange
         await using var client = new TitanClientBuilder()
             .WithBaseUrl(ApiBaseUrl)
             .Build();
 
-        var loginResult = await client.Auth.LoginAsync($"mock:{Guid.NewGuid()}", "Mock");
-        var originalToken = client.AccessToken;
+        await client.Auth.LoginAsync($"mock:{Guid.NewGuid()}", "Mock");
+        Assert.True(client.IsAuthenticated);
 
         // Act
-        var refreshResult = await client.Auth.RefreshAsync(
-            loginResult.RefreshToken!,
-            loginResult.UserId!.Value);
+        await client.Auth.LogoutAsync();
 
         // Assert
-        Assert.NotEqual(originalToken, client.AccessToken);
-        Assert.Equal(refreshResult.AccessToken, client.AccessToken);
+        Assert.False(client.IsAuthenticated);
+        Assert.Null(client.SessionId);
     }
 
     [Fact]
