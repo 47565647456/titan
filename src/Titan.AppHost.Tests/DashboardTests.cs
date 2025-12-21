@@ -1,12 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Titan.Abstractions.Contracts;
 
 namespace Titan.AppHost.Tests;
 
 /// <summary>
 /// Integration tests for the Admin Dashboard API endpoints.
-/// Tests JWT authentication and admin API accessibility.
+/// Tests session-based authentication and admin API accessibility.
 /// </summary>
 [Collection("AppHost")]
 public class DashboardTests : IntegrationTestBase
@@ -42,7 +43,7 @@ public class DashboardTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task AdminAuth_ValidCredentials_ReturnsToken()
+    public async Task AdminAuth_ValidCredentials_ReturnsSession()
     {
         // Act - Login with valid admin credentials
         var response = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
@@ -51,18 +52,18 @@ public class DashboardTests : IntegrationTestBase
             password = "Admin123!"
         });
         
-        // Assert - Should return success with tokens
+        // Assert - Should return success with session
         response.EnsureSuccessStatusCode();
         var loginResponse = await response.Content.ReadFromJsonAsync<AdminLoginResponse>();
         
         Assert.NotNull(loginResponse);
         Assert.True(loginResponse.Success);
-        Assert.False(string.IsNullOrEmpty(loginResponse.AccessToken));
+        Assert.False(string.IsNullOrEmpty(loginResponse.SessionId));
         Assert.NotEmpty(loginResponse.Roles);
     }
 
     [Fact]
-    public async Task AdminAuth_WithToken_CanAccessProtectedEndpoints()
+    public async Task AdminAuth_WithSession_CanAccessProtectedEndpoints()
     {
         // Arrange - Login first
         var loginResponse = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
@@ -76,7 +77,7 @@ public class DashboardTests : IntegrationTestBase
         // Create authenticated client
         var authClient = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
         authClient.DefaultRequestHeaders.Authorization = 
-            new AuthenticationHeaderValue("Bearer", login!.AccessToken);
+            new AuthenticationHeaderValue("Bearer", login!.SessionId);
         
         // Act - Access protected endpoint
         var response = await authClient.GetAsync("/api/admin/auth/me");
@@ -100,13 +101,17 @@ public class DashboardTests : IntegrationTestBase
         // Create authenticated client
         var authClient = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
         authClient.DefaultRequestHeaders.Authorization = 
-            new AuthenticationHeaderValue("Bearer", login!.AccessToken);
+            new AuthenticationHeaderValue("Bearer", login!.SessionId);
         
         // Act - Logout
         var logoutResponse = await authClient.PostAsync("/api/admin/auth/logout", null);
         
         // Assert - Should succeed
         logoutResponse.EnsureSuccessStatusCode();
+        var result = await logoutResponse.Content.ReadFromJsonAsync<LogoutResponse>();
+        Assert.NotNull(result);
+        Assert.True(result.Success);
+        Assert.True(result.SessionInvalidated);
     }
 
     [Fact]
@@ -135,23 +140,19 @@ public class DashboardTests : IntegrationTestBase
         Assert.True(response.Headers.Contains("Set-Cookie"), "Expected Set-Cookie header");
         var cookieHeaders = response.Headers.GetValues("Set-Cookie").ToList();
         
-        // Should have access token, refresh token, and user ID cookies
-        Assert.True(cookieHeaders.Any(c => c.Contains("admin_access_token")), 
-            "Expected admin_access_token cookie");
-        Assert.True(cookieHeaders.Any(c => c.Contains("admin_refresh_token")), 
-            "Expected admin_refresh_token cookie");
-        Assert.True(cookieHeaders.Any(c => c.Contains("admin_user_id")), 
-            "Expected admin_user_id cookie");
+        // Should have session cookie
+        Assert.True(cookieHeaders.Any(c => c.Contains("admin_session")), 
+            "Expected admin_session cookie");
         
-        // All auth cookies should be httpOnly
+        // Session cookie should be httpOnly
         Assert.All(cookieHeaders.Where(c => c.Contains("admin_")), 
             cookie => Assert.Contains("httponly", cookie.ToLowerInvariant()));
     }
 
     [Fact]
-    public async Task AdminAuth_Refresh_WithValidCookie_ReturnsNewTokens()
+    public async Task AdminAuth_Logout_InvalidatesSession()
     {
-        // Arrange - Login first to get cookies
+        // Arrange - Login to get session
         using var handler = new HttpClientHandler { UseCookies = true };
         using var client = new HttpClient(handler) { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
         
@@ -162,82 +163,24 @@ public class DashboardTests : IntegrationTestBase
         });
         loginResponse.EnsureSuccessStatusCode();
         var loginResult = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
-        var originalAccessToken = loginResult!.AccessToken;
-        var originalRefreshToken = loginResult.RefreshToken;
         
-        // Act - Call refresh endpoint (cookies are automatically sent)
-        var refreshResponse = await client.PostAsync("/api/admin/auth/refresh", null);
+        // Set auth header
+        client.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", loginResult!.SessionId);
         
-        // Assert - Should return new tokens
-        refreshResponse.EnsureSuccessStatusCode();
-        var refreshResult = await refreshResponse.Content.ReadFromJsonAsync<AdminRefreshResponse>();
+        // Logout
+        var logoutResponse = await client.PostAsync("/api/admin/auth/logout", null);
+        logoutResponse.EnsureSuccessStatusCode();
         
-        Assert.NotNull(refreshResult);
-        Assert.True(refreshResult.Success);
-        Assert.NotEmpty(refreshResult.AccessToken);
-        Assert.NotEmpty(refreshResult.RefreshToken);
-        Assert.True(refreshResult.ExpiresInSeconds > 0);
+        // Act - Try to access protected endpoint with the invalidated session
+        var response = await client.GetAsync("/api/admin/auth/me");
         
-        // New tokens should be different (rotation)
-        Assert.NotEqual(originalAccessToken, refreshResult.AccessToken);
-        Assert.NotEqual(originalRefreshToken, refreshResult.RefreshToken);
-    }
-
-    [Fact]
-    public async Task AdminAuth_Refresh_WithoutCookie_Returns401()
-    {
-        // Act - Try to refresh without cookies
-        var response = await HttpClient.PostAsync("/api/admin/auth/refresh", null);
-        
-        // Assert - Should return 401
+        // Assert - Should fail because session is invalidated
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
-    public async Task AdminAuth_Refresh_AfterLogout_Returns401()
-    {
-        // Arrange - Login to get cookies
-        using var handler = new HttpClientHandler { UseCookies = true };
-        using var client = new HttpClient(handler) { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
-        
-        // Login
-        var loginResponse = await client.PostAsJsonAsync("/api/admin/auth/login", new
-        {
-            email = "admin@titan.local",
-            password = "Admin123!"
-        });
-        loginResponse.EnsureSuccessStatusCode();
-        var loginResult = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
-        
-        // Add auth header for logout (which requires [Authorize])
-        client.DefaultRequestHeaders.Authorization = 
-            new AuthenticationHeaderValue("Bearer", loginResult!.AccessToken);
-        
-        // Logout - this revokes the refresh token
-        var logoutResponse = await client.PostAsync("/api/admin/auth/logout", null);
-        logoutResponse.EnsureSuccessStatusCode();
-        
-        // Clear auth header but keep cookies
-        client.DefaultRequestHeaders.Authorization = null;
-        
-        // Act - Try to refresh with the now-revoked token
-        // Note: We need to manually restore the cookies since logout clears them
-        // In a real scenario, the cookies would be cleared, so this tests the grain revocation
-        handler.CookieContainer.Add(
-            new Uri(Fixture.ApiBaseUrl), 
-            new System.Net.Cookie("admin_refresh_token", loginResult.RefreshToken, "/api/admin/auth"));
-        handler.CookieContainer.Add(
-            new Uri(Fixture.ApiBaseUrl), 
-            new System.Net.Cookie("admin_user_id", loginResult.UserId, "/api/admin/auth"));
-        
-        var refreshResponse = await client.PostAsync("/api/admin/auth/refresh", null);
-        
-        // Assert - Should fail because token was revoked
-        Assert.Equal(HttpStatusCode.Unauthorized, refreshResponse.StatusCode);
-    }
-
-    [Fact]
-    public async Task AdminAuth_RevokeAll_InvalidatesAllTokens()
+    public async Task AdminAuth_RevokeAll_InvalidatesAllSessions()
     {
         // Arrange - Login twice to simulate multiple sessions
         using var handler1 = new HttpClientHandler { UseCookies = true };
@@ -251,7 +194,7 @@ public class DashboardTests : IntegrationTestBase
         login1.EnsureSuccessStatusCode();
         var loginResult1 = await login1.Content.ReadFromJsonAsync<AdminLoginResponse>();
         client1.DefaultRequestHeaders.Authorization = 
-            new AuthenticationHeaderValue("Bearer", loginResult1!.AccessToken);
+            new AuthenticationHeaderValue("Bearer", loginResult1!.SessionId);
         
         // Second "session" 
         using var handler2 = new HttpClientHandler { UseCookies = true };
@@ -264,21 +207,16 @@ public class DashboardTests : IntegrationTestBase
         });
         login2.EnsureSuccessStatusCode();
         var loginResult2 = await login2.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        client2.DefaultRequestHeaders.Authorization = 
+            new AuthenticationHeaderValue("Bearer", loginResult2!.SessionId);
         
-        // Act - Revoke all tokens from first session
+        // Act - Revoke all sessions from first session
         var revokeResponse = await client1.PostAsync("/api/admin/auth/revoke-all", null);
         revokeResponse.EnsureSuccessStatusCode();
         
-        // Assert - Second session's refresh token should be revoked
-        handler2.CookieContainer.Add(
-            new Uri(Fixture.ApiBaseUrl), 
-            new System.Net.Cookie("admin_refresh_token", loginResult2!.RefreshToken, "/api/admin/auth"));
-        handler2.CookieContainer.Add(
-            new Uri(Fixture.ApiBaseUrl), 
-            new System.Net.Cookie("admin_user_id", loginResult2.UserId, "/api/admin/auth"));
-        
-        var refreshResponse = await client2.PostAsync("/api/admin/auth/refresh", null);
-        Assert.Equal(HttpStatusCode.Unauthorized, refreshResponse.StatusCode);
+        // Assert - Second session should be invalidated
+        var response = await client2.GetAsync("/api/admin/auth/me");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     #endregion
@@ -341,38 +279,5 @@ public class DashboardTests : IntegrationTestBase
 
     #region Helpers
 
-    private async Task<HttpClient> CreateAuthenticatedAdminClientAsync()
-    {
-        var loginResponse = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
-        {
-            email = "admin@titan.local",
-            password = "Admin123!"
-        });
-        loginResponse.EnsureSuccessStatusCode();
-        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
-        
-        var client = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
-        client.DefaultRequestHeaders.Authorization = 
-            new AuthenticationHeaderValue("Bearer", login!.AccessToken);
-        return client;
-    }
-
-    private record AdminLoginResponse(
-        bool Success,
-        string UserId,
-        string Email,
-        string? DisplayName,
-        List<string> Roles,
-        string AccessToken,
-        string RefreshToken,
-        int ExpiresInSeconds);
-
-    private record AdminRefreshResponse(
-        bool Success,
-        string AccessToken,
-        string RefreshToken,
-        int ExpiresInSeconds);
-
     #endregion
 }
-

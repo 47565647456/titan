@@ -32,9 +32,8 @@ export interface LoginResponse {
   email: string;
   displayName: string | null;
   roles: string[];
-  accessToken: string;
-  refreshToken: string;
-  expiresInSeconds: number;
+  sessionId: string;
+  expiresAt: string;  // ISO 8601
 }
 
 // Account Types

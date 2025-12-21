@@ -11,17 +11,15 @@ public class UserSession : IAsyncDisposable
     private readonly string _apiBaseUrl;
     private readonly Dictionary<string, HubConnection> _connections = new();
     
-    public string Token { get; }
-    public string RefreshToken { get; }
-    public int AccessTokenExpiresInSeconds { get; }
+    public string SessionId { get; }
+    public DateTimeOffset ExpiresAt { get; }
     public Guid UserId { get; }
 
-    public UserSession(string apiBaseUrl, string token, string refreshToken, int expiresInSeconds, Guid userId)
+    public UserSession(string apiBaseUrl, string sessionId, DateTimeOffset expiresAt, Guid userId)
     {
         _apiBaseUrl = apiBaseUrl;
-        Token = token;
-        RefreshToken = refreshToken;
-        AccessTokenExpiresInSeconds = expiresInSeconds;
+        SessionId = sessionId;
+        ExpiresAt = expiresAt;
         UserId = userId;
     }
 
@@ -42,7 +40,7 @@ public class UserSession : IAsyncDisposable
         }
 
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{_apiBaseUrl}{hubPath}?access_token={Token}")
+            .WithUrl($"{_apiBaseUrl}{hubPath}?access_token={SessionId}")
             .Build();
         
         await connection.StartAsync();

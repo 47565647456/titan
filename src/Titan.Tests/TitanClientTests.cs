@@ -77,7 +77,7 @@ public class TitanClientTests
 
         // Assert
         Assert.False(client.IsAuthenticated);
-        Assert.Null(client.AccessToken);
+        Assert.Null(client.SessionId);
         Assert.Null(client.UserId);
     }
 

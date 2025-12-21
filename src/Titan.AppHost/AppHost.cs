@@ -25,6 +25,10 @@ var redis = builder.AddRedis("orleans-clustering")
 var rateLimitRedis = builder.AddRedis("rate-limiting")
     .WithImage(redisImage, redisTag);
 
+// Redis for session storage (separate from rate limiting for isolation)
+var sessionsRedis = builder.AddRedis("sessions")
+    .WithImage(redisImage, redisTag);
+
 // Database password
 var dbPassword = builder.AddParameter("postgres-password");
 
@@ -78,7 +82,9 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithReference(titanDb)
     .WithReference(titanAdminDb)  // Admin Identity database for dashboard auth
     .WithReference(rateLimitRedis)
+    .WithReference(sessionsRedis)  // Session storage Redis
     .WaitFor(identityHost)  // Wait for at least one silo to be running
+    .WaitFor(sessionsRedis) // Wait for session storage to be ready
     .WithExternalHttpEndpoints()
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment)
     .WithEnvironment("Jwt__Key", builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is missing in AppHost configuration"))

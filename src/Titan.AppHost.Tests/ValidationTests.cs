@@ -36,7 +36,7 @@ public class ValidationTests : IntegrationTestBase
         if (response.IsSuccessStatusCode)
         {
             var result = await response.Content.ReadFromJsonAsync<AdminLoginResult>();
-            _accessToken = result?.AccessToken;
+            _accessToken = result?.SessionId;
             if (!string.IsNullOrEmpty(_accessToken))
             {
                 _client.DefaultRequestHeaders.Authorization =
@@ -45,7 +45,7 @@ public class ValidationTests : IntegrationTestBase
         }
     }
 
-    private record AdminLoginResult(string? AccessToken, string? RefreshToken);
+    private record AdminLoginResult(bool Success, string? SessionId, DateTimeOffset? ExpiresAt);
 
     #region Admin Login Validation
 

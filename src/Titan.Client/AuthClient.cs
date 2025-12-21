@@ -7,6 +7,7 @@ namespace Titan.Client;
 /// <summary>
 /// HTTP client for authentication operations.
 /// Implements IAuthClient for login/logout via HTTP.
+/// Session-based authentication.
 /// </summary>
 internal sealed class AuthClient : IAuthClient
 {
@@ -28,33 +29,58 @@ internal sealed class AuthClient : IAuthClient
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>(ct)
             ?? throw new InvalidOperationException("Invalid login response");
 
-        if (result.Success && result.AccessToken != null && result.UserId.HasValue)
+        if (result.Success && result.SessionId != null && result.UserId.HasValue && result.ExpiresAt.HasValue)
         {
-            _parent.SetAuthState(result.AccessToken, result.UserId.Value);
+            _parent.SetSession(result.SessionId, result.UserId.Value, result.ExpiresAt.Value);
         }
 
         return result;
     }
 
-    public async Task<RefreshResult> RefreshAsync(string refreshToken, Guid userId, CancellationToken ct = default)
+    public async Task<bool> LogoutAsync(CancellationToken ct = default)
     {
-        var request = new { refreshToken, userId };
-        var response = await _httpClient.PostAsJsonAsync("/api/auth/refresh", request, ct);
-        response.EnsureSuccessStatusCode();
+        try
+        {
+            var response = await _httpClient.PostAsync("/api/auth/logout", null, ct);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return false;
+            }
 
-        var result = await response.Content.ReadFromJsonAsync<RefreshResult>(ct)
-            ?? throw new InvalidOperationException("Invalid refresh response");
-
-        _parent.SetAuthState(result.AccessToken, userId);
-
-        return result;
+            response.EnsureSuccessStatusCode();
+            
+            var result = await response.Content.ReadFromJsonAsync<LogoutResponse>(ct);
+            return result?.SessionInvalidated ?? false;
+        }
+        finally
+        {
+            // Always clear local session, even if server request fails
+            _parent.ClearSession();
+        }
     }
 
-    public async Task LogoutAsync(string refreshToken, CancellationToken ct = default)
+    public async Task<int> LogoutAllAsync(CancellationToken ct = default)
     {
-        var request = new { refreshToken };
-        var response = await _httpClient.PostAsJsonAsync("/api/auth/logout", request, ct);
-        response.EnsureSuccessStatusCode();
+        try
+        {
+            var response = await _httpClient.PostAsync("/api/auth/logout-all", null, ct);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return 0;
+            }
+            
+            response.EnsureSuccessStatusCode();
+            
+            var result = await response.Content.ReadFromJsonAsync<LogoutAllResult>(ct);
+            return result?.SessionsInvalidated ?? 0;
+        }
+        finally
+        {
+            // Always clear local session, even if server request fails
+            _parent.ClearSession();
+        }
     }
 
     public async Task<IReadOnlyList<string>> GetProvidersAsync(CancellationToken ct = default)

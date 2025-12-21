@@ -43,8 +43,8 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [error, setError] = useState<string | null>(null);
   
-  // Get token from localStorage (same as API client)
-  const getToken = useCallback(() => localStorage.getItem('accessToken'), []);
+  // Get session token from localStorage (same as API client)
+  const getToken = useCallback(() => localStorage.getItem('sessionId'), []);
 
   // Manual refresh request
   const refresh = useCallback(() => {

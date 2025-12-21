@@ -5,6 +5,7 @@ namespace Titan.Abstractions.Contracts;
 /// <summary>
 /// HTTP authentication client contract.
 /// Used by Titan.Client for login/logout operations via HTTP.
+/// Session-based authentication.
 /// </summary>
 public interface IAuthClient
 {
@@ -14,24 +15,22 @@ public interface IAuthClient
     /// <param name="token">The authentication token from the provider.</param>
     /// <param name="provider">The provider name (default: "EOS").</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Login response with tokens and user info.</returns>
+    /// <returns>Login response with session info.</returns>
     Task<LoginResponse> LoginAsync(string token, string provider = "EOS", CancellationToken ct = default);
 
     /// <summary>
-    /// Refresh access token using a valid refresh token.
+    /// Logout and invalidate the current session.
     /// </summary>
-    /// <param name="refreshToken">The refresh token from a previous login or refresh.</param>
-    /// <param name="userId">The user ID associated with the refresh token.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>New access and refresh tokens.</returns>
-    Task<RefreshResult> RefreshAsync(string refreshToken, Guid userId, CancellationToken ct = default);
+    /// <returns>True if the session existed and was successfully invalidated.</returns>
+    Task<bool> LogoutAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Logout and revoke the refresh token.
+    /// Logout and invalidate all sessions for the current user.
     /// </summary>
-    /// <param name="refreshToken">The refresh token to revoke.</param>
     /// <param name="ct">Cancellation token.</param>
-    Task LogoutAsync(string refreshToken, CancellationToken ct = default);
+    /// <returns>Number of sessions invalidated.</returns>
+    Task<int> LogoutAllAsync(CancellationToken ct = default);
 
     /// <summary>
     /// Get available authentication providers.
@@ -42,13 +41,34 @@ public interface IAuthClient
 }
 
 /// <summary>
-/// Login response with tokens and user info.
+/// Login response with session ticket and user info.
 /// </summary>
 public record LoginResponse(
     bool Success,
     Guid? UserId,
     string? Provider,
     UserIdentity? Identity,
-    string? AccessToken,
-    string? RefreshToken,
-    int? AccessTokenExpiresInSeconds);
+    string? SessionId,
+    DateTimeOffset? ExpiresAt);
+
+/// <summary>
+/// Basic response for logout.
+/// </summary>
+public record LogoutResponse(bool Success, bool SessionInvalidated);
+
+/// <summary>
+/// Response for logout all.
+/// </summary>
+public record LogoutAllResult(int SessionsInvalidated);
+
+/// <summary>
+/// Response from the admin login endpoint.
+/// </summary>
+public record AdminLoginResponse(
+    bool Success,
+    Guid UserId,
+    string Email,
+    string? DisplayName,
+    IReadOnlyList<string> Roles,
+    string SessionId,
+    DateTimeOffset ExpiresAt);
