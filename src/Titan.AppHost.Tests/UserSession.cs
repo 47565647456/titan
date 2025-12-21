@@ -55,6 +55,7 @@ public class UserSession : IAsyncDisposable
     public Task<HubConnection> GetTradeHubAsync() => GetOrCreateHubAsync("/tradeHub");
     public Task<HubConnection> GetBaseTypeHubAsync() => GetOrCreateHubAsync("/baseTypeHub");
     public Task<HubConnection> GetSeasonHubAsync() => GetOrCreateHubAsync("/seasonHub");
+    public Task<HubConnection> GetBroadcastHubAsync() => GetOrCreateHubAsync("/broadcastHub");
 
     /// <summary>
     /// Gets the number of active hub connections.
