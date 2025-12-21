@@ -66,7 +66,8 @@ public class BroadcastTests : IntegrationTestBase
             Content = "Achievement unlocked: First Blood!",
             Type = ServerMessageType.Achievement,
             Title = "Achievement",
-            IconId = "trophy"
+            IconId = "trophy",
+            DurationSeconds = 10
         };
 
         // Act - Send broadcast
@@ -91,6 +92,7 @@ public class BroadcastTests : IntegrationTestBase
         Assert.Equal(ServerMessageType.Achievement, receivedMessage.Type);
         Assert.Equal("Achievement", receivedMessage.Title);
         Assert.Equal("trophy", receivedMessage.IconId);
+        Assert.Equal(10, receivedMessage.DurationSeconds);
     }
 
     [Fact]
