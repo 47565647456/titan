@@ -15,12 +15,3 @@ public class LoginRequestValidator : AbstractValidator<Controllers.LoginRequest>
             .MaximumLength(50).WithMessage("Provider must not exceed 50 characters");
     }
 }
-
-// LogoutRequest no longer needs validation (no parameters)
-public class LogoutRequestValidator : AbstractValidator<Controllers.LogoutRequest>
-{
-    public LogoutRequestValidator()
-    {
-        // No validation needed - logout uses session from auth context
-    }
-}

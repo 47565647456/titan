@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Orleans.Configuration;
 using Scalar.AspNetCore;
 using Titan.Abstractions;
@@ -134,6 +135,7 @@ builder.Services.AddOpenApi(options =>
 });
 
 // Register and Bind Options
+builder.Services.AddSingleton<IValidateOptions<Titan.API.Config.SessionOptions>, Titan.API.Config.SessionOptionsValidator>();
 builder.Services.AddOptions<Titan.API.Config.SessionOptions>()
     .Bind(builder.Configuration.GetSection(Titan.API.Config.SessionOptions.SectionName))
     .ValidateDataAnnotations()

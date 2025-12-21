@@ -46,7 +46,8 @@ public class RedisSessionService : ISessionService
             Roles = roles.ToList(),
             CreatedAt = now,
             ExpiresAt = now.Add(lifetime),
-            LastActivityAt = now
+            LastActivityAt = now,
+            IsAdmin = isAdmin
         };
 
         var sessionKey = GetSessionKey(ticketId);
@@ -104,9 +105,12 @@ public class RedisSessionService : ISessionService
         // Only extend if new expiry is beyond current
         if (newExpiry > ticket.ExpiresAt)
         {
-            // Cap at maximum lifetime from creation
+            // Cap at maximum lifetime from creation (use correct lifetime based on session type)
+            var maxLifetimeMinutes = ticket.IsAdmin 
+                ? _options.AdminSessionLifetimeMinutes 
+                : _options.SessionLifetimeMinutes;
             var maxExpiry = ticket.CreatedAt.Add(
-                TimeSpan.FromMinutes(_options.SessionLifetimeMinutes * 2));
+                TimeSpan.FromMinutes(maxLifetimeMinutes * 2));
             newExpiry = newExpiry > maxExpiry ? maxExpiry : newExpiry;
 
             var updatedTicket = ticket with 
@@ -159,21 +163,22 @@ public class RedisSessionService : ISessionService
         var userSessionsKey = GetUserSessionsKey(userId);
         
         var sessions = await db.SetMembersAsync(userSessionsKey);
-        var count = 0;
-
-        foreach (var session in sessions)
+        if (sessions.Length == 0)
         {
-            var sessionKey = GetSessionKey(session.ToString()!);
-            if (await db.KeyDeleteAsync(sessionKey))
-            {
-                count++;
-            }
+            return 0;
         }
 
+        // Batch delete all session keys in single round-trip
+        var sessionKeys = sessions
+            .Select(s => (RedisKey)GetSessionKey(s.ToString()!))
+            .ToArray();
+        var deleted = await db.KeyDeleteAsync(sessionKeys);
+
+        // Delete the user sessions set
         await db.KeyDeleteAsync(userSessionsKey);
         
-        _logger.LogInformation("Invalidated {Count} sessions for user {UserId}", count, userId);
-        return count;
+        _logger.LogInformation("Invalidated {Count} sessions for user {UserId}", deleted, userId);
+        return (int)deleted;
     }
 
     private async Task EnforceSessionLimitAsync(IDatabase db, Guid userId, string userSessionsKey)

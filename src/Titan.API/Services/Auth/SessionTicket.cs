@@ -14,4 +14,6 @@ public partial record SessionTicket
     [MemoryPackOrder(3)] public required DateTimeOffset CreatedAt { get; init; }
     [MemoryPackOrder(4)] public required DateTimeOffset ExpiresAt { get; init; }
     [MemoryPackOrder(5)] public DateTimeOffset LastActivityAt { get; set; }
+    [MemoryPackOrder(6)] public bool IsAdmin { get; init; }
 }
+

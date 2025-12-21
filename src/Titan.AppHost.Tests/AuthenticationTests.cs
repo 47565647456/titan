@@ -32,7 +32,7 @@ public class AuthenticationTests : IntegrationTestBase
     }
 
     [Fact]
-    public async Task Login_WithInvalidProvider_Returns401()
+    public async Task Login_WithInvalidProvider_Returns400()
     {
         // Act
         var response = await HttpClient.PostAsJsonAsync("/api/auth/login", new
@@ -67,9 +67,6 @@ public class AuthenticationTests : IntegrationTestBase
         {
             // Act - Logout (invalidates session)
             await authHub.InvokeAsync("Logout");
-            
-            // Wait for session invalidation to propagate
-            await Task.Delay(100);
 
             // After logout, creating a new connection with the same session should fail
             // when trying to call an authenticated method

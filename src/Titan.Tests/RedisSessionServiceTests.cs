@@ -123,7 +123,8 @@ public class RedisSessionServiceTests
             Provider = "Mock",
             Roles = new[] { "User" },
             CreatedAt = now.AddMinutes(-5),
-            ExpiresAt = now.AddMinutes(25)
+            ExpiresAt = now.AddMinutes(25),
+            IsAdmin = false
         };
         
         var serialized = MemoryPackSerializer.Serialize(ticket);
@@ -287,6 +288,9 @@ public class RedisSessionServiceTests
         
         _databaseMock.Setup(db => db.SetMembersAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(sessions);
+        // Batch delete returns count of deleted keys
+        _databaseMock.Setup(db => db.KeyDeleteAsync(It.IsAny<RedisKey[]>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(3);
         _databaseMock.Setup(db => db.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()))
             .ReturnsAsync(true);
 
@@ -295,8 +299,14 @@ public class RedisSessionServiceTests
 
         // Assert
         Assert.Equal(3, result);
-        // 3 session keys + 1 user sessions set key = 4 deletes
-        _databaseMock.Verify(db => db.KeyDeleteAsync(It.IsAny<RedisKey>(), It.IsAny<CommandFlags>()), Times.Exactly(4));
+        // Verify batch delete of session keys (single call with 3 keys)
+        _databaseMock.Verify(db => db.KeyDeleteAsync(
+            It.Is<RedisKey[]>(keys => keys.Length == 3), 
+            It.IsAny<CommandFlags>()), Times.Once);
+        // Verify user sessions set key deleted separately
+        _databaseMock.Verify(db => db.KeyDeleteAsync(
+            It.Is<RedisKey>(k => k.ToString()!.Contains("user:")), 
+            It.IsAny<CommandFlags>()), Times.Once);
     }
 
     [Fact]

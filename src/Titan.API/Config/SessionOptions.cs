@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.Extensions.Options;
 
 namespace Titan.API.Config;
 
@@ -17,7 +18,7 @@ public class SessionOptions
 
     /// <summary>
     /// Sliding expiration in minutes. Activity extends session by this amount.
-    /// Default: 15 minutes.
+    /// Must be less than SessionLifetimeMinutes. Default: 15 minutes.
     /// </summary>
     [Range(1, 60)]
     public int SlidingExpirationMinutes { get; set; } = 15;
@@ -41,4 +42,29 @@ public class SessionOptions
     /// Redis key prefix for session storage.
     /// </summary>
     public string KeyPrefix { get; set; } = "session";
+}
+
+/// <summary>
+/// Validates SessionOptions cross-property constraints.
+/// </summary>
+public class SessionOptionsValidator : IValidateOptions<SessionOptions>
+{
+    public ValidateOptionsResult Validate(string? name, SessionOptions options)
+    {
+        if (options.SlidingExpirationMinutes >= options.SessionLifetimeMinutes)
+        {
+            return ValidateOptionsResult.Fail(
+                $"SlidingExpirationMinutes ({options.SlidingExpirationMinutes}) must be less than " +
+                $"SessionLifetimeMinutes ({options.SessionLifetimeMinutes})");
+        }
+
+        if (options.SlidingExpirationMinutes >= options.AdminSessionLifetimeMinutes)
+        {
+            return ValidateOptionsResult.Fail(
+                $"SlidingExpirationMinutes ({options.SlidingExpirationMinutes}) must be less than " +
+                $"AdminSessionLifetimeMinutes ({options.AdminSessionLifetimeMinutes})");
+        }
+
+        return ValidateOptionsResult.Success;
+    }
 }

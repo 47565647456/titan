@@ -39,20 +39,33 @@ internal sealed class AuthClient : IAuthClient
 
     public async Task LogoutAsync(CancellationToken ct = default)
     {
-        var response = await _httpClient.PostAsync("/api/auth/logout", null, ct);
-        response.EnsureSuccessStatusCode();
-        _parent.ClearSession();
+        try
+        {
+            var response = await _httpClient.PostAsync("/api/auth/logout", null, ct);
+            response.EnsureSuccessStatusCode();
+        }
+        finally
+        {
+            // Always clear local session, even if server request fails
+            _parent.ClearSession();
+        }
     }
 
     public async Task<int> LogoutAllAsync(CancellationToken ct = default)
     {
-        var response = await _httpClient.PostAsync("/api/auth/logout-all", null, ct);
-        response.EnsureSuccessStatusCode();
-        
-        var result = await response.Content.ReadFromJsonAsync<LogoutAllResult>(ct);
-        _parent.ClearSession();
-        
-        return result?.SessionsInvalidated ?? 0;
+        try
+        {
+            var response = await _httpClient.PostAsync("/api/auth/logout-all", null, ct);
+            response.EnsureSuccessStatusCode();
+            
+            var result = await response.Content.ReadFromJsonAsync<LogoutAllResult>(ct);
+            return result?.SessionsInvalidated ?? 0;
+        }
+        finally
+        {
+            // Always clear local session, even if server request fails
+            _parent.ClearSession();
+        }
     }
 
     public async Task<IReadOnlyList<string>> GetProvidersAsync(CancellationToken ct = default)
