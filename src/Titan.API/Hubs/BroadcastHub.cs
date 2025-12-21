@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.Abstractions.Contracts;
 
 namespace Titan.API.Hubs;
 
@@ -42,7 +43,7 @@ public class BroadcastHub : TitanHubBase
     /// </summary>
     public static async Task BroadcastToAllAsync(IHubContext<BroadcastHub> hubContext, ServerMessage message)
     {
-        await hubContext.Clients.Group(AllPlayersGroup).SendAsync("ReceiveServerMessage", message);
+        await hubContext.Clients.Group(AllPlayersGroup).SendAsync(nameof(IBroadcastHubClient.ReceiveServerMessage), message);
     }
 
     #endregion

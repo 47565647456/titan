@@ -55,11 +55,9 @@ public class BroadcastTests : IntegrationTestBase
         var broadcastHub = await user.GetBroadcastHubAsync();
 
         // Setup message receiver
-        ServerMessage? receivedMessage = null;
         var messageReceived = new TaskCompletionSource<ServerMessage>();
         broadcastHub.On<ServerMessage>("ReceiveServerMessage", message =>
         {
-            receivedMessage = message;
             messageReceived.TrySetResult(message);
         });
 
@@ -76,6 +74,7 @@ public class BroadcastTests : IntegrationTestBase
         response.EnsureSuccessStatusCode();
 
         // Wait for message (with timeout)
+        ServerMessage? receivedMessage = null;
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
@@ -90,6 +89,8 @@ public class BroadcastTests : IntegrationTestBase
         Assert.NotNull(receivedMessage);
         Assert.Equal("Achievement unlocked: First Blood!", receivedMessage.Content);
         Assert.Equal(ServerMessageType.Achievement, receivedMessage.Type);
+        Assert.Equal("Achievement", receivedMessage.Title);
+        Assert.Equal("trophy", receivedMessage.IconId);
     }
 
     [Fact]
