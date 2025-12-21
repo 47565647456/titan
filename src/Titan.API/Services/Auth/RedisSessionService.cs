@@ -270,4 +270,122 @@ public class RedisSessionService : ISessionService
     {
         return $"{_options.KeyPrefix}:user:{userId}";
     }
+
+    public async Task<SessionListResult> GetAllSessionsAsync(int skip = 0, int take = 50)
+    {
+        var db = _redis.GetDatabase();
+        var server = _redis.GetServers().First();
+        var pattern = $"{_options.KeyPrefix}:*";
+        
+        // Collect all session keys using SCAN (excludes user:* keys)
+        var allKeys = new List<RedisKey>();
+        await foreach (var key in server.KeysAsync(pattern: pattern))
+        {
+            var keyStr = key.ToString()!;
+            // Skip user session tracking keys (e.g., session:user:guid)
+            if (!keyStr.Contains(":user:"))
+            {
+                allKeys.Add(key);
+            }
+        }
+
+        var totalCount = allKeys.Count;
+        
+        // Apply pagination
+        var pagedKeys = allKeys.Skip(skip).Take(take).ToArray();
+        if (pagedKeys.Length == 0)
+        {
+            return new SessionListResult([], totalCount, skip, take);
+        }
+
+        // Batch fetch session data
+        var values = await db.StringGetAsync(pagedKeys);
+        var sessions = new List<SessionInfo>();
+
+        for (int i = 0; i < pagedKeys.Length; i++)
+        {
+            var data = values[i];
+            if (!data.IsNullOrEmpty)
+            {
+                var ticket = MemoryPackSerializer.Deserialize<SessionTicket>(data!);
+                if (ticket != null)
+                {
+                    // Extract ticket ID from key: "session:ticketId"
+                    var ticketId = pagedKeys[i].ToString()!.Replace($"{_options.KeyPrefix}:", "");
+                    sessions.Add(new SessionInfo(
+                        TicketId: ticketId,  // Return full ticket ID for invalidation
+                        UserId: ticket.UserId,
+                        Provider: ticket.Provider,
+                        Roles: ticket.Roles,
+                        CreatedAt: ticket.CreatedAt,
+                        ExpiresAt: ticket.ExpiresAt,
+                        LastActivityAt: ticket.LastActivityAt,
+                        IsAdmin: ticket.IsAdmin
+                    ));
+                }
+            }
+        }
+
+        return new SessionListResult(sessions, totalCount, skip, take);
+    }
+
+    public async Task<int> GetSessionCountAsync()
+    {
+        var server = _redis.GetServers().First();
+        var pattern = $"{_options.KeyPrefix}:*";
+        
+        var count = 0;
+        await foreach (var key in server.KeysAsync(pattern: pattern))
+        {
+            var keyStr = key.ToString()!;
+            if (!keyStr.Contains(":user:"))
+            {
+                count++;
+            }
+        }
+        
+        return count;
+    }
+
+    public async Task<IReadOnlyList<SessionInfo>> GetUserSessionsAsync(Guid userId)
+    {
+        var db = _redis.GetDatabase();
+        var userSessionsKey = GetUserSessionsKey(userId);
+        
+        var ticketIds = await db.SetMembersAsync(userSessionsKey);
+        if (ticketIds.Length == 0)
+        {
+            return [];
+        }
+
+        // Batch fetch all user sessions
+        var keys = ticketIds.Select(id => (RedisKey)GetSessionKey(id.ToString()!)).ToArray();
+        var values = await db.StringGetAsync(keys);
+        
+        var sessions = new List<SessionInfo>();
+        for (int i = 0; i < ticketIds.Length; i++)
+        {
+            var data = values[i];
+            if (!data.IsNullOrEmpty)
+            {
+                var ticket = MemoryPackSerializer.Deserialize<SessionTicket>(data!);
+                if (ticket != null)
+                {
+                    var ticketId = ticketIds[i].ToString()!;
+                    sessions.Add(new SessionInfo(
+                        TicketId: ticketId,  // Return full ticket ID for invalidation
+                        UserId: ticket.UserId,
+                        Provider: ticket.Provider,
+                        Roles: ticket.Roles,
+                        CreatedAt: ticket.CreatedAt,
+                        ExpiresAt: ticket.ExpiresAt,
+                        LastActivityAt: ticket.LastActivityAt,
+                        IsAdmin: ticket.IsAdmin
+                    ));
+                }
+            }
+        }
+
+        return sessions;
+    }
 }

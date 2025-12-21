@@ -10,7 +10,9 @@ import { BaseTypesPage } from './pages/BaseTypes';
 import { AdminUsersPage } from './pages/AdminUsers';
 import { RateLimitingPage } from './pages/RateLimiting';
 import { RateLimitingMetricsPage } from './pages/RateLimitingMetrics';
+import { SessionsPage } from './pages/Sessions';
 import './index.css';
+
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -82,6 +84,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredRole="SuperAdmin">
               <RateLimitingMetricsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sessions"
+          element={
+            <ProtectedRoute requiredRole="SuperAdmin">
+              <SessionsPage />
             </ProtectedRoute>
           }
         />

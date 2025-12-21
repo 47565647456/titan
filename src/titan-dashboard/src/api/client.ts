@@ -16,7 +16,9 @@ import type {
   RateLimitingConfiguration,
   RateLimitPolicy,
   EndpointRateLimitConfig,
-  RateLimitMetrics
+  RateLimitMetrics,
+  SessionInfo,
+  SessionListResponse
 } from '../types';
 
 // Create axios instance with base configuration
@@ -243,6 +245,34 @@ export const rateLimitingApi = {
 
   clearMetricsHistory: async (): Promise<void> => {
     await api.delete('/admin/rate-limiting/metrics/history');
+  },
+};
+
+// Sessions API
+export const sessionsApi = {
+  getAll: async (skip = 0, take = 50): Promise<SessionListResponse> => {
+    const response = await api.get<SessionListResponse>(`/admin/sessions?skip=${skip}&take=${take}`);
+    return response.data;
+  },
+
+  getCount: async (): Promise<{ count: number }> => {
+    const response = await api.get<{ count: number }>('/admin/sessions/count');
+    return response.data;
+  },
+
+  getByUserId: async (userId: string): Promise<SessionInfo[]> => {
+    const response = await api.get<SessionInfo[]>(`/admin/sessions/user/${userId}`);
+    return response.data;
+  },
+
+  invalidate: async (ticketId: string): Promise<{ success: boolean }> => {
+    const response = await api.delete<{ success: boolean }>(`/admin/sessions/${encodeURIComponent(ticketId)}`);
+    return response.data;
+  },
+
+  invalidateAllForUser: async (userId: string): Promise<{ count: number }> => {
+    const response = await api.delete<{ count: number }>(`/admin/sessions/user/${userId}`);
+    return response.data;
   },
 };
 

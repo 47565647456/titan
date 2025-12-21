@@ -1,0 +1,278 @@
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { sessionsApi } from '../api/client';
+import { RefreshCw, Key, Trash2, Users } from 'lucide-react';
+import type { SessionInfo } from '../types';
+import './DataPage.css';
+import './Sessions.css';
+
+export function SessionsPage() {
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(0);
+  const [showInvalidateConfirm, setShowInvalidateConfirm] = useState(false);
+  const [invalidateTarget, setInvalidateTarget] = useState<SessionInfo | null>(null);
+  const [userIdFilter, setUserIdFilter] = useState('');
+  const pageSize = 25;
+
+  const { data: sessionsData, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['sessions', page, pageSize],
+    queryFn: () => sessionsApi.getAll(page * pageSize, pageSize),
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+  });
+
+  const { data: countData } = useQuery({
+    queryKey: ['sessionCount'],
+    queryFn: sessionsApi.getCount,
+    refetchInterval: 30000,
+  });
+
+  const invalidateMutation = useMutation({
+    mutationFn: sessionsApi.invalidate,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['sessionCount'] });
+      setShowInvalidateConfirm(false);
+      setInvalidateTarget(null);
+    },
+  });
+
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getTimeRemaining = (expiresAt: string) => {
+    const now = new Date();
+    const expiry = new Date(expiresAt);
+    const diffMs = expiry.getTime() - now.getTime();
+    
+    if (diffMs <= 0) return 'Expired';
+    
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 60) return `${diffMins}m`;
+    
+    const diffHours = Math.floor(diffMins / 60);
+    const remainingMins = diffMins % 60;
+    return `${diffHours}h ${remainingMins}m`;
+  };
+
+  const isExpiringSoon = (expiresAt: string) => {
+    const now = new Date();
+    const expiry = new Date(expiresAt);
+    const diffMs = expiry.getTime() - now.getTime();
+    return diffMs > 0 && diffMs < 10 * 60 * 1000; // Less than 10 minutes
+  };
+
+  const openInvalidateConfirm = (session: SessionInfo) => {
+    setInvalidateTarget(session);
+    setShowInvalidateConfirm(true);
+  };
+
+  const handleInvalidate = () => {
+    if (invalidateTarget) {
+      // Need to use the full ticket ID from the API - but we only have truncated
+      // For now, we'll show an error that full ticket ID is needed
+      // In real implementation, the API should return the full ticket ID
+      invalidateMutation.mutate(invalidateTarget.ticketId);
+    }
+  };
+
+  const filteredSessions = sessionsData?.sessions.filter(session => {
+    if (!userIdFilter) return true;
+    return session.userId.toLowerCase().includes(userIdFilter.toLowerCase());
+  }) ?? [];
+
+  const adminCount = sessionsData?.sessions.filter(s => s.isAdmin).length ?? 0;
+  const totalCount = countData?.count ?? sessionsData?.totalCount ?? 0;
+  const totalPages = Math.ceil((sessionsData?.totalCount ?? 0) / pageSize);
+
+  return (
+    <div className="data-page">
+      <div className="page-header">
+        <div>
+          <h1><Key size={24} className="page-icon" /> Sessions</h1>
+          <p className="subtitle">View and manage active user sessions</p>
+        </div>
+        <button 
+          className="btn btn-secondary" 
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
+          <RefreshCw size={16} className={isFetching ? 'spinning' : ''} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon">
+            <Users size={20} />
+          </div>
+          <div className="stat-content">
+            <span className="stat-value">{totalCount}</span>
+            <span className="stat-label">Active Sessions</span>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon stat-icon-admin">
+            <Key size={20} />
+          </div>
+          <div className="stat-content">
+            <span className="stat-value">{adminCount}</span>
+            <span className="stat-label">Admin Sessions</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter */}
+      <div className="filter-bar">
+        <input
+          type="text"
+          className="input filter-input"
+          placeholder="Filter by User ID..."
+          value={userIdFilter}
+          onChange={(e) => setUserIdFilter(e.target.value)}
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="loading-state">
+          <span className="spinner" />
+          <span>Loading sessions...</span>
+        </div>
+      ) : !filteredSessions.length ? (
+        <div className="empty-state">
+          <p>No active sessions found.</p>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="card-body" style={{ padding: 0 }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>User ID</th>
+                  <th>Provider</th>
+                  <th>Roles</th>
+                  <th>Created</th>
+                  <th>Expires In</th>
+                  <th>Last Activity</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSessions.map((session) => (
+                  <tr key={session.ticketId} className={session.isAdmin ? 'row-admin' : ''}>
+                    <td className="cell-mono">{session.userId.slice(0, 8)}...</td>
+                    <td>
+                      <span className={`badge badge-provider badge-${session.provider.toLowerCase()}`}>
+                        {session.provider}
+                      </span>
+                      {session.isAdmin && (
+                        <span className="badge badge-admin" style={{ marginLeft: '4px' }}>
+                          Admin
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <div className="role-badges">
+                        {session.roles.slice(0, 2).map((role) => (
+                          <span key={role} className="badge badge-secondary">
+                            {role}
+                          </span>
+                        ))}
+                        {session.roles.length > 2 && (
+                          <span className="badge badge-secondary">+{session.roles.length - 2}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>{formatDateTime(session.createdAt)}</td>
+                    <td>
+                      <span className={isExpiringSoon(session.expiresAt) ? 'expiring-soon' : ''}>
+                        {getTimeRemaining(session.expiresAt)}
+                      </span>
+                    </td>
+                    <td>{formatDateTime(session.lastActivityAt)}</td>
+                    <td>
+                      <button
+                        className="btn btn-sm btn-danger"
+                        onClick={() => openInvalidateConfirm(session)}
+                        title="Invalidate session"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="pagination">
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={() => setPage(p => Math.max(0, p - 1))}
+                disabled={page === 0}
+              >
+                Previous
+              </button>
+              <span className="page-info">
+                Page {page + 1} of {totalPages}
+              </span>
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={() => setPage(p => p + 1)}
+                disabled={page >= totalPages - 1}
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Invalidate Confirmation Modal */}
+      {showInvalidateConfirm && invalidateTarget && (
+        <div className="modal-overlay" onClick={() => setShowInvalidateConfirm(false)}>
+          <div className="modal modal-small" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="modal-title">⚠️ Invalidate Session</h2>
+            </div>
+            <div className="modal-body">
+              <p>Are you sure you want to invalidate this session?</p>
+              <p className="text-muted">
+                User ID: <code>{invalidateTarget.userId.slice(0, 8)}...</code>
+                <br />
+                Provider: <strong>{invalidateTarget.provider}</strong>
+              </p>
+              <p className="text-muted">The user will be logged out immediately.</p>
+            </div>
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowInvalidateConfirm(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleInvalidate}
+                disabled={invalidateMutation.isPending}
+              >
+                {invalidateMutation.isPending ? 'Invalidating...' : 'Invalidate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
