@@ -1,6 +1,9 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Titan.Abstractions.Contracts;
 using Titan.API.Services.Auth;
+using Titan.API.Validators;
 
 namespace Titan.API.Controllers;
 
@@ -16,13 +19,16 @@ public class SessionsAdminController : ControllerBase
 {
     private readonly ISessionService _sessionService;
     private readonly ILogger<SessionsAdminController> _logger;
+    private readonly IValidator<InvalidateSessionRequest> _invalidateValidator;
 
     public SessionsAdminController(
         ISessionService sessionService,
-        ILogger<SessionsAdminController> logger)
+        ILogger<SessionsAdminController> logger,
+        IValidator<InvalidateSessionRequest> invalidateValidator)
     {
         _sessionService = sessionService;
         _logger = logger;
+        _invalidateValidator = invalidateValidator;
     }
 
     /// <summary>
@@ -86,16 +92,23 @@ public class SessionsAdminController : ControllerBase
     /// <param name="ticketId">The session ticket ID to invalidate.</param>
     /// <returns>Success status.</returns>
     [HttpDelete("{ticketId}")]
-    public async Task<ActionResult<InvalidateResultDto>> InvalidateSession(string ticketId)
+    public async Task<ActionResult<InvalidateSessionResultDto>> InvalidateSession(string ticketId)
     {
-        var success = await _sessionService.InvalidateSessionAsync(ticketId);
+        var request = new InvalidateSessionRequest(ticketId ?? string.Empty);
+        var validationResult = await _invalidateValidator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            return BadRequest(new { errors = validationResult.Errors.Select(e => e.ErrorMessage) });
+        }
+
+        var success = await _sessionService.InvalidateSessionAsync(request.TicketId);
         
         if (success)
         {
-            _logger.LogInformation("Admin invalidated session {TicketId}", ticketId[..Math.Min(8, ticketId.Length)]);
+            _logger.LogInformation("Admin invalidated session {TicketId}", request.TicketId[..Math.Min(8, request.TicketId.Length)]);
         }
 
-        return Ok(new InvalidateResultDto(success));
+        return Ok(new InvalidateSessionResultDto(success));
     }
 
     /// <summary>
@@ -104,13 +117,13 @@ public class SessionsAdminController : ControllerBase
     /// <param name="userId">The user ID to invalidate sessions for.</param>
     /// <returns>Number of sessions invalidated.</returns>
     [HttpDelete("user/{userId:guid}")]
-    public async Task<ActionResult<InvalidateAllResultDto>> InvalidateUserSessions(Guid userId)
+    public async Task<ActionResult<InvalidateAllSessionsResultDto>> InvalidateUserSessions(Guid userId)
     {
         var count = await _sessionService.InvalidateAllSessionsAsync(userId);
         
         _logger.LogInformation("Admin invalidated {Count} sessions for user {UserId}", count, userId);
 
-        return Ok(new InvalidateAllResultDto(count));
+        return Ok(new InvalidateAllSessionsResultDto(count));
     }
 
     private static SessionInfoDto ToDto(SessionInfo session) => new(
@@ -125,26 +138,3 @@ public class SessionsAdminController : ControllerBase
     );
 }
 
-// DTOs
-
-public record SessionInfoDto(
-    string TicketId,
-    string UserId,
-    string Provider,
-    List<string> Roles,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset ExpiresAt,
-    DateTimeOffset LastActivityAt,
-    bool IsAdmin);
-
-public record SessionListDto(
-    List<SessionInfoDto> Sessions,
-    int TotalCount,
-    int Skip,
-    int Take);
-
-public record SessionCountDto(int Count);
-
-public record InvalidateResultDto(bool Success);
-
-public record InvalidateAllResultDto(int Count);

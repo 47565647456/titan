@@ -271,24 +271,41 @@ public class RedisSessionService : ISessionService
         return $"{_options.KeyPrefix}:user:{userId}";
     }
 
-    public async Task<SessionListResult> GetAllSessionsAsync(int skip = 0, int take = 50)
+    /// <summary>
+    /// Scans Redis for all session keys (excluding user tracking keys).
+    /// Note: For very large deployments (100k+ sessions), this loads all keys into memory.
+    /// Consider cursor-based pagination if memory becomes a concern at scale.
+    /// </summary>
+    private async Task<List<RedisKey>> GetSessionKeysAsync()
     {
-        var db = _redis.GetDatabase();
-        var server = _redis.GetServers().First();
+        var servers = _redis.GetServers();
+        var server = servers.FirstOrDefault();
+        if (server == null)
+        {
+            _logger.LogWarning("No Redis servers available");
+            return [];
+        }
+
         var pattern = $"{_options.KeyPrefix}:*";
+        var keys = new List<RedisKey>();
         
-        // Collect all session keys using SCAN (excludes user:* keys)
-        var allKeys = new List<RedisKey>();
         await foreach (var key in server.KeysAsync(pattern: pattern))
         {
             var keyStr = key.ToString()!;
             // Skip user session tracking keys (e.g., session:user:guid)
             if (!keyStr.Contains(":user:"))
             {
-                allKeys.Add(key);
+                keys.Add(key);
             }
         }
+        
+        return keys;
+    }
 
+    public async Task<SessionListResult> GetAllSessionsAsync(int skip = 0, int take = 50)
+    {
+        var db = _redis.GetDatabase();
+        var allKeys = await GetSessionKeysAsync();
         var totalCount = allKeys.Count;
         
         // Apply pagination
@@ -313,7 +330,7 @@ public class RedisSessionService : ISessionService
                     // Extract ticket ID from key: "session:ticketId"
                     var ticketId = pagedKeys[i].ToString()!.Replace($"{_options.KeyPrefix}:", "");
                     sessions.Add(new SessionInfo(
-                        TicketId: ticketId,  // Return full ticket ID for invalidation
+                        TicketId: ticketId,
                         UserId: ticket.UserId,
                         Provider: ticket.Provider,
                         Roles: ticket.Roles,
@@ -331,20 +348,8 @@ public class RedisSessionService : ISessionService
 
     public async Task<int> GetSessionCountAsync()
     {
-        var server = _redis.GetServers().First();
-        var pattern = $"{_options.KeyPrefix}:*";
-        
-        var count = 0;
-        await foreach (var key in server.KeysAsync(pattern: pattern))
-        {
-            var keyStr = key.ToString()!;
-            if (!keyStr.Contains(":user:"))
-            {
-                count++;
-            }
-        }
-        
-        return count;
+        var keys = await GetSessionKeysAsync();
+        return keys.Count;
     }
 
     public async Task<IReadOnlyList<SessionInfo>> GetUserSessionsAsync(Guid userId)

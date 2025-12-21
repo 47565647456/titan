@@ -509,6 +509,124 @@ public class RedisSessionServiceTests
         Assert.Equal(0, result.TotalCount);
     }
 
+    [Fact]
+    public async Task GetAllSessionsAsync_ReturnsEmptyWhenNoServers()
+    {
+        // Arrange
+        _redisMock.Setup(r => r.GetServers()).Returns(Array.Empty<IServer>());
+
+        // Act
+        var result = await _service.GetAllSessionsAsync(0, 50);
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Empty(result.Sessions);
+        Assert.Equal(0, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task GetAllSessionsAsync_FiltersOutUserTrackingKeys()
+    {
+        // Arrange
+        var serverMock = new Mock<IServer>();
+        var now = DateTimeOffset.UtcNow;
+        var userId = Guid.NewGuid();
+        
+        // Simulate keys including user tracking keys that should be filtered
+        var keys = new List<RedisKey>
+        {
+            new RedisKey("session:ticket123"),
+            new RedisKey($"session:user:{userId}"), // Should be filtered out
+            new RedisKey("session:ticket456")
+        };
+        
+        serverMock.Setup(s => s.KeysAsync(
+            It.IsAny<int>(), 
+            It.IsAny<RedisValue>(), 
+            It.IsAny<int>(), 
+            It.IsAny<long>(), 
+            It.IsAny<int>(),
+            It.IsAny<CommandFlags>()))
+            .Returns(keys.ToAsyncEnumerable());
+        
+        _redisMock.Setup(r => r.GetServers()).Returns(new[] { serverMock.Object });
+        
+        var ticket = new SessionTicket
+        {
+            UserId = userId,
+            Provider = "Mock",
+            Roles = new[] { "User" },
+            CreatedAt = now,
+            ExpiresAt = now.AddMinutes(30),
+            IsAdmin = false
+        };
+        
+        // Return session data for the valid keys
+        _databaseMock.Setup(db => db.StringGetAsync(It.IsAny<RedisKey[]>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(new RedisValue[]
+            {
+                MemoryPackSerializer.Serialize(ticket),
+                MemoryPackSerializer.Serialize(ticket)
+            });
+
+        // Act
+        var result = await _service.GetAllSessionsAsync(0, 50);
+
+        // Assert
+        Assert.Equal(2, result.TotalCount); // Only 2, not 3 (user key filtered)
+        Assert.Equal(2, result.Sessions.Count);
+    }
+
+    [Fact]
+    public async Task GetAllSessionsAsync_AppliesPaginationCorrectly()
+    {
+        // Arrange
+        var serverMock = new Mock<IServer>();
+        var now = DateTimeOffset.UtcNow;
+        var userId = Guid.NewGuid();
+        
+        // Simulate 5 session keys
+        var keys = Enumerable.Range(1, 5)
+            .Select(i => new RedisKey($"session:ticket{i}"))
+            .ToList();
+        
+        serverMock.Setup(s => s.KeysAsync(
+            It.IsAny<int>(), 
+            It.IsAny<RedisValue>(), 
+            It.IsAny<int>(), 
+            It.IsAny<long>(), 
+            It.IsAny<int>(),
+            It.IsAny<CommandFlags>()))
+            .Returns(keys.ToAsyncEnumerable());
+        
+        _redisMock.Setup(r => r.GetServers()).Returns(new[] { serverMock.Object });
+        
+        var ticket = new SessionTicket
+        {
+            UserId = userId,
+            Provider = "Mock",
+            Roles = new[] { "User" },
+            CreatedAt = now,
+            ExpiresAt = now.AddMinutes(30),
+            IsAdmin = false
+        };
+        
+        _databaseMock.Setup(db => db.StringGetAsync(It.IsAny<RedisKey[]>(), It.IsAny<CommandFlags>()))
+            .ReturnsAsync(new RedisValue[]
+            {
+                MemoryPackSerializer.Serialize(ticket),
+                MemoryPackSerializer.Serialize(ticket)
+            });
+
+        // Act - Request page 2 with 2 items per page
+        var result = await _service.GetAllSessionsAsync(skip: 2, take: 2);
+
+        // Assert
+        Assert.Equal(5, result.TotalCount); // Total is 5
+        Assert.Equal(2, result.Skip);
+        Assert.Equal(2, result.Take);
+    }
+
     #endregion
 
     #region GetSessionCountAsync Tests
@@ -534,6 +652,82 @@ public class RedisSessionServiceTests
 
         // Assert
         Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public async Task GetSessionCountAsync_ReturnsZeroWhenNoServers()
+    {
+        // Arrange
+        _redisMock.Setup(r => r.GetServers()).Returns(Array.Empty<IServer>());
+
+        // Act
+        var result = await _service.GetSessionCountAsync();
+
+        // Assert
+        Assert.Equal(0, result);
+    }
+
+    [Fact]
+    public async Task GetSessionCountAsync_FiltersOutUserTrackingKeys()
+    {
+        // Arrange
+        var serverMock = new Mock<IServer>();
+        var userId = Guid.NewGuid();
+        
+        // Simulate keys including user tracking keys that should be filtered
+        var keys = new List<RedisKey>
+        {
+            new RedisKey("session:ticket123"),
+            new RedisKey($"session:user:{userId}"), // Should be filtered out
+            new RedisKey("session:ticket456"),
+            new RedisKey($"session:user:{Guid.NewGuid()}") // Should be filtered out
+        };
+        
+        serverMock.Setup(s => s.KeysAsync(
+            It.IsAny<int>(), 
+            It.IsAny<RedisValue>(), 
+            It.IsAny<int>(), 
+            It.IsAny<long>(), 
+            It.IsAny<int>(),
+            It.IsAny<CommandFlags>()))
+            .Returns(keys.ToAsyncEnumerable());
+        
+        _redisMock.Setup(r => r.GetServers()).Returns(new[] { serverMock.Object });
+
+        // Act
+        var result = await _service.GetSessionCountAsync();
+
+        // Assert
+        Assert.Equal(2, result); // Only 2 session keys, not 4 (user keys filtered)
+    }
+
+    [Fact]
+    public async Task GetSessionCountAsync_CountsOnlySessionKeys()
+    {
+        // Arrange
+        var serverMock = new Mock<IServer>();
+        
+        // Simulate 10 session keys
+        var keys = Enumerable.Range(1, 10)
+            .Select(i => new RedisKey($"session:ticket{i}"))
+            .ToList();
+        
+        serverMock.Setup(s => s.KeysAsync(
+            It.IsAny<int>(), 
+            It.IsAny<RedisValue>(), 
+            It.IsAny<int>(), 
+            It.IsAny<long>(), 
+            It.IsAny<int>(),
+            It.IsAny<CommandFlags>()))
+            .Returns(keys.ToAsyncEnumerable());
+        
+        _redisMock.Setup(r => r.GetServers()).Returns(new[] { serverMock.Object });
+
+        // Act
+        var result = await _service.GetSessionCountAsync();
+
+        // Assert
+        Assert.Equal(10, result);
     }
 
     #endregion

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Titan.Abstractions.Contracts;
 
 namespace Titan.AppHost.Tests;
 
@@ -17,21 +18,36 @@ public class SessionsAdminTests : IntegrationTestBase
     [Fact]
     public async Task GetSessions_WithoutAuth_Returns401()
     {
+        // Arrange - no auth
+
+        // Act
         var response = await HttpClient.GetAsync("/api/admin/sessions");
+
+        // Assert
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
     public async Task GetSessionCount_WithoutAuth_Returns401()
     {
+        // Arrange - no auth
+
+        // Act
         var response = await HttpClient.GetAsync("/api/admin/sessions/count");
+
+        // Assert
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
     public async Task InvalidateSession_WithoutAuth_Returns401()
     {
+        // Arrange - no auth
+
+        // Act
         var response = await HttpClient.DeleteAsync("/api/admin/sessions/some-ticket-id");
+
+        // Assert
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
@@ -42,42 +58,48 @@ public class SessionsAdminTests : IntegrationTestBase
     [Fact]
     public async Task GetSessions_WithAuth_ReturnsSessionList()
     {
+        // Arrange
         using var client = await CreateAuthenticatedAdminClientAsync();
-        
+
+        // Act
         var response = await client.GetAsync("/api/admin/sessions");
-        
+
+        // Assert
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<SessionListResponse>();
+        var result = await response.Content.ReadFromJsonAsync<SessionListDto>();
         Assert.NotNull(result);
         Assert.NotNull(result.Sessions);
-        // Should have at least our own session
-        Assert.True(result.TotalCount >= 1);
+        Assert.True(result.TotalCount >= 1); // Should have at least our own session
     }
 
     [Fact]
     public async Task GetSessionCount_WithAuth_ReturnsCount()
     {
+        // Arrange
         using var client = await CreateAuthenticatedAdminClientAsync();
-        
+
+        // Act
         var response = await client.GetAsync("/api/admin/sessions/count");
-        
+
+        // Assert
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<SessionCountResponse>();
+        var result = await response.Content.ReadFromJsonAsync<SessionCountDto>();
         Assert.NotNull(result);
-        // Should have at least our own session
-        Assert.True(result.Count >= 1);
+        Assert.True(result.Count >= 1); // Should have at least our own session
     }
 
     [Fact]
     public async Task GetSessions_Pagination_ReturnsPagedResults()
     {
+        // Arrange
         using var client = await CreateAuthenticatedAdminClientAsync();
-        
-        // Request with pagination
+
+        // Act
         var response = await client.GetAsync("/api/admin/sessions?skip=0&take=10");
-        
+
+        // Assert
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<SessionListResponse>();
+        var result = await response.Content.ReadFromJsonAsync<SessionListDto>();
         Assert.NotNull(result);
         Assert.Equal(0, result.Skip);
         Assert.Equal(10, result.Take);
@@ -90,49 +112,82 @@ public class SessionsAdminTests : IntegrationTestBase
     [Fact]
     public async Task InvalidateSession_NonExistent_ReturnsSuccess()
     {
+        // Arrange
         using var client = await CreateAuthenticatedAdminClientAsync();
-        
-        // Try to invalidate a non-existent session - should return success: false
+
+        // Act
         var response = await client.DeleteAsync("/api/admin/sessions/nonexistent-ticket-id");
-        
+
+        // Assert
         response.EnsureSuccessStatusCode();
-        var result = await response.Content.ReadFromJsonAsync<InvalidateResponse>();
+        var result = await response.Content.ReadFromJsonAsync<InvalidateSessionResultDto>();
         Assert.NotNull(result);
         Assert.False(result.Success); // Session didn't exist
     }
 
     #endregion
 
-    #region DTOs
+    #region User Sessions Tests
 
-    private record SessionListResponse
+    [Fact]
+    public async Task GetUserSessions_WithAuth_ReturnsSessionsForUser()
     {
-        public List<SessionInfo> Sessions { get; init; } = [];
-        public int TotalCount { get; init; }
-        public int Skip { get; init; }
-        public int Take { get; init; }
+        // Arrange
+        using var client = await CreateAuthenticatedAdminClientAsync();
+        var randomUserId = Guid.NewGuid();
+
+        // Act
+        var response = await client.GetAsync($"/api/admin/sessions/user/{randomUserId}");
+
+        // Assert
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<List<SessionInfoDto>>();
+        Assert.NotNull(result);
+        // Random user should have no sessions
+        Assert.Empty(result);
     }
 
-    private record SessionInfo
+    [Fact]
+    public async Task GetUserSessions_WithoutAuth_Returns401()
     {
-        public string TicketId { get; init; } = "";
-        public string UserId { get; init; } = "";
-        public string Provider { get; init; } = "";
-        public List<string> Roles { get; init; } = [];
-        public DateTimeOffset CreatedAt { get; init; }
-        public DateTimeOffset ExpiresAt { get; init; }
-        public DateTimeOffset LastActivityAt { get; init; }
-        public bool IsAdmin { get; init; }
+        // Arrange - no auth
+        var randomUserId = Guid.NewGuid();
+
+        // Act
+        var response = await HttpClient.GetAsync($"/api/admin/sessions/user/{randomUserId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    private record SessionCountResponse
+    [Fact]
+    public async Task InvalidateUserSessions_WithAuth_ReturnsCount()
     {
-        public int Count { get; init; }
+        // Arrange
+        using var client = await CreateAuthenticatedAdminClientAsync();
+        var randomUserId = Guid.NewGuid();
+
+        // Act - Invalid user should return 0 invalidated
+        var response = await client.DeleteAsync($"/api/admin/sessions/user/{randomUserId}");
+
+        // Assert
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<InvalidateAllSessionsResultDto>();
+        Assert.NotNull(result);
+        Assert.Equal(0, result.Count); // No sessions for random user
     }
 
-    private record InvalidateResponse
+    [Fact]
+    public async Task InvalidateUserSessions_WithoutAuth_Returns401()
     {
-        public bool Success { get; init; }
+        // Arrange - no auth
+        var randomUserId = Guid.NewGuid();
+
+        // Act
+        var response = await HttpClient.DeleteAsync($"/api/admin/sessions/user/{randomUserId}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     #endregion

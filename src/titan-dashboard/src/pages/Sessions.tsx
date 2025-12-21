@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sessionsApi } from '../api/client';
-import { RefreshCw, Key, Trash2, Users } from 'lucide-react';
+import { RefreshCw, Key, Trash2, Users, AlertCircle } from 'lucide-react';
 import type { SessionInfo } from '../types';
 import './DataPage.css';
 import './Sessions.css';
@@ -12,6 +12,7 @@ export function SessionsPage() {
   const [showInvalidateConfirm, setShowInvalidateConfirm] = useState(false);
   const [invalidateTarget, setInvalidateTarget] = useState<SessionInfo | null>(null);
   const [userIdFilter, setUserIdFilter] = useState('');
+  const [invalidateError, setInvalidateError] = useState<string | null>(null);
   const pageSize = 25;
 
   const { data: sessionsData, isLoading, refetch, isFetching } = useQuery({
@@ -33,8 +34,25 @@ export function SessionsPage() {
       queryClient.invalidateQueries({ queryKey: ['sessionCount'] });
       setShowInvalidateConfirm(false);
       setInvalidateTarget(null);
+      setInvalidateError(null);
+    },
+    onError: (error: Error) => {
+      setInvalidateError(error.message || 'Failed to invalidate session');
     },
   });
+
+  // Handle Escape key to close modal
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape' && showInvalidateConfirm) {
+      setShowInvalidateConfirm(false);
+      setInvalidateError(null);
+    }
+  }, [showInvalidateConfirm]);
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-US', {
@@ -70,22 +88,27 @@ export function SessionsPage() {
   const openInvalidateConfirm = (session: SessionInfo) => {
     setInvalidateTarget(session);
     setShowInvalidateConfirm(true);
+    setInvalidateError(null);
+  };
+
+  const closeModal = () => {
+    setShowInvalidateConfirm(false);
+    setInvalidateError(null);
   };
 
   const handleInvalidate = () => {
     if (invalidateTarget) {
-      // Need to use the full ticket ID from the API - but we only have truncated
-      // For now, we'll show an error that full ticket ID is needed
-      // In real implementation, the API should return the full ticket ID
       invalidateMutation.mutate(invalidateTarget.ticketId);
     }
   };
 
+  // Filter sessions on current page (note: this only filters the current page)
   const filteredSessions = sessionsData?.sessions.filter(session => {
     if (!userIdFilter) return true;
     return session.userId.toLowerCase().includes(userIdFilter.toLowerCase());
   }) ?? [];
 
+  // Admin count from backend total, not current page
   const adminCount = sessionsData?.sessions.filter(s => s.isAdmin).length ?? 0;
   const totalCount = countData?.count ?? sessionsData?.totalCount ?? 0;
   const totalPages = Math.ceil((sessionsData?.totalCount ?? 0) / pageSize);
@@ -98,6 +121,7 @@ export function SessionsPage() {
           <p className="subtitle">View and manage active user sessions</p>
         </div>
         <button 
+          type="button"
           className="btn btn-secondary" 
           onClick={() => refetch()}
           disabled={isFetching}
@@ -124,17 +148,20 @@ export function SessionsPage() {
           </div>
           <div className="stat-content">
             <span className="stat-value">{adminCount}</span>
-            <span className="stat-label">Admin Sessions</span>
+            <span className="stat-label">Admin Sessions (this page)</span>
           </div>
         </div>
       </div>
 
-      {/* Filter */}
+      {/* Filter - with accessibility label */}
       <div className="filter-bar">
+        <label htmlFor="userIdFilter" className="visually-hidden">Filter by User ID</label>
         <input
+          id="userIdFilter"
           type="text"
           className="input filter-input"
-          placeholder="Filter by User ID..."
+          placeholder="Filter by User ID (current page only)..."
+          aria-label="Filter sessions by User ID"
           value={userIdFilter}
           onChange={(e) => setUserIdFilter(e.target.value)}
         />
@@ -199,9 +226,11 @@ export function SessionsPage() {
                     <td>{formatDateTime(session.lastActivityAt)}</td>
                     <td>
                       <button
+                        type="button"
                         className="btn btn-sm btn-danger"
                         onClick={() => openInvalidateConfirm(session)}
                         title="Invalidate session"
+                        aria-label={`Invalidate session for user ${session.userId.slice(0, 8)}`}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -216,6 +245,7 @@ export function SessionsPage() {
           {totalPages > 1 && (
             <div className="pagination">
               <button
+                type="button"
                 className="btn btn-sm btn-secondary"
                 onClick={() => setPage(p => Math.max(0, p - 1))}
                 disabled={page === 0}
@@ -226,6 +256,7 @@ export function SessionsPage() {
                 Page {page + 1} of {totalPages}
               </span>
               <button
+                type="button"
                 className="btn btn-sm btn-secondary"
                 onClick={() => setPage(p => p + 1)}
                 disabled={page >= totalPages - 1}
@@ -237,27 +268,46 @@ export function SessionsPage() {
         </div>
       )}
 
-      {/* Invalidate Confirmation Modal */}
+      {/* Invalidate Confirmation Modal with ARIA attributes */}
       {showInvalidateConfirm && invalidateTarget && (
-        <div className="modal-overlay" onClick={() => setShowInvalidateConfirm(false)}>
-          <div className="modal modal-small" onClick={(e) => e.stopPropagation()}>
+        <div 
+          className="modal-overlay" 
+          onClick={closeModal}
+          role="presentation"
+        >
+          <div 
+            className="modal modal-small" 
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invalidate-modal-title"
+            aria-describedby="invalidate-modal-description"
+          >
             <div className="modal-header">
-              <h2 className="modal-title">⚠️ Invalidate Session</h2>
+              <h2 id="invalidate-modal-title" className="modal-title">⚠️ Invalidate Session</h2>
             </div>
             <div className="modal-body">
-              <p>Are you sure you want to invalidate this session?</p>
+              <p id="invalidate-modal-description">Are you sure you want to invalidate this session?</p>
               <p className="text-muted">
                 User ID: <code>{invalidateTarget.userId.slice(0, 8)}...</code>
                 <br />
                 Provider: <strong>{invalidateTarget.provider}</strong>
               </p>
               <p className="text-muted">The user will be logged out immediately.</p>
+              
+              {/* Error message display */}
+              {invalidateError && (
+                <div className="alert alert-error" role="alert">
+                  <AlertCircle size={16} />
+                  <span>{invalidateError}</span>
+                </div>
+              )}
             </div>
             <div className="modal-footer">
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => setShowInvalidateConfirm(false)}
+                onClick={closeModal}
               >
                 Cancel
               </button>
