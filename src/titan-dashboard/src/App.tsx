@@ -11,6 +11,7 @@ import { AdminUsersPage } from './pages/AdminUsers';
 import { RateLimitingPage } from './pages/RateLimiting';
 import { RateLimitingMetricsPage } from './pages/RateLimitingMetrics';
 import { SessionsPage } from './pages/Sessions';
+import { BroadcastingPage } from './pages/Broadcasting';
 import './index.css';
 
 
@@ -92,6 +93,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute requiredRole="SuperAdmin">
               <SessionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/broadcasting"
+          element={
+            <ProtectedRoute requiredRole="SuperAdmin">
+              <BroadcastingPage />
             </ProtectedRoute>
           }
         />
