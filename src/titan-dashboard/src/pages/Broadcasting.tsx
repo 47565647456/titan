@@ -31,6 +31,7 @@ export function BroadcastingPage() {
       setRecentMessages(prev => [message, ...prev].slice(0, 10));
       setContent('');
       setTitle('');
+      setMessageType(MessageType.Info);
       setIconId('');
       setDurationSeconds('');
       setSuccessMessage('Broadcast sent successfully!');
@@ -63,7 +64,7 @@ export function BroadcastingPage() {
     }
 
     sendMutation.mutate(request);
-  }, [content, title, messageType, iconId, durationSeconds, sendMutation]);
+  }, [content, title, messageType, iconId, durationSeconds, sendMutation.mutate]);
 
   const formatDateTime = (dateString: string) => {
     return new Date(dateString).toLocaleString('en-US', {
@@ -132,7 +133,7 @@ export function BroadcastingPage() {
                 </div>
               </div>
 
-              <div className="form-row">
+              <div className="broadcast-form-row">
                 <div className="form-group">
                   <label htmlFor="title" className="form-label">Title (optional)</label>
                   <input
@@ -163,7 +164,7 @@ export function BroadcastingPage() {
                 </div>
               </div>
 
-              <div className="form-row">
+              <div className="broadcast-form-row">
                 <div className="form-group">
                   <label htmlFor="iconId" className="form-label">Icon ID (optional)</label>
                   <input
@@ -192,9 +193,8 @@ export function BroadcastingPage() {
                 </div>
               </div>
 
-              {/* Error message */}
               {sendMutation.isError && (
-                <div className="alert alert-error" role="alert">
+                <div className="alert alert-danger" role="alert">
                   <AlertCircle size={16} />
                   <span>{sendMutation.error?.message || 'Failed to send broadcast'}</span>
                 </div>
