@@ -159,13 +159,19 @@ public class AdminAuthController : ControllerBase
         var sessionId = User.FindFirstValue("session_id");
 
         bool invalidated = false;
-        if (!string.IsNullOrEmpty(sessionId))
+        try
         {
-            invalidated = await _sessionService.InvalidateSessionAsync(sessionId);
-            _logger.LogInformation("Admin session invalidated: {Invalidated}", invalidated);
+            if (!string.IsNullOrEmpty(sessionId))
+            {
+                invalidated = await _sessionService.InvalidateSessionAsync(sessionId);
+                _logger.LogInformation("Admin session invalidated: {Invalidated}", invalidated);
+            }
         }
-
-        ClearSessionCookie();
+        finally
+        {
+            ClearSessionCookie();
+        }
+        
         return Ok(new LogoutResponse(true, invalidated));
     }
 
@@ -185,10 +191,16 @@ public class AdminAuthController : ControllerBase
             return Unauthorized();
         }
 
-        var count = await _sessionService.InvalidateAllSessionsAsync(id);
-        ClearSessionCookie();
-
-        _logger.LogInformation("Admin {UserId} revoked all {Count} sessions", id, count);
+        int count = 0;
+        try
+        {
+            count = await _sessionService.InvalidateAllSessionsAsync(id);
+            _logger.LogInformation("Admin {UserId} revoked all {Count} sessions", id, count);
+        }
+        finally
+        {
+            ClearSessionCookie();
+        }
 
         return Ok(new { success = true, sessionsRevoked = count });
     }
