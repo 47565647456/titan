@@ -65,6 +65,12 @@ internal sealed class AuthClient : IAuthClient
         try
         {
             var response = await _httpClient.PostAsync("/api/auth/logout-all", null, ct);
+            
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                return 0;
+            }
+            
             response.EnsureSuccessStatusCode();
             
             var result = await response.Content.ReadFromJsonAsync<LogoutAllResult>(ct);
@@ -82,6 +88,4 @@ internal sealed class AuthClient : IAuthClient
         return await _httpClient.GetFromJsonAsync<IReadOnlyList<string>>("/api/auth/providers", ct)
             ?? Array.Empty<string>();
     }
-
-    private record LogoutAllResult(int SessionsInvalidated);
 }

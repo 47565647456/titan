@@ -141,10 +141,10 @@ public abstract class IntegrationTestBase
         var result = await response.Content.ReadFromJsonAsync<LoginResponse>()
             ?? throw new InvalidOperationException("Failed to parse login response");
         
-        if (!result.Success || string.IsNullOrEmpty(result.SessionId))
-            throw new InvalidOperationException($"Login failed");
+        if (!result.Success || string.IsNullOrEmpty(result.SessionId) || !result.ExpiresAt.HasValue || !result.UserId.HasValue)
+            throw new InvalidOperationException("Login failed: missing required fields in response");
         
-        return (result.SessionId, result.ExpiresAt!.Value, result.UserId!.Value);
+        return (result.SessionId, result.ExpiresAt.Value, result.UserId.Value);
     }
 
     protected async Task<(string SessionId, DateTimeOffset ExpiresAt, Guid UserId)> LoginAsUserAsync()
@@ -266,11 +266,12 @@ public abstract class IntegrationTestBase
             password = "Admin123!"
         });
         loginResponse.EnsureSuccessStatusCode();
-        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>();
+        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>()
+            ?? throw new InvalidOperationException("Failed to parse admin login response");
 
         var client = new HttpClient { BaseAddress = new Uri(Fixture.ApiBaseUrl) };
         client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", login!.SessionId);
+            new AuthenticationHeaderValue("Bearer", login.SessionId);
         return client;
     }
 

@@ -215,9 +215,6 @@ public class AuthenticationTests : IntegrationTestBase
         Assert.NotNull(result);
         Assert.True(result.SessionsInvalidated >= 2, $"Expected at least 2 sessions invalidated, got {result.SessionsInvalidated}");
         
-        // Wait for session invalidation to propagate
-        await Task.Delay(100);
-
         // 3. Verify sessions are invalidated by trying to call protected method
         var authHub = new HubConnectionBuilder()
             .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionB}")
@@ -234,9 +231,7 @@ public class AuthenticationTests : IntegrationTestBase
         {
             await authHub.DisposeAsync();
         }
-    }
-
-    private record LogoutAllResult(int SessionsInvalidated);
+    }   
 
     #endregion
 }

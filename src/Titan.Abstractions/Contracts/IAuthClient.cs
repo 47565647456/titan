@@ -22,7 +22,7 @@ public interface IAuthClient
     /// Logout and invalidate the current session.
     /// </summary>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>True if the session was exists and was successfully invalidated.</returns>
+    /// <returns>True if the session existed and was successfully invalidated.</returns>
     Task<bool> LogoutAsync(CancellationToken ct = default);
 
     /// <summary>
@@ -55,6 +55,11 @@ public record LoginResponse(
 /// Basic response for logout.
 /// </summary>
 public record LogoutResponse(bool Success, bool SessionInvalidated);
+
+/// <summary>
+/// Response for logout all.
+/// </summary>
+public record LogoutAllResult(int SessionsInvalidated);
 
 /// <summary>
 /// Response from the admin login endpoint.

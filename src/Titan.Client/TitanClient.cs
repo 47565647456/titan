@@ -23,6 +23,7 @@ public sealed class TitanClient : IAsyncDisposable
     private HubConnection? _seasonHub;
     private HubConnection? _authHub;
 
+    private readonly Lock _sessionLock = new();
     private string? _currentSessionId;
     private Guid? _currentUserId;
     private DateTimeOffset? _sessionExpiresAt;
@@ -70,13 +71,16 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     internal void SetSession(string sessionId, Guid userId, DateTimeOffset expiresAt)
     {
-        _currentSessionId = sessionId;
-        _currentUserId = userId;
-        _sessionExpiresAt = expiresAt;
-        
-        // Set Authorization header for subsequent HTTP requests
-        _httpClient.DefaultRequestHeaders.Authorization = 
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sessionId);
+        using (_sessionLock.EnterScope())
+        {
+            _currentSessionId = sessionId;
+            _currentUserId = userId;
+            _sessionExpiresAt = expiresAt;
+            
+            // Set Authorization header for subsequent HTTP requests
+            _httpClient.DefaultRequestHeaders.Authorization = 
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sessionId);
+        }
         
         _logger?.LogDebug("Session created for user {UserId}, expires {ExpiresAt}", userId, expiresAt);
     }
@@ -87,12 +91,15 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     internal void ClearSession()
     {
-        _currentSessionId = null;
-        _currentUserId = null;
-        _sessionExpiresAt = null;
-        
-        // Clear Authorization header
-        _httpClient.DefaultRequestHeaders.Authorization = null;
+        using (_sessionLock.EnterScope())
+        {
+            _currentSessionId = null;
+            _currentUserId = null;
+            _sessionExpiresAt = null;
+            
+            // Clear Authorization header
+            _httpClient.DefaultRequestHeaders.Authorization = null;
+        }
         
         _logger?.LogDebug("Session cleared");
     }

@@ -53,7 +53,12 @@ public class AuthHub : Hub
     [Authorize]
     public async Task<int> RevokeAllSessions()
     {
-        var userId = Guid.Parse(Context.UserIdentifier!);
+        if (!Guid.TryParse(Context.UserIdentifier, out var userId))
+        {
+            _logger.LogWarning("RevokeAllSessions called with invalid UserIdentifier: {UserIdentifier}", Context.UserIdentifier);
+            return 0;
+        }
+        
         var count = await _sessionService.InvalidateAllSessionsAsync(userId);
         
         _logger.LogInformation("User {UserId} revoked all {Count} sessions", userId, count);
@@ -66,7 +71,11 @@ public class AuthHub : Hub
     [Authorize]
     public async Task<UserProfile> GetProfile()
     {
-        var userId = Guid.Parse(Context.UserIdentifier!);
+        if (!Guid.TryParse(Context.UserIdentifier, out var userId))
+        {
+            throw new HubException("Invalid user identifier");
+        }
+        
         var grain = _clusterClient.GetGrain<IUserProfileGrain>(userId);
         return await grain.GetProfileAsync();
     }

@@ -433,17 +433,19 @@ public class RedisSessionServiceTests
             .ReturnsAsync(2);
 
         // Act - Create new session (with 3 existing, over limit of 2, should evict 1 oldest)
+        // Note: Mock returns only the 3 configured sessions, not the newly added one
         var result = await limitedService.CreateSessionAsync(userId, "Mock", new[] { "User" });
 
         // Assert
         Assert.NotNull(result);
         
         // Verify batch key delete was called (eviction uses batch delete)
-        // With limit=2 and 3 existing sessions, evict 3-2=1 oldest session
+        // Mock returns 3 sessions, with limit=2, evict 3-2=1 oldest session
         _databaseMock.Verify(db => db.KeyDeleteAsync(
             It.Is<RedisKey[]>(keys => keys.Length == 1), // 1 oldest session evicted
             It.IsAny<CommandFlags>()), Times.Once);
     }
+
 
     [Fact]
     public async Task CreateSessionAsync_UnderLimit_DoesNotEvict()

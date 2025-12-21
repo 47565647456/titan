@@ -48,7 +48,9 @@ public class RateLimitMiddleware
 
             // Get partition key: user ID for authenticated, IP for anonymous
             // First check if already authenticated (avoids duplicate session validation)
-            string? userId = context.User?.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+            string? userId = context.User?.Identity?.IsAuthenticated == true 
+                ? context.User.FindFirstValue(ClaimTypes.NameIdentifier) 
+                : null;
             
             // Fall back to session validation for unauthenticated requests with tokens
             if (string.IsNullOrEmpty(userId))
