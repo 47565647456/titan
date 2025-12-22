@@ -89,13 +89,39 @@ public class AdminMetricsHub : TitanHubBase
     /// </summary>
     public async Task SubscribeToMetrics()
     {
-        await Groups.AddToGroupAsync(Context.ConnectionId, MetricsGroup);
-        _broadcaster.AddToGroup(Context.ConnectionId, MetricsGroup);
-        _logger.LogDebug("Client {ConnectionId} subscribed to metrics", Context.ConnectionId);
+        var addedToSignalRGroup = false;
+        var addedToBroadcaster = false;
         
-        // Send current metrics immediately upon subscription (using encrypted sender)
-        var metrics = await _rateLimitService.GetMetricsAsync();
-        await _broadcaster.SendToConnectionAsync(Context.ConnectionId, "MetricsUpdated", FormatMetrics(metrics));
+        try
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, MetricsGroup);
+            addedToSignalRGroup = true;
+            
+            _broadcaster.AddToGroup(Context.ConnectionId, MetricsGroup);
+            addedToBroadcaster = true;
+            
+            _logger.LogDebug("Client {ConnectionId} subscribed to metrics", Context.ConnectionId);
+            
+            // Send current metrics immediately upon subscription (using encrypted sender)
+            var metrics = await _rateLimitService.GetMetricsAsync();
+            await _broadcaster.SendToConnectionAsync(Context.ConnectionId, "MetricsUpdated", FormatMetrics(metrics));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to subscribe client {ConnectionId} to metrics", Context.ConnectionId);
+            
+            // Rollback any successful registrations to maintain consistent state
+            if (addedToBroadcaster)
+            {
+                _broadcaster.RemoveFromGroup(Context.ConnectionId, MetricsGroup);
+            }
+            if (addedToSignalRGroup)
+            {
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, MetricsGroup);
+            }
+            
+            throw;
+        }
     }
 
     /// <summary>

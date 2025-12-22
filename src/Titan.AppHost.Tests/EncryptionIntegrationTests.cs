@@ -606,7 +606,11 @@ public class EncryptionIntegrationTests : IntegrationTestBase
             await adminClient.PostAsJsonAsync("/api/admin/encryption/enabled",
                 new { Enabled = true });
             
-            await Task.Delay(100); // Small delay for state to propagate
+            // Poll until config reflects enabled state
+            await WaitForConditionAsync(
+                async () => (await encryptionHub.InvokeAsync<EncryptionConfig>("GetConfig")).Enabled,
+                TimeSpan.FromSeconds(5),
+                "Config to show Enabled=true");
 
             // Get config via hub
             var enabledHubConfig = await encryptionHub.InvokeAsync<EncryptionConfig>("GetConfig");
@@ -616,7 +620,11 @@ public class EncryptionIntegrationTests : IntegrationTestBase
             await adminClient.PostAsJsonAsync("/api/admin/encryption/enabled",
                 new { Enabled = false });
             
-            await Task.Delay(100);
+            // Poll until config reflects disabled state
+            await WaitForConditionAsync(
+                async () => !(await encryptionHub.InvokeAsync<EncryptionConfig>("GetConfig")).Enabled,
+                TimeSpan.FromSeconds(5),
+                "Config to show Enabled=false");
 
             var disabledHubConfig = await encryptionHub.InvokeAsync<EncryptionConfig>("GetConfig");
             Assert.False(disabledHubConfig.Enabled, "Hub config should reflect disabled state");
@@ -627,6 +635,21 @@ public class EncryptionIntegrationTests : IntegrationTestBase
                 new { Enabled = wasEnabled });
             await encryptionHub.DisposeAsync();
         }
+    }
+    
+    /// <summary>
+    /// Polls a condition until it returns true or timeout is reached.
+    /// </summary>
+    private static async Task WaitForConditionAsync(Func<Task<bool>> condition, TimeSpan timeout, string description)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await condition())
+                return;
+            await Task.Delay(50); // Small delay between polls
+        }
+        throw new TimeoutException($"Timed out waiting for: {description}");
     }
 
     [Fact]

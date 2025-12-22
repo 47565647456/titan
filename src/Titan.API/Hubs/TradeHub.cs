@@ -215,20 +215,6 @@ public class TradeHub : TitanHubBase
         });
     }
 
-    /// <summary>
-    /// Send a trade update to all participants (for server-side use).
-    /// </summary>
-    public static async Task NotifyTradeUpdate(IHubContext<TradeHub> hubContext, Guid tradeId, string eventType, object? data = null)
-    {
-        await hubContext.Clients.Group($"trade-{tradeId}").SendAsync("TradeUpdate", new
-        {
-            TradeId = tradeId,
-            EventType = eventType,
-            Data = data,
-            Timestamp = DateTimeOffset.UtcNow
-        });
-    }
-
     #endregion
 }
 

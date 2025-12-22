@@ -638,10 +638,28 @@ public class EncryptionServiceTests
         };
     }
 
+    /// <summary>
+    /// Sets up an encrypted connection for testing, including key exchange and AES key derivation.
+    /// </summary>
+    /// <param name="connectionId">The connection ID to use for the encryption session.</param>
+    /// <returns>
+    /// A tuple containing:
+    /// - response: The key exchange response from the server
+    /// - aesKey: The derived AES key for encryption/decryption
+    /// - signingKey: The client's ECDsa signing key. <b>Caller must dispose this key.</b>
+    /// </returns>
+    /// <remarks>
+    /// The returned ECDsa signingKey is NOT disposed by this method and must be disposed by the caller.
+    /// Use try/finally or a using statement in the calling code:
+    /// <code>
+    /// var (response, aesKey, signingKey) = await SetupEncryptedConnectionWithSigningKeyAsync("conn1");
+    /// try { /* use keys */ } finally { signingKey.Dispose(); }
+    /// </code>
+    /// </remarks>
     private async Task<(KeyExchangeResponse response, byte[] aesKey, ECDsa signingKey)> SetupEncryptedConnectionWithSigningKeyAsync(string connectionId)
     {
         using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256); // Not using - caller must dispose
+        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256); // Caller must dispose
 
         var response = await _service.PerformKeyExchangeAsync(connectionId,
             clientEcdh.ExportSubjectPublicKeyInfo(),

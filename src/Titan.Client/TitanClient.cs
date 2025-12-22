@@ -338,6 +338,9 @@ public sealed class TitanClient : IAsyncDisposable
         // Dispose encryptor (cleans up cryptographic key material securely)
         (_encryptor as IDisposable)?.Dispose();
 
+        // Dispose the encryption initialization lock
+        _encryptionInitLock.Dispose();
+        
         _httpClient.Dispose();
     }
 }

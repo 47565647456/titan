@@ -101,7 +101,10 @@ public class EncryptedHubConnection : IAsyncDisposable
                         ?? throw new InvalidOperationException("Failed to deserialize encrypted response");
                 }
             }
-            catch (System.Text.Json.JsonException) { }
+            catch (System.Text.Json.JsonException)
+            {
+                // Not a SecureEnvelope - fall through to deserialize as T directly below
+            }
             
             return System.Text.Json.JsonSerializer.Deserialize<TResult>(jsonElement.GetRawText(), s_jsonOptions)
                 ?? throw new InvalidOperationException("Failed to deserialize response");
@@ -198,7 +201,10 @@ public class EncryptedHubConnection : IAsyncDisposable
                         ?? throw new InvalidOperationException("Failed to deserialize encrypted message");
                 }
             }
-            catch (System.Text.Json.JsonException) { }
+            catch (System.Text.Json.JsonException)
+            {
+                // Not a SecureEnvelope - fall through to deserialize as T directly below
+            }
             
             // Fallback: try deserializing as T directly
             return System.Text.Json.JsonSerializer.Deserialize<T>(jsonElement.GetRawText(), s_jsonOptions)

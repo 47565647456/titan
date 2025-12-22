@@ -91,24 +91,38 @@ public class EncryptionAdminController : ControllerBase
 
     /// <summary>
     /// Set encryption enabled state at runtime (for testing).
+    /// Note: This change does not persist across server restarts.
     /// </summary>
     [HttpPost("enabled")]
     public IActionResult SetEnabled([FromBody] SetEnabledRequest request)
     {
         _encryptionService.SetEnabled(request.Enabled);
         _logger.LogInformation("Admin set encryption enabled to {Enabled}", request.Enabled);
-        return Ok(new { message = $"Encryption enabled set to {request.Enabled}", enabled = request.Enabled });
+        return Ok(new 
+        { 
+            message = $"Encryption enabled set to {request.Enabled}", 
+            enabled = request.Enabled,
+            persistent = false,
+            warning = "This change will not persist across server restarts"
+        });
     }
 
     /// <summary>
     /// Set encryption required state at runtime (for testing).
+    /// Note: This change does not persist across server restarts.
     /// </summary>
     [HttpPost("required")]
     public IActionResult SetRequired([FromBody] SetRequiredRequest request)
     {
         _encryptionService.SetRequired(request.Required);
         _logger.LogInformation("Admin set encryption required to {Required}", request.Required);
-        return Ok(new { message = $"Encryption required set to {request.Required}", required = request.Required });
+        return Ok(new 
+        { 
+            message = $"Encryption required set to {request.Required}", 
+            required = request.Required,
+            persistent = false,
+            warning = "This change will not persist across server restarts"
+        });
     }
 
     /// <summary>

@@ -5,6 +5,7 @@
 
 import * as signalR from '@microsoft/signalr';
 import { Encryptor } from './encryptor';
+import { arrayBufferToBase64 } from './utils';
 import type { SecureEnvelope, EncryptionConfig, KeyExchangeResponse } from './types';
 
 /**
@@ -19,16 +20,30 @@ export interface EncryptedConnectionOptions {
   autoKeyExchange?: boolean;
 }
 
+// Timeout for hub invocations (30 seconds)
+const INVOKE_TIMEOUT_MS = 30_000;
+
 /**
- * Utility to convert buffer to Base64 string.
+ * Creates a promise that rejects after the specified timeout.
  */
-function arrayBufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+function createTimeoutPromise<T>(ms: number, operation: string): Promise<T> {
+  return new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`${operation} timed out after ${ms}ms`)), ms);
+  });
+}
+
+/**
+ * Wraps a hub invoke with a timeout.
+ */
+async function invokeWithTimeout<T>(
+  hub: signalR.HubConnection,
+  methodName: string,
+  ...args: unknown[]
+): Promise<T> {
+  return Promise.race([
+    hub.invoke<T>(methodName, ...args),
+    createTimeoutPromise<T>(INVOKE_TIMEOUT_MS, `${methodName} invoke`)
+  ]);
 }
 
 /**
@@ -73,12 +88,10 @@ export class EncryptedSignalRConnection {
 
     try {
       await tempHub.start();
-      const config = await tempHub.invoke<EncryptionConfig>('GetConfig');
-      await tempHub.stop();
+      const config = await invokeWithTimeout<EncryptionConfig>(tempHub, 'GetConfig');
       return config;
-    } catch (error) {
+    } finally {
       await tempHub.stop().catch(() => {});
-      throw error;
     }
   }
 
@@ -119,18 +132,15 @@ export class EncryptedSignalRConnection {
         .configureLogging(signalR.LogLevel.Warning)
         .build();
 
+      // Register lifecycle handlers for reconnection
+      this.setupEncryptionHubLifecycleHandlers();
+
       await this.encryptionHub.start();
       console.log('[EncryptedSignalR] Connected to encryption hub');
 
       // Perform key exchange only if not restored
       if (!restored) {
-          const keyExchangeRequest = await this.encryptor.createKeyExchangeRequest();
-          const response = await this.encryptionHub.invoke<KeyExchangeResponse>(
-            'KeyExchange',
-            keyExchangeRequest
-          );
-          await this.encryptor.completeKeyExchange(response);
-          console.log('[EncryptedSignalR] Key exchange completed');
+          await this.performKeyExchange();
       } else {
           console.log('[EncryptedSignalR] Skipping key exchange (session restored)');
       }
@@ -144,6 +154,62 @@ export class EncryptedSignalRConnection {
       }
       return false;
     }
+  }
+
+  /**
+   * Perform key exchange with the encryption hub.
+   */
+  private async performKeyExchange(): Promise<void> {
+    if (!this.encryptionHub) {
+      throw new Error('Encryption hub not connected');
+    }
+    const keyExchangeRequest = await this.encryptor.createKeyExchangeRequest();
+    const response = await invokeWithTimeout<KeyExchangeResponse>(
+      this.encryptionHub,
+      'KeyExchange',
+      keyExchangeRequest
+    );
+    await this.encryptor.completeKeyExchange(response);
+    console.log('[EncryptedSignalR] Key exchange completed');
+  }
+
+  /**
+   * Setup lifecycle handlers for the encryption hub to handle reconnection.
+   */
+  private setupEncryptionHubLifecycleHandlers(): void {
+    if (!this.encryptionHub) return;
+
+    this.encryptionHub.onreconnecting((error) => {
+      console.warn('[EncryptedSignalR] Encryption hub reconnecting...', error?.message);
+      // Mark session as potentially stale - the connection ID will change after reconnect
+      // We keep the keys for now to decrypt any in-flight messages
+    });
+
+    this.encryptionHub.onreconnected(async (connectionId) => {
+      console.log('[EncryptedSignalR] Encryption hub reconnected with new connection ID:', connectionId);
+      // After reconnection, we need to re-negotiate keys because the server
+      // tracks encryption state by connection ID which has now changed
+      if (this.isEncryptionEnabled) {
+        try {
+          await this.performKeyExchange();
+          console.log('[EncryptedSignalR] Re-negotiated keys after reconnection');
+        } catch (error) {
+          console.error('[EncryptedSignalR] Failed to re-negotiate keys after reconnection:', error);
+          this.encryptor.reset();
+          if (this.isEncryptionRequired) {
+            // Surface error to the application
+            throw error;
+          }
+        }
+      }
+    });
+
+    this.encryptionHub.onclose((error) => {
+      console.warn('[EncryptedSignalR] Encryption hub closed', error?.message);
+      // Clear encryption state since we can't maintain it without the hub
+      this.encryptor.reset();
+      this.isEncryptionEnabled = false;
+    });
   }
 
   /**
@@ -257,8 +323,21 @@ export class EncryptedSignalRConnection {
             handler(envelope as T);
           }
         } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           console.error('[EncryptedSignalR] Failed to decrypt message:', error);
-          this.encryptor.reset(); // Reset session on decryption failure so next reload recovers
+          
+          // Only reset session for fatal errors that indicate key material is invalid
+          // Transient errors (replay detection, signature failures) shouldn't destroy the session
+          const isFatalError = 
+            errorMessage.includes('Key ID mismatch') ||
+            errorMessage.includes('key material missing') ||
+            errorMessage.includes('not initialized') ||
+            errorMessage.includes('Invalid key');
+            
+          if (isFatalError) {
+            console.warn('[EncryptedSignalR] Fatal encryption error, resetting session');
+            this.encryptor.reset();
+          }
         }
       });
     } else {

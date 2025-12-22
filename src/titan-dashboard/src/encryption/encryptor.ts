@@ -6,6 +6,7 @@
  */
 
 import type { SecureEnvelope, KeyExchangeRequest, KeyExchangeResponse } from './types';
+import { arrayBufferToBase64, base64ToArrayBuffer } from './utils';
 
 // Named curve for ECDH and ECDSA
 const CURVE = 'P-256';
@@ -14,28 +15,9 @@ const NONCE_LENGTH = 12;
 const GCM_TAG_LENGTH = 128; // Bits
 const REPLAY_WINDOW_SECONDS = 60;
 const CLOCK_SKEW_SECONDS = 5;
+const MAX_SEQUENCE_GAP = 100; // Small buffer for in-flight messages on refresh
 
-/**
- * Utility functions for Base64 encoding/decoding
- */
-function arrayBufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
-  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
 
-function base64ToArrayBuffer(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const buffer = new ArrayBuffer(binary.length);
-  const bytes = new Uint8Array(buffer);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
 
 /**
  * Encryption client for SignalR hub communication.
@@ -53,7 +35,7 @@ export class Encryptor {
   private serverSigningPublicKey: CryptoKey | null = null;
   private keyId: string | null = null;
   private sequenceNumber = 0;
-  private lastReceivedSequenceNumber = 0;
+  private lastReceivedSequencePerKey: Map<string, number> = new Map();
 
   // Grace period / Previous key state
   private previousKeyId: string | null = null;
@@ -191,11 +173,11 @@ export class Encryptor {
     const nonce = new Uint8Array(NONCE_LENGTH);
     crypto.getRandomValues(nonce);
 
-    // Encrypt with AES-GCM
+    // Encrypt with AES-GCM - slice to get proper ArrayBuffer
     const ciphertextWithTag = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv: nonce, tagLength: GCM_TAG_LENGTH },
       this.aesKey,
-      plaintext.buffer as ArrayBuffer
+      plaintext.buffer.slice(plaintext.byteOffset, plaintext.byteOffset + plaintext.byteLength) as ArrayBuffer
     );
 
     // Split ciphertext and tag (tag is last 16 bytes)
@@ -215,11 +197,11 @@ export class Encryptor {
       sequenceNumber
     );
 
-    // Sign
+    // Sign - slice to get proper ArrayBuffer
     const signature = await crypto.subtle.sign(
       { name: 'ECDSA', hash: 'SHA-256' },
       this.signingKeyPair.privateKey,
-      signatureData.buffer as ArrayBuffer
+      signatureData.buffer.slice(signatureData.byteOffset, signatureData.byteOffset + signatureData.byteLength) as ArrayBuffer
     );
 
     return {
@@ -307,28 +289,20 @@ export class Encryptor {
       throw new Error(`Message timestamp outside valid window: ${age.toFixed(1)}s`);
     }
 
-    // 2. Validate sequence number (monotonically increasing)
-    // Note: We're not tracking separate sequence numbers for previous keys strictly here,
-    // which effectively resets logic on refresh. But since the server won't reuse sequence numbers
-    // for the same key easily without restart, checking >= lastReceived is "okay" but might fail
-    // if we switch back and forth.
-    // Ideally we track lastReceivedSequenceNumber per keyId.
-    // For now, if we switched keys, reset valid sequence?
-    // We'll relax the check slightly or just track one global for simplicity but strictly we should track per key.
-    // Given the race condition is usually short-lived, we assume monotonic increase globally?
-    // No, old key messages might arrive out of order vs new.
-    // Let's simplified check: if key changed, don't check sequence against old key's sequence.
-    // But we don't have per-key tracking implemented easily.
-    // We'll ignore sequence check for 'previous' key to avoid complexity, or just check simple > 0.
+    // 2. Validate sequence number per keyId
+    const lastSeqForKey = this.lastReceivedSequencePerKey.get(envelope.keyId) ?? 0;
     
     if (!usePrevious) {
-        if (envelope.sequenceNumber <= this.lastReceivedSequenceNumber) {
-           // Only strictly enforce for current key to prevent replays
-           // Throwing here might be too aggressive during rotation race? 
-           // Let's keep it for security.
-           // throw new Error(`Sequence number regression...`);
+        // Strictly enforce for current key to prevent replays
+        if (envelope.sequenceNumber <= lastSeqForKey) {
+           throw new Error(`Sequence number regression for key ${envelope.keyId}: ${envelope.sequenceNumber} <= ${lastSeqForKey}`);
         }
-        this.lastReceivedSequenceNumber = envelope.sequenceNumber;
+        this.lastReceivedSequencePerKey.set(envelope.keyId, envelope.sequenceNumber);
+    } else {
+        // For previous key, just ensure it's > 0 to avoid obvious replays
+        if (envelope.sequenceNumber <= 0) {
+           throw new Error(`Invalid sequence number for previous key: ${envelope.sequenceNumber}`);
+        }
     }
 
     // Recombine ciphertext and tag for decryption
@@ -434,10 +408,10 @@ export class Encryptor {
              }
           }
 
-          // Reconstruct keypair (mocking public)
+          // Reconstruct keypair - publicKey is not needed for signing, only privateKey
           this.signingKeyPair = {
               privateKey: clientSigningPrivateKey,
-              publicKey: null as any 
+              publicKey: clientSigningPrivateKey // Use same key - public can be derived if needed
           };
 
           this.aesKey = aesKey;
@@ -445,8 +419,8 @@ export class Encryptor {
           this.keyId = state.keyId;
           this.sequenceNumber = state.sequenceNumber || 0;
           
-          // Add jump to sequence number to avoid server replay rejection on refresh
-          this.sequenceNumber += 10000; 
+          // Add small buffer to sequence number to avoid server replay rejection on refresh
+          this.sequenceNumber += MAX_SEQUENCE_GAP; 
 
           return true;
       } catch (e) {
@@ -545,7 +519,7 @@ export class Encryptor {
     this.serverSigningPublicKey = null;
     this.keyId = null;
     this.sequenceNumber = 0;
-    this.lastReceivedSequenceNumber = 0;
+    this.lastReceivedSequencePerKey.clear();
     this.previousKeyId = null;
     this.previousAesKey = null;
     this.previousServerSigningPublicKey = null;

@@ -12,7 +12,7 @@ namespace Titan.API.Services.Encryption;
 /// Manages per-user encryption state with key exchange and rotation support.
 /// Persists signing keys and encryption state to Redis for resilience across restarts.
 /// </summary>
-public class EncryptionService : IEncryptionService
+public class EncryptionService : IEncryptionService, IDisposable
 {
     private readonly EncryptionOptions _options;
     private readonly ILogger<EncryptionService> _logger;
@@ -153,6 +153,9 @@ public class EncryptionService : IEncryptionService
         
         // Derive AES key from shared secret using HKDF
         var aesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
+        
+        // Zero out shared secret immediately after key derivation
+        CryptographicOperations.ZeroMemory(sharedSecret);
 
         // Generate key ID
         var keyId = GenerateKeyId();
@@ -271,9 +274,9 @@ public class EncryptionService : IEncryptionService
         var plaintext = new byte[envelope.Ciphertext.Length];
         aesGcm.Decrypt(envelope.Nonce, envelope.Ciphertext, envelope.Tag, plaintext);
 
-        // Update state
-        state.LastSequenceNumber = envelope.SequenceNumber;
-        state.MessageCount++;
+        // Update state atomically to prevent race conditions
+        Interlocked.Exchange(ref state.LastSequenceNumber, envelope.SequenceNumber);
+        Interlocked.Increment(ref state.MessageCount);
         state.LastActivityAt = DateTimeOffset.UtcNow;
 
         _metrics.IncrementMessagesDecrypted();
@@ -320,7 +323,7 @@ public class EncryptionService : IEncryptionService
         // Sign
         var signature = CreateSignature(actualKeyId, nonce, ciphertext, tag, timestamp, sequenceNumber);
 
-        state.MessageCount++;
+        Interlocked.Increment(ref state.MessageCount);
         state.LastActivityAt = DateTimeOffset.UtcNow;
 
         _metrics.IncrementMessagesEncrypted();
@@ -389,6 +392,9 @@ public class EncryptionService : IEncryptionService
 
         var sharedSecret = serverEcdh.DeriveRawSecretAgreement(clientEcdh.PublicKey);
         var newAesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
+        
+        // Zero out shared secret immediately after key derivation
+        CryptographicOperations.ZeroMemory(sharedSecret);
 
         // Rotate keys (keep previous for grace period)
         state.PreviousKeyId = state.KeyId;
@@ -508,6 +514,30 @@ public class EncryptionService : IEncryptionService
     }
 
     public EncryptionMetricsSnapshot GetMetrics() => _metrics.GetSnapshot();
+
+    private bool _disposed;
+    
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        
+        // Dispose cryptographic resources
+        _serverSigningKey?.Dispose();
+        _initLock.Dispose();
+        
+        // Securely clear all connection key material
+        foreach (var kvp in _connections)
+        {
+            var state = kvp.Value;
+            CryptographicOperations.ZeroMemory(state.AesKey);
+            if (state.PreviousAesKey != null)
+                CryptographicOperations.ZeroMemory(state.PreviousAesKey);
+            if (state.PendingRotationEcdhPrivateKey != null)
+                CryptographicOperations.ZeroMemory(state.PendingRotationEcdhPrivateKey);
+        }
+        _connections.Clear();
+    }
 
     #region Private Helpers
 

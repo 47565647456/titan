@@ -56,6 +56,9 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
         // Derive AES key from shared secret using HKDF
         _aesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
+        
+        // Zero out shared secret immediately after key derivation
+        CryptographicOperations.ZeroMemory(sharedSecret);
         _keyId = response.KeyId;
         _serverSigningPublicKey = response.ServerSigningPublicKey.ToArray();
 
@@ -159,6 +162,9 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         // Create ephemeral keys for KDF compatibility if needed, or just use raw agreement
         var sharedSecret = _currentEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         _aesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
+        
+        // Zero out shared secret immediately after key derivation
+        CryptographicOperations.ZeroMemory(sharedSecret);
         _keyId = request.KeyId;
 
         // Reset nonce counter

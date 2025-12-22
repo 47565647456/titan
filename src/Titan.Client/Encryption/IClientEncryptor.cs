@@ -6,7 +6,7 @@ namespace Titan.Client.Encryption;
 /// Client-side encryption interface for payload encryption/decryption.
 /// Manages ECDH key exchange and AES-GCM encryption with ECDSA signing.
 /// </summary>
-public interface IClientEncryptor
+public interface IClientEncryptor : IDisposable
 {
     /// <summary>
     /// Performs ECDH key exchange with the server.
