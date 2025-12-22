@@ -47,8 +47,10 @@ public record KeyRotationRequest(
 );
 
 /// <summary>
-/// Client acknowledgment of key rotation with new client public key.
+/// Client acknowledgment of key rotation with new client public keys.
+/// Includes signing key to handle cases where multiple instances may have different signing keys.
 /// </summary>
 public record KeyRotationAck(
-    ReadOnlyMemory<byte> ClientPublicKey
+    ReadOnlyMemory<byte> ClientPublicKey,
+    ReadOnlyMemory<byte> ClientSigningPublicKey
 );

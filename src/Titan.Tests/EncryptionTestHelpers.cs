@@ -114,6 +114,9 @@ public static class EncryptionTestHelpers
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
             salt: response.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
+        
+        // Zero out shared secret after key derivation (secure cleanup)
+        CryptographicOperations.ZeroMemory(sharedSecret);
 
         return new EncryptionConnectionSetup(response, aesKey, clientEcdsa);
     }

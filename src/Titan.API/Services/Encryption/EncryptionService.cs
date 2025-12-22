@@ -178,8 +178,7 @@ public class EncryptionService : IEncryptionService, IDisposable
             NonceCounter = 0,
             MessageCount = 0,
             KeyCreatedAt = DateTimeOffset.UtcNow,
-            LastActivityAt = DateTimeOffset.UtcNow,
-            LastSequenceNumber = 0
+            LastActivityAt = DateTimeOffset.UtcNow
         };
 
         // Store connection state with grace period for previous key
@@ -266,10 +265,11 @@ public class EncryptionService : IEncryptionService, IDisposable
             throw new SecurityException($"Message timestamp outside valid window: {age.TotalSeconds}s");
         }
 
-        // Validate sequence number (monotonically increasing)
-        if (envelope.SequenceNumber <= state.LastSequenceNumber)
+        // Validate sequence number per keyId (to handle key rotation correctly)
+        var lastSeqForKey = state.GetLastSequenceForKey(envelope.KeyId);
+        if (envelope.SequenceNumber <= lastSeqForKey)
         {
-            throw new SecurityException($"Sequence number regression detected: {envelope.SequenceNumber} <= {state.LastSequenceNumber}");
+            throw new SecurityException($"Sequence number regression detected for key {envelope.KeyId}: {envelope.SequenceNumber} <= {lastSeqForKey}");
         }
 
         // Verify signature (signingKey was selected inside lock above)
@@ -284,7 +284,7 @@ public class EncryptionService : IEncryptionService, IDisposable
         aesGcm.Decrypt(envelope.Nonce, envelope.Ciphertext, envelope.Tag, plaintext);
 
         // Update state atomically to prevent race conditions
-        Interlocked.Exchange(ref state.LastSequenceNumber, envelope.SequenceNumber);
+        state.SetLastSequenceForKey(envelope.KeyId, envelope.SequenceNumber);
         Interlocked.Increment(ref state.MessageCount);
         state.LastActivityAt = DateTimeOffset.UtcNow;
 
@@ -417,11 +417,15 @@ public class EncryptionService : IEncryptionService, IDisposable
             // Rotate keys (keep previous for grace period)
             state.PreviousKeyId = state.KeyId;
             state.PreviousAesKey = state.AesKey;
+            state.PreviousClientSigningPublicKey = state.ClientSigningPublicKey;
             state.PreviousKeyExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_options.KeyRotationGracePeriodSeconds);
 
             state.KeyId = state.PendingRotationKeyId;
             state.AesKey = newAesKey;
             state.HkdfSalt = state.PendingRotationHkdfSalt;
+            // Update client signing key to the one from the rotation ack
+            // This handles React Strict Mode double-mount where different instances have different signing keys
+            state.ClientSigningPublicKey = ack.ClientSigningPublicKey.ToArray();
             state.KeyCreatedAt = DateTimeOffset.UtcNow;
             state.MessageCount = 0;
             state.NonceCounter = 0;
@@ -638,7 +642,10 @@ public class EncryptionService : IEncryptionService, IDisposable
         public required int UserIdHash { get; set; }
         public long NonceCounter;
         public long MessageCount;
-        public long LastSequenceNumber;
+        /// <summary>
+        /// Per-keyId sequence tracking to support sequence number reset during key rotation.
+        /// </summary>
+        private readonly ConcurrentDictionary<string, long> _lastSequencePerKey = new();
         public long ServerSequenceNumber;
         public DateTimeOffset KeyCreatedAt { get; set; }
         
@@ -665,6 +672,22 @@ public class EncryptionService : IEncryptionService, IDisposable
         public readonly object StateLock = new();
 
         /// <summary>
+        /// Gets the last received sequence number for a specific keyId.
+        /// </summary>
+        public long GetLastSequenceForKey(string keyId)
+        {
+            return _lastSequencePerKey.TryGetValue(keyId, out var seq) ? seq : 0;
+        }
+
+        /// <summary>
+        /// Updates the last received sequence number for a specific keyId.
+        /// </summary>
+        public void SetLastSequenceForKey(string keyId, long sequenceNumber)
+        {
+            _lastSequencePerKey[keyId] = sequenceNumber;
+        }
+
+        /// <summary>
         /// Creates a ConnectionEncryptionState from a persisted state.
         /// </summary>
         public static ConnectionEncryptionState FromPersisted(PersistedEncryptionState persisted)
@@ -678,7 +701,6 @@ public class EncryptionService : IEncryptionService, IDisposable
                 UserIdHash = persisted.UserIdHash,
                 NonceCounter = persisted.NonceCounter,
                 MessageCount = persisted.MessageCount,
-                LastSequenceNumber = persisted.LastSequenceNumber,
                 ServerSequenceNumber = persisted.ServerSequenceNumber,
                 KeyCreatedAt = persisted.KeyCreatedAt,
                 LastActivityAt = persisted.LastActivityAt,
@@ -703,7 +725,7 @@ public class EncryptionService : IEncryptionService, IDisposable
                 UserIdHash = UserIdHash,
                 NonceCounter = NonceCounter,
                 MessageCount = MessageCount,
-                LastSequenceNumber = LastSequenceNumber,
+                LastSequenceNumber = 0, // Per-keyId tracking doesn't persist well, reset on restore
                 ServerSequenceNumber = ServerSequenceNumber,
                 KeyCreatedAt = KeyCreatedAt,
                 LastActivityAt = LastActivityAt,

@@ -66,4 +66,12 @@ public class EncryptionOptions
     /// </summary>
     [Range(1, 500)]
     public int BroadcastMaxConcurrency { get; set; } = 50;
+
+    /// <summary>
+    /// How long to persist encryption state in Redis before expiry.
+    /// If user doesn't reconnect within this time, state expires and they must re-negotiate.
+    /// Default: 24 hours
+    /// </summary>
+    [Range(1, 168)] // 1 hour to 1 week
+    public int StateExpiryHours { get; set; } = 24;
 }

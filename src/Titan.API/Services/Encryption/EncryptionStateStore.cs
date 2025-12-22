@@ -1,7 +1,9 @@
 using MemoryPack;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using System.Security.Cryptography;
+using Titan.API.Config;
 
 namespace Titan.API.Services.Encryption;
 
@@ -13,6 +15,7 @@ public class EncryptionStateStore
 {
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<EncryptionStateStore> _logger;
+    private readonly EncryptionOptions _options;
 
     // Redis key prefixes
     private const string SigningKeyPrefix = "encryption:signing-key";
@@ -20,10 +23,12 @@ public class EncryptionStateStore
 
     public EncryptionStateStore(
         [FromKeyedServices("encryption")] IConnectionMultiplexer redis,
-        ILogger<EncryptionStateStore> logger)
+        ILogger<EncryptionStateStore> logger,
+        IOptions<EncryptionOptions> options)
     {
         _redis = redis;
         _logger = logger;
+        _options = options.Value;
     }
 
     /// <summary>
@@ -82,8 +87,8 @@ public class EncryptionStateStore
             var key = GetStateKey(userId);
             var data = MemoryPackSerializer.Serialize(state);
             
-            // Set expiry to 24 hours - if user doesn't reconnect, state expires
-            await db.StringSetAsync(key, data, TimeSpan.FromHours(24));
+            // Set expiry based on configured StateExpiryHours
+            await db.StringSetAsync(key, data, TimeSpan.FromHours(_options.StateExpiryHours));
             _logger.LogDebug("Saved encryption state for user {UserId}", userId);
         }
         catch (Exception ex)
@@ -168,8 +173,17 @@ public class EncryptionStateStore
                         var state = MemoryPackSerializer.Deserialize<PersistedEncryptionState>((byte[])data!);
                         if (state != null)
                         {
-                            var userId = key.ToString().Substring(EncryptionStatePrefix.Length);
-                            states[userId] = state;
+                            // Extract userId from key with validation
+                            var keyString = key.ToString();
+                            if (keyString.StartsWith(EncryptionStatePrefix) && keyString.Length > EncryptionStatePrefix.Length)
+                            {
+                                var userId = keyString[EncryptionStatePrefix.Length..];
+                                states[userId] = state;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Invalid encryption state key format: {Key}", key);
+                            }
                         }
                     }
                 }

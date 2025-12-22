@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security;
 using System.Security.Cryptography;
 using Titan.Abstractions.Models;
@@ -24,8 +25,9 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     private long _sequenceNumber;
     /// <summary>
     /// Tracks last received sequence number per keyId to prevent sequence regression after key rotation.
+    /// Uses ConcurrentDictionary for thread-safety.
     /// </summary>
-    private readonly Dictionary<string, long> _lastServerSequencePerKey = new();
+    private readonly ConcurrentDictionary<string, long> _lastServerSequencePerKey = new();
 
     // Previous key for grace period
     private string? _previousKeyId;
@@ -153,8 +155,11 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         var plaintext = new byte[envelope.Ciphertext.Length];
         aesGcm.Decrypt(envelope.Nonce, envelope.Ciphertext, envelope.Tag, plaintext);
 
-        // Update last received sequence for this keyId
-        _lastServerSequencePerKey[envelope.KeyId] = envelope.SequenceNumber;
+        // Update last received sequence for this keyId (thread-safe)
+        _lastServerSequencePerKey.AddOrUpdate(
+            envelope.KeyId,
+            envelope.SequenceNumber,
+            (key, existing) => Math.Max(existing, envelope.SequenceNumber));
 
         return plaintext;
     }
@@ -186,7 +191,7 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         // Reset nonce counter
         _nonceCounter = 0;
 
-        return new KeyRotationAck(clientPublicKey);
+        return new KeyRotationAck(clientPublicKey, _signingPublicKey);
     }
 
     /// <summary>

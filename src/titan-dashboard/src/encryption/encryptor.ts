@@ -28,6 +28,8 @@ export class Encryptor {
   private ecdhKeyPair: CryptoKeyPair | null = null;
   // We only need the private key for signing - publicKey is null after restoration from session
   private signingPrivateKey: CryptoKey | null = null;
+  // Store the signing public key in base64 format for rotation acks
+  private signingPublicKeyBase64: string | null = null;
   private aesKey: CryptoKey | null = null;
   private serverSigningPublicKey: CryptoKey | null = null;
   private keyId: string | null = null;
@@ -81,10 +83,13 @@ export class Encryptor {
     // Export public keys in SPKI format
     const ecdhPublicKey = await crypto.subtle.exportKey('spki', this.ecdhKeyPair.publicKey);
     const signingPublicKey = await crypto.subtle.exportKey('spki', signingKeyPair.publicKey);
+    
+    // Store the signing public key for rotation acks
+    this.signingPublicKeyBase64 = arrayBufferToBase64(signingPublicKey);
 
     return {
       clientPublicKey: arrayBufferToBase64(ecdhPublicKey),
-      clientSigningPublicKey: arrayBufferToBase64(signingPublicKey),
+      clientSigningPublicKey: this.signingPublicKeyBase64,
     };
   }
 
@@ -171,9 +176,9 @@ export class Encryptor {
    * Generates new ECDH keypair and derives new AES key.
    * Returns the client's new public key for the server.
    */
-  async handleKeyRotation(request: KeyRotationRequest): Promise<{ clientPublicKey: string }> {
-    if (!this.aesKey || !this.keyId) {
-      throw new Error('Cannot rotate keys: encryption not initialized');
+  async handleKeyRotation(request: KeyRotationRequest): Promise<{ clientPublicKey: string; clientSigningPublicKey: string }> {
+    if (!this.aesKey || !this.keyId || !this.signingPublicKeyBase64) {
+      throw new Error('Cannot rotate keys: encryption not initialized or signing key missing');
     }
 
     // Move current keys to previous for grace period
@@ -246,6 +251,7 @@ export class Encryptor {
 
     return {
       clientPublicKey: arrayBufferToBase64(clientPublicKeySpki),
+      clientSigningPublicKey: this.signingPublicKeyBase64!,
     };
   }
 
@@ -447,6 +453,7 @@ export class Encryptor {
               aesKey: aesKeyJwk,
               serverSigningKey: serverSignJwk,
               clientSigningKey: signingKeyPrivateJwk,
+              clientSigningPublicKeyBase64: this.signingPublicKeyBase64,
               sequenceNumber: this.sequenceNumber,
               // Persist previous key state
               previousKeyId: this.previousKeyId,
@@ -503,6 +510,8 @@ export class Encryptor {
 
           // Store only the private key - we don't need the public key for signing
           this.signingPrivateKey = clientSigningPrivateKey;
+          // Restore the signing public key for rotation acks
+          this.signingPublicKeyBase64 = state.clientSigningPublicKeyBase64 || null;
 
           this.aesKey = aesKey;
           this.serverSigningPublicKey = serverSigningKey;
@@ -605,6 +614,7 @@ export class Encryptor {
   reset(): void {
     this.ecdhKeyPair = null;
     this.signingPrivateKey = null;
+    this.signingPublicKeyBase64 = null;
     this.aesKey = null;
     this.serverSigningPublicKey = null;
     this.keyId = null;

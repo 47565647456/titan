@@ -40,6 +40,7 @@ public static class EncryptionIntegrationHelpers
 
     /// <summary>
     /// Creates a hub connection for the encryption hub and performs key exchange.
+    /// Properly disposes resources on failure.
     /// </summary>
     public static async Task<(HubConnection Hub, ClientEncryptor Encryptor)> SetupEncryptedConnectionAsync(
         string apiBaseUrl,
@@ -48,13 +49,25 @@ public static class EncryptionIntegrationHelpers
         var encryptionHub = new HubConnectionBuilder()
             .WithUrl($"{apiBaseUrl}/encryptionHub?access_token={sessionId}")
             .Build();
-        await encryptionHub.StartAsync();
+        
+        ClientEncryptor? encryptor = null;
+        try
+        {
+            await encryptionHub.StartAsync();
 
-        var encryptor = new ClientEncryptor();
-        await encryptor.PerformKeyExchangeAsync(async req =>
-            await encryptionHub.InvokeAsync<KeyExchangeResponse>("KeyExchange", req));
+            encryptor = new ClientEncryptor();
+            await encryptor.PerformKeyExchangeAsync(async req =>
+                await encryptionHub.InvokeAsync<KeyExchangeResponse>("KeyExchange", req));
 
-        return (encryptionHub, encryptor);
+            return (encryptionHub, encryptor);
+        }
+        catch
+        {
+            // Dispose resources on failure
+            encryptor?.Dispose();
+            await encryptionHub.DisposeAsync();
+            throw;
+        }
     }
 }
 
@@ -136,9 +149,7 @@ public sealed class EncryptionStateContext : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _adminClient.PostAsJsonAsync("/api/admin/encryption/enabled", new { Enabled = _originalEnabled });
-        if (_originalRequired)
-        {
-            await _adminClient.PostAsJsonAsync("/api/admin/encryption/required", new { Required = _originalRequired });
-        }
+        // Always restore the Required state regardless of its original value
+        await _adminClient.PostAsJsonAsync("/api/admin/encryption/required", new { Required = _originalRequired });
     }
 }

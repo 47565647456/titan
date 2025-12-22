@@ -468,8 +468,9 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         Assert.NotNull(sharedSecret);
         Assert.Equal(32, sharedSecret.Length);  // 256-bit key
 
-        // Can derive AES key
+        // Can derive AES key (using salt from server response)
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
+            salt: response.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
         Assert.Equal(32, aesKey.Length);
 

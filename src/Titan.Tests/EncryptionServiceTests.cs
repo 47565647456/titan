@@ -401,7 +401,7 @@ public class EncryptionServiceTests
 
         // Generate new client keypair for rotation
         using var newClientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var ack = new KeyRotationAck(newClientEcdh.ExportSubjectPublicKeyInfo());
+        var ack = new KeyRotationAck(newClientEcdh.ExportSubjectPublicKeyInfo(), clientEcdsa.ExportSubjectPublicKeyInfo());
 
         // Act
         await _service.CompleteKeyRotationAsync(connectionId, ack);
@@ -430,7 +430,7 @@ public class EncryptionServiceTests
         // Complete rotation so we have a previous key
         using var newClientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         await _service.CompleteKeyRotationAsync(connectionId, 
-            new KeyRotationAck(newClientEcdh.ExportSubjectPublicKeyInfo()));
+            new KeyRotationAck(newClientEcdh.ExportSubjectPublicKeyInfo(), clientEcdsa.ExportSubjectPublicKeyInfo()));
 
         // The previous key should exist now (grace period hasn't expired)
         var cleanedBeforeExpiry = _service.CleanupExpiredPreviousKeys();
