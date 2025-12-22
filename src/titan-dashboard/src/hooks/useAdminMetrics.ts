@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import * as signalR from '@microsoft/signalr';
+import { createEncryptedConnection, type EncryptedSignalRConnection } from '../encryption';
 
 export interface RateLimitBucket {
   partitionKey: string;
@@ -31,56 +32,63 @@ interface UseAdminMetricsReturn {
   clearTimeout: (partitionKey: string, policyName: string) => Promise<boolean>;
   clearBucket: (partitionKey: string) => Promise<number>;
   error: string | null;
+  encryptionActive: boolean;
 }
 
 /**
  * Custom hook for real-time rate limiting metrics via SignalR.
- * Replaces polling with push-based updates from the server.
+ * Uses EncryptedSignalRConnection for secure application-layer encryption.
  */
 export function useAdminMetrics(): UseAdminMetricsReturn {
-  const connectionRef = useRef<signalR.HubConnection | null>(null);
+  const connectionManagerRef = useRef<EncryptedSignalRConnection | null>(null);
+  const hubConnectionRef = useRef<signalR.HubConnection | null>(null);
   const [metrics, setMetrics] = useState<RateLimitMetrics | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
   const [error, setError] = useState<string | null>(null);
+  const [encryptionActive, setEncryptionActive] = useState(false);
   
-  // Get session token from localStorage (same as API client)
+  const apiBaseUrl = import.meta.env.VITE_API_URL || '';
   const getToken = useCallback(() => localStorage.getItem('sessionId'), []);
 
-  // Manual refresh request
-  const refresh = useCallback(() => {
-    if (connectionRef.current?.state === signalR.HubConnectionState.Connected) {
-      connectionRef.current.invoke('RefreshMetrics').catch(err => {
+  const refresh = useCallback(async () => {
+    if (connectionManagerRef.current && hubConnectionRef.current?.state === signalR.HubConnectionState.Connected) {
+      try {
+        await connectionManagerRef.current.invoke(hubConnectionRef.current, 'RefreshMetrics');
+      } catch (err) {
         console.error('Failed to refresh metrics:', err);
-      });
+      }
     }
   }, []);
 
-  // Clear a specific timeout
   const clearTimeout = useCallback(async (partitionKey: string, policyName: string): Promise<boolean> => {
-    if (connectionRef.current?.state !== signalR.HubConnectionState.Connected) {
-      return false;
+    if (connectionManagerRef.current && hubConnectionRef.current?.state === signalR.HubConnectionState.Connected) {
+      try {
+        return await connectionManagerRef.current.invoke<boolean>(
+          hubConnectionRef.current, 
+          'ClearTimeout', 
+          partitionKey, 
+          policyName
+        );
+      } catch (err) {
+        console.error('Failed to clear timeout:', err);
+      }
     }
-    try {
-      const result = await connectionRef.current.invoke<boolean>('ClearTimeout', partitionKey, policyName);
-      return result;
-    } catch (err) {
-      console.error('Failed to clear timeout:', err);
-      return false;
-    }
+    return false;
   }, []);
 
-  // Clear all buckets for a partition key
   const clearBucket = useCallback(async (partitionKey: string): Promise<number> => {
-    if (connectionRef.current?.state !== signalR.HubConnectionState.Connected) {
-      return 0;
+    if (connectionManagerRef.current && hubConnectionRef.current?.state === signalR.HubConnectionState.Connected) {
+      try {
+        return await connectionManagerRef.current.invoke<number>(
+          hubConnectionRef.current, 
+          'ClearBucket', 
+          partitionKey
+        );
+      } catch (err) {
+        console.error('Failed to clear bucket:', err);
+      }
     }
-    try {
-      const count = await connectionRef.current.invoke<number>('ClearBucket', partitionKey);
-      return count;
-    } catch (err) {
-      console.error('Failed to clear bucket:', err);
-      return 0;
-    }
+    return 0;
   }, []);
 
   useEffect(() => {
@@ -90,73 +98,75 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
       return;
     }
 
-    // Build connection
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/admin-metrics', {
-        accessTokenFactory: () => token,
-      })
-      .withAutomaticReconnect({
-        nextRetryDelayInMilliseconds: (retryContext) => {
-          // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
-          return Math.min(1000 * Math.pow(2, retryContext.previousRetryCount), 30000);
-        },
-      })
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
-
-    connectionRef.current = connection;
-
-    // Handle metrics updates
-    connection.on('MetricsUpdated', (data: RateLimitMetrics) => {
-      setMetrics(data);
-    });
-
-    // Connection state handlers
-    connection.onreconnecting(() => {
-      setConnectionState('connecting');
-    });
-
-    connection.onreconnected(() => {
-      setConnectionState('connected');
-      // Re-subscribe after reconnect
-      connection.invoke('SubscribeToMetrics').catch(console.error);
-    });
-
-    connection.onclose((err) => {
-      setConnectionState('disconnected');
-      if (err) {
-        setError(`Connection closed: ${err.message}`);
-      }
-    });
-
-    // Start connection
-    const startConnection = async () => {
+    let isEffectActive = true;
+    
+    const initialize = async () => {
       setConnectionState('connecting');
       setError(null);
-      
+
       try {
-        await connection.start();
-        setConnectionState('connected');
+        const manager = createEncryptedConnection({
+          baseUrl: apiBaseUrl,
+          getToken,
+          autoKeyExchange: true
+        });
+        connectionManagerRef.current = manager;
+
+        // Initialize encryption (GetConfig -> KeyExchange)
+        const encryptionSuccess = await manager.initializeEncryption();
+        if (!isEffectActive) return;
         
-        // Subscribe to metrics updates
-        await connection.invoke('SubscribeToMetrics');
+        setEncryptionActive(encryptionSuccess);
+        
+        // Connect to the actual hub
+        const hub = await manager.connectToHub('/hubs/admin-metrics');
+        hubConnectionRef.current = hub;
+        if (!isEffectActive) return;
+
+        // Register event handlers via manager (handles decryption)
+        manager.on<RateLimitMetrics>(hub, 'MetricsUpdated', (data) => {
+          if (isEffectActive) setMetrics(data);
+        });
+
+        // Connection lifecycle
+        hub.onreconnecting(() => setConnectionState('connecting'));
+        hub.onreconnected(() => {
+          setConnectionState('connected');
+          manager.invoke(hub, 'SubscribeToMetrics').catch(console.error);
+        });
+        hub.onclose((err) => {
+          setConnectionState('disconnected');
+          if (err) setError(`Connection lost: ${err.message}`);
+        });
+
+        await hub.start();
+        if (!isEffectActive) return;
+
+        setConnectionState('connected');
+        await manager.invoke(hub, 'SubscribeToMetrics');
+        console.log('[useAdminMetrics] Connected and subscribed');
+
       } catch (err) {
-        console.error('SignalR connection failed:', err);
+        if (!isEffectActive) return;
+        
+        console.error('[useAdminMetrics] Init failed:', err);
         setConnectionState('error');
         setError(err instanceof Error ? err.message : 'Connection failed');
       }
     };
 
-    startConnection();
+    initialize();
 
-    // Cleanup
     return () => {
-      if (connection.state !== signalR.HubConnectionState.Disconnected) {
-        connection.invoke('UnsubscribeFromMetrics').catch(() => {});
-        connection.stop().catch(console.error);
+      isEffectActive = false;
+      if (hubConnectionRef.current) {
+        hubConnectionRef.current.stop().catch(() => {});
+      }
+      if (connectionManagerRef.current) {
+        connectionManagerRef.current.disconnect().catch(() => {});
       }
     };
-  }, [getToken]);
+  }, [getToken, apiBaseUrl]);
 
-  return { metrics, connectionState, refresh, clearTimeout, clearBucket, error };
+  return { metrics, connectionState, refresh, clearTimeout, clearBucket, error, encryptionActive };
 }

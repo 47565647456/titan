@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.API.Services.Encryption;
 using Titan.API.Services;
 
 namespace Titan.API.Hubs;
@@ -15,12 +16,36 @@ public class TradeHub : TitanHubBase
 {
     private readonly TradeStreamSubscriber _streamSubscriber;
     private readonly HubValidationService _validation;
+    private readonly EncryptedHubBroadcaster<TradeHub> _broadcaster;
 
-    public TradeHub(IClusterClient clusterClient, TradeStreamSubscriber streamSubscriber, HubValidationService validation, ILogger<TradeHub> logger)
-        : base(clusterClient, logger)
+    public TradeHub(
+        IClusterClient clusterClient, 
+        IEncryptionService encryptionService, 
+        TradeStreamSubscriber streamSubscriber, 
+        HubValidationService validation, 
+        EncryptedHubBroadcaster<TradeHub> broadcaster,
+        ILogger<TradeHub> logger)
+        : base(clusterClient, encryptionService, logger)
     {
         _streamSubscriber = streamSubscriber;
         _validation = validation;
+        _broadcaster = broadcaster;
+    }
+
+    public override async Task OnConnectedAsync()
+    {
+        var userId = Context.UserIdentifier;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _broadcaster.RegisterConnection(Context.ConnectionId, userId);
+        }
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        _broadcaster.UnregisterConnection(Context.ConnectionId);
+        await base.OnDisconnectedAsync(exception);
     }
 
     #region Security Helpers
@@ -61,7 +86,9 @@ public class TradeHub : TitanHubBase
         // Verify caller is a participant before allowing subscription
         await GetOwnedCharacterInTradeAsync(tradeId);
         
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"trade-{tradeId}");
+        await GetOwnedCharacterInTradeAsync(tradeId);
+        
+        _broadcaster.AddToGroup(Context.ConnectionId, $"trade-{tradeId}");
         await _streamSubscriber.SubscribeToTradeAsync(tradeId);
     }
 
@@ -70,7 +97,7 @@ public class TradeHub : TitanHubBase
     /// </summary>
     public async Task LeaveTradeSession(Guid tradeId)
     {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"trade-{tradeId}");
+        _broadcaster.RemoveFromGroup(Context.ConnectionId, $"trade-{tradeId}");
     }
 
     #endregion
@@ -179,7 +206,7 @@ public class TradeHub : TitanHubBase
 
     private async Task NotifyTradeUpdate(Guid tradeId, string eventType, object? data = null)
     {
-        await Clients.Group($"trade-{tradeId}").SendAsync("TradeUpdate", new
+        await _broadcaster.SendToGroupAsync($"trade-{tradeId}", "TradeUpdate", new
         {
             TradeId = tradeId,
             EventType = eventType,

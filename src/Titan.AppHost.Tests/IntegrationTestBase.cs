@@ -33,7 +33,8 @@ public class AppHostFixture : IAsyncLifetime
                 "--environment=Development",
                 "Database:Volume=ephemeral",
                 "Parameters:postgres-password=TestPassword123!",
-                "RateLimiting:Enabled=false" // Disable rate limiting for existing tests
+                "RateLimiting:Enabled=false", // Disable rate limiting for existing tests
+                "Encryption:RequireEncryption=false" // Disable strict encryption for existing integration tests
             ]);
         
         // Add resilience to HTTP clients
@@ -51,7 +52,8 @@ public class AppHostFixture : IAsyncLifetime
             App.ResourceNotifications.WaitForResourceHealthyAsync("trading-host"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("api"),
             App.ResourceNotifications.WaitForResourceHealthyAsync("rate-limiting"), // Rate-limiting storage Redis
-            App.ResourceNotifications.WaitForResourceHealthyAsync("sessions")       // Session storage Redis
+            App.ResourceNotifications.WaitForResourceHealthyAsync("sessions"),       // Session storage Redis
+            App.ResourceNotifications.WaitForResourceHealthyAsync("encryption")      // Encryption storage Redis
         ).WaitAsync(DefaultTimeout);
         
         // Give Orleans cluster time to stabilize
@@ -152,6 +154,22 @@ public abstract class IntegrationTestBase
 
     protected async Task<(string SessionId, DateTimeOffset ExpiresAt, Guid UserId)> LoginAsAdminAsync()
         => await LoginAsync($"mock:admin:{Guid.NewGuid()}");
+
+    /// <summary>
+    /// Logs in as a real admin via the admin auth portal to get a valid admin session ID.
+    /// </summary>
+    protected async Task<(string SessionId, Guid UserId)> LoginAsRealAdminAsync()
+    {
+        var loginResponse = await HttpClient.PostAsJsonAsync("/api/admin/auth/login", new
+        {
+            email = "admin@titan.local",
+            password = "Admin123!"
+        });
+        loginResponse.EnsureSuccessStatusCode();
+        var login = await loginResponse.Content.ReadFromJsonAsync<AdminLoginResponse>()
+            ?? throw new InvalidOperationException("Failed to parse admin login response");
+        return (login.SessionId, login.UserId);
+    }
 
     protected HubConnection CreateHubConnection(string hubPath, string sessionId)
         => new HubConnectionBuilder()

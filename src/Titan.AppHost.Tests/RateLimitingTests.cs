@@ -1266,7 +1266,8 @@ public class RateLimitingAppHostFixture : IAsyncLifetime
                 "--environment=Development",
                 "Database:Volume=ephemeral",
                 "Parameters:postgres-password=TestPassword123!",
-                "RateLimiting:Enabled=true" // Enable rate limiting for these tests
+                "RateLimiting:Enabled=true", // Enable rate limiting for these tests
+                "Encryption:RequireEncryption=false" // Disable strict encryption for existing integration tests
             ]);
         
         // Add resilience to HTTP clients

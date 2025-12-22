@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Titan.Abstractions.Contracts;
+using Titan.Abstractions.Models;
+using Titan.Client.Encryption;
 using TypedSignalR.Client;
 
 namespace Titan.Client;
@@ -22,11 +24,16 @@ public sealed class TitanClient : IAsyncDisposable
     private HubConnection? _baseTypeHub;
     private HubConnection? _seasonHub;
     private HubConnection? _authHub;
+    private HubConnection? _encryptionHub;
 
     private readonly Lock _sessionLock = new();
     private string? _currentSessionId;
     private Guid? _currentUserId;
     private DateTimeOffset? _sessionExpiresAt;
+
+    // Encryption support
+    private IClientEncryptor? _encryptor;
+    private bool _encryptionEnabled;
 
     /// <summary>
     /// HTTP authentication client.
@@ -52,6 +59,16 @@ public sealed class TitanClient : IAsyncDisposable
     /// Whether the client is authenticated.
     /// </summary>
     public bool IsAuthenticated => !string.IsNullOrEmpty(_currentSessionId);
+
+    /// <summary>
+    /// Whether payload encryption is active for this client.
+    /// </summary>
+    public bool IsEncryptionEnabled => _encryptionEnabled && _encryptor?.IsInitialized == true;
+
+    /// <summary>
+    /// Gets the client encryptor for advanced usage (testing, etc.).
+    /// </summary>
+    public IClientEncryptor? Encryptor => _encryptor;
 
     /// <summary>
     /// Creates a new TitanClient with the specified options.
@@ -223,7 +240,60 @@ public sealed class TitanClient : IAsyncDisposable
         await connection.StartAsync();
         _logger?.LogDebug("Connected to {HubPath}", hubPath);
 
+        // Perform key exchange if encryption is enabled
+        if (_options.EnablePayloadEncryption && !_encryptionEnabled)
+        {
+            try
+            {
+                await InitializeEncryptionAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to initialize encryption for {HubPath}", hubPath);
+            }
+        }
+
         return connection;
+    }
+
+    private async Task InitializeEncryptionAsync()
+    {
+        // Connect to the encryption hub
+        _encryptionHub = new HubConnectionBuilder()
+            .WithUrl($"{_options.BaseUrl}/encryptionHub", options =>
+            {
+                options.AccessTokenProvider = () => Task.FromResult<string?>(_currentSessionId);
+            })
+            .Build();
+
+        // Register for key rotation messages
+        _encryptionHub.On<KeyRotationRequest>("KeyRotation", async request =>
+        {
+            if (_encryptor != null)
+            {
+                var ack = _encryptor.HandleRotationRequest(request);
+                await _encryptionHub.InvokeAsync("CompleteKeyRotation", ack);
+                _logger?.LogDebug("Completed key rotation, new KeyId: {KeyId}", request.KeyId);
+            }
+        });
+
+        await _encryptionHub.StartAsync();
+        _logger?.LogDebug("Connected to encryptionHub");
+
+        // Perform key exchange
+        _encryptor = new ClientEncryptor();
+        
+        var success = await _encryptor.PerformKeyExchangeAsync(async request =>
+        {
+            // Send key exchange request to server and get response
+            return await _encryptionHub.InvokeAsync<KeyExchangeResponse>("KeyExchange", request);
+        });
+
+        if (success)
+        {
+            _encryptionEnabled = true;
+            _logger?.LogInformation("Encryption initialized, KeyId: {KeyId}", _encryptor.CurrentKeyId);
+        }
     }
 
     /// <summary>
@@ -231,7 +301,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        var hubs = new[] { _accountHub, _characterHub, _inventoryHub, _tradeHub, _baseTypeHub, _seasonHub, _authHub };
+        var hubs = new[] { _accountHub, _characterHub, _inventoryHub, _tradeHub, _baseTypeHub, _seasonHub, _authHub, _encryptionHub };
 
         foreach (var hub in hubs)
         {
@@ -248,6 +318,9 @@ public sealed class TitanClient : IAsyncDisposable
                 }
             }
         }
+
+        // Dispose encryptor (cleans up cryptographic key material securely)
+        (_encryptor as IDisposable)?.Dispose();
 
         _httpClient.Dispose();
     }

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services.Auth;
+using Titan.API.Services.Encryption;
 
 namespace Titan.API.Hubs;
 
@@ -12,18 +13,19 @@ namespace Titan.API.Hubs;
 /// Login is handled via HTTP (POST /api/auth/login) following industry standards.
 /// This hub provides session management utilities.
 /// </summary>
-public class AuthHub : Hub
+
+public class AuthHub : TitanHubBase
 {
-    private readonly IClusterClient _clusterClient;
     private readonly ISessionService _sessionService;
     private readonly ILogger<AuthHub> _logger;
 
     public AuthHub(
         IClusterClient clusterClient, 
+        IEncryptionService encryptionService,
         ISessionService sessionService,
         ILogger<AuthHub> logger)
+        : base(clusterClient, encryptionService, logger)
     {
-        _clusterClient = clusterClient;
         _sessionService = sessionService;
         _logger = logger;
     }
@@ -53,12 +55,7 @@ public class AuthHub : Hub
     [Authorize]
     public async Task<int> RevokeAllSessions()
     {
-        if (!Guid.TryParse(Context.UserIdentifier, out var userId))
-        {
-            _logger.LogWarning("RevokeAllSessions called with invalid UserIdentifier: {UserIdentifier}", Context.UserIdentifier);
-            throw new HubException("Invalid user identifier");
-        }
-        
+        var userId = GetUserId();
         var count = await _sessionService.InvalidateAllSessionsAsync(userId);
         
         _logger.LogInformation("User {UserId} revoked all {Count} sessions", userId, count);
@@ -71,12 +68,8 @@ public class AuthHub : Hub
     [Authorize]
     public async Task<UserProfile> GetProfile()
     {
-        if (!Guid.TryParse(Context.UserIdentifier, out var userId))
-        {
-            throw new HubException("Invalid user identifier");
-        }
-        
-        var grain = _clusterClient.GetGrain<IUserProfileGrain>(userId);
+        var userId = GetUserId();
+        var grain = ClusterClient.GetGrain<IUserProfileGrain>(userId);
         return await grain.GetProfileAsync();
     }
 }

@@ -3,8 +3,7 @@ using Orleans.Streams;
 using Titan.Abstractions;
 using Titan.Abstractions.Events;
 using Titan.API.Hubs;
-
-namespace Titan.API.Services;
+using Titan.API.Services.Encryption;
 
 /// <summary>
 /// Background service that subscribes to Orleans trade event streams
@@ -13,17 +12,17 @@ namespace Titan.API.Services;
 public class TradeStreamSubscriber : BackgroundService
 {
     private readonly IClusterClient _clusterClient;
-    private readonly IHubContext<TradeHub> _hubContext;
+    private readonly EncryptedHubBroadcaster<TradeHub> _broadcaster;
     private readonly ILogger<TradeStreamSubscriber> _logger;
     private readonly Dictionary<Guid, StreamSubscriptionHandle<TradeEvent>> _subscriptions = new();
 
     public TradeStreamSubscriber(
         IClusterClient clusterClient,
-        IHubContext<TradeHub> hubContext,
+        EncryptedHubBroadcaster<TradeHub> broadcaster,
         ILogger<TradeStreamSubscriber> logger)
     {
         _clusterClient = clusterClient;
-        _hubContext = hubContext;
+        _broadcaster = broadcaster;
         _logger = logger;
     }
 
@@ -52,8 +51,8 @@ public class TradeStreamSubscriber : BackgroundService
             _logger.LogDebug("Received trade event: {EventType} for trade {TradeId}", 
                 tradeEvent.EventType, tradeEvent.TradeId);
 
-            // Forward to SignalR clients in the trade group
-            await _hubContext.Clients.Group($"trade-{tradeId}").SendAsync("TradeUpdate", new
+            // Forward to SignalR clients in the trade group (encrypted)
+            await _broadcaster.SendToGroupAsync($"trade-{tradeId}", "TradeUpdate", new
             {
                 TradeId = tradeEvent.TradeId,
                 EventType = tradeEvent.EventType,

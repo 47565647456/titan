@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains.Items;
+using Titan.Abstractions.Models;
 using Titan.Abstractions.Models.Items;
+using Titan.API.Services.Encryption;
 using Titan.API.Services;
 
 namespace Titan.API.Hubs;
@@ -16,12 +18,35 @@ public class BaseTypeHub : TitanHubBase
 {
     private readonly ILogger<BaseTypeHub> _logger;
     private readonly HubValidationService _validation;
+    private readonly EncryptedHubBroadcaster<BaseTypeHub> _broadcaster;
 
-    public BaseTypeHub(IClusterClient clusterClient, HubValidationService validation, ILogger<BaseTypeHub> logger)
-        : base(clusterClient, logger)
+    public BaseTypeHub(
+        IClusterClient clusterClient, 
+        IEncryptionService encryptionService, 
+        HubValidationService validation, 
+        EncryptedHubBroadcaster<BaseTypeHub> broadcaster,
+        ILogger<BaseTypeHub> logger)
+        : base(clusterClient, encryptionService, logger)
     {
         _logger = logger;
         _validation = validation;
+        _broadcaster = broadcaster;
+    }
+
+    public override async Task OnConnectedAsync()
+    {
+        var userId = Context.UserIdentifier;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _broadcaster.RegisterConnection(Context.ConnectionId, userId);
+        }
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        _broadcaster.UnregisterConnection(Context.ConnectionId);
+        await base.OnDisconnectedAsync(exception);
     }
 
     #region Subscriptions
@@ -31,7 +56,7 @@ public class BaseTypeHub : TitanHubBase
     /// </summary>
     public async Task JoinBaseTypesGroup()
     {
-        await Groups.AddToGroupAsync(Context.ConnectionId, "base-types");
+        _broadcaster.AddToGroup(Context.ConnectionId, "base-types");
     }
 
     /// <summary>
@@ -39,7 +64,7 @@ public class BaseTypeHub : TitanHubBase
     /// </summary>
     public async Task LeaveBaseTypesGroup()
     {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, "base-types");
+        _broadcaster.RemoveFromGroup(Context.ConnectionId, "base-types");
     }
 
     #endregion
@@ -112,7 +137,7 @@ public class BaseTypeHub : TitanHubBase
         _logger.LogInformation("Base type '{BaseTypeId}' created via WebSocket", baseType.BaseTypeId);
 
         // Notify all subscribed clients
-        await Clients.Group("base-types").SendAsync("BaseTypeCreated", baseType);
+        await _broadcaster.SendToGroupAsync("base-types", "BaseTypeCreated", baseType);
 
         return baseType;
     }
@@ -139,7 +164,7 @@ public class BaseTypeHub : TitanHubBase
         _logger.LogInformation("Base type '{BaseTypeId}' updated via WebSocket", baseTypeId);
 
         // Notify all subscribed clients
-        await Clients.Group("base-types").SendAsync("BaseTypeUpdated", baseType);
+        await _broadcaster.SendToGroupAsync("base-types", "BaseTypeUpdated", baseType);
 
         return baseType;
     }
@@ -161,7 +186,7 @@ public class BaseTypeHub : TitanHubBase
         _logger.LogInformation("Base type '{BaseTypeId}' deleted via WebSocket", baseTypeId);
 
         // Notify all subscribed clients
-        await Clients.Group("base-types").SendAsync("BaseTypeDeleted", baseTypeId);
+        await _broadcaster.SendToGroupAsync("base-types", "BaseTypeDeleted", baseTypeId);
     }
 
     #endregion

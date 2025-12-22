@@ -32,6 +32,13 @@ export default defineConfig({
         secure: false,
         ws: true, // Enable WebSocket proxying
       },
+      // Proxy encryptionHub (at root level, not under /hubs)
+      '/encryptionHub': {
+        target: apiUrl,
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
     },
   },
 })
