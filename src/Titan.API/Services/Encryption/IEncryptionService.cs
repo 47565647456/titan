@@ -106,8 +106,9 @@ public interface IEncryptionService
 
     /// <summary>
     /// Cleans up encryption state for a user (e.g., when session expires).
+    /// Returns true if the user had encryption state that was removed.
     /// </summary>
-    void RemoveConnection(string userId);
+    bool RemoveConnection(string userId);
 
     /// <summary>
     /// Gets all users that need key rotation.

@@ -87,8 +87,8 @@ public class EncryptionServiceTests
     {
         // Arrange
         var connectionId = "connection-roundtrip";
-        var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         // Perform key exchange to get shared secret
         var response = await _service.PerformKeyExchangeAsync(
@@ -101,6 +101,7 @@ public class EncryptionServiceTests
         serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
+            salt: response.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         // Create a client-side encrypted envelope
@@ -119,8 +120,8 @@ public class EncryptionServiceTests
     {
         // Arrange
         var connectionId = "connection-server-encrypt";
-        var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         var response = await _service.PerformKeyExchangeAsync(
             connectionId,
@@ -153,8 +154,8 @@ public class EncryptionServiceTests
     {
         // Arrange
         var connectionId = "connection-tamper";
-        var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         var response = await _service.PerformKeyExchangeAsync(
             connectionId,
@@ -165,6 +166,7 @@ public class EncryptionServiceTests
         serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
+            salt: response.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         var plaintext = System.Text.Encoding.UTF8.GetBytes("Original message");
@@ -200,6 +202,7 @@ public class EncryptionServiceTests
         serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
+            salt: response.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         // Send first message with sequence 1
@@ -269,6 +272,7 @@ public class EncryptionServiceTests
         serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
+            salt: response.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         // Send messages to reach threshold
@@ -358,7 +362,7 @@ public class EncryptionServiceTests
     }
 
     [Fact]
-    public async Task GetConfig_ReturnsCorrectConfiguration()
+    public void GetConfig_ReturnsCorrectConfiguration()
     {
         // Act
         var config = _service.GetConfig();
@@ -547,6 +551,7 @@ public class EncryptionServiceTests
         serverEcdh1.ImportSubjectPublicKeyInfo(response1.ServerPublicKey.Span, out _);
         var sharedSecret1 = client1.DeriveRawSecretAgreement(serverEcdh1.PublicKey);
         var aesKey1 = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret1, 32,
+            salt: response1.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         var plaintext = "Message from mount 1"u8.ToArray();
@@ -669,7 +674,8 @@ public class EncryptionServiceTests
         using var serverEcdh = ECDiffieHellman.Create();
         serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
-        var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32, 
+        var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
+            salt: response.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         return (response, aesKey, clientEcdsa);

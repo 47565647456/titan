@@ -5,7 +5,7 @@
  * Mirrors the C# ClientEncryptor from Titan.Client.Encryption.
  */
 
-import type { SecureEnvelope, KeyExchangeRequest, KeyExchangeResponse } from './types';
+import type { SecureEnvelope, KeyExchangeRequest, KeyExchangeResponse, KeyRotationRequest } from './types';
 import { arrayBufferToBase64, base64ToArrayBuffer } from './utils';
 
 // Named curve for ECDH and ECDSA
@@ -22,15 +22,12 @@ const MAX_SEQUENCE_GAP = 100; // Small buffer for in-flight messages on refresh
 /**
  * Encryption client for SignalR hub communication.
  * Handles key exchange, encryption, decryption, and signing.
- */
-/**
- * Encryption client for SignalR hub communication.
- * Handles key exchange, encryption, decryption, and signing.
  * Supports key rotation grace periods and session persistence.
  */
 export class Encryptor {
   private ecdhKeyPair: CryptoKeyPair | null = null;
-  private signingKeyPair: CryptoKeyPair | null = null;
+  // We only need the private key for signing - publicKey is null after restoration from session
+  private signingPrivateKey: CryptoKey | null = null;
   private aesKey: CryptoKey | null = null;
   private serverSigningPublicKey: CryptoKey | null = null;
   private keyId: string | null = null;
@@ -41,6 +38,10 @@ export class Encryptor {
   private previousKeyId: string | null = null;
   private previousAesKey: CryptoKey | null = null;
   private previousServerSigningPublicKey: CryptoKey | null = null;
+  private previousKeyExpiresAt: number | null = null;  // Unix timestamp (ms)
+  
+  /** Grace period duration in milliseconds (should match server) */
+  private static readonly GRACE_PERIOD_MS = 300 * 1000;  // 5 minutes
 
   private readonly STORAGE_KEY = 'titan_encryption_session';
 
@@ -70,15 +71,16 @@ export class Encryptor {
     );
 
     // Generate ECDSA key pair for signing
-    this.signingKeyPair = await crypto.subtle.generateKey(
+    const signingKeyPair = await crypto.subtle.generateKey(
       { name: 'ECDSA', namedCurve: CURVE },
       true,
       ['sign', 'verify']
     );
+    this.signingPrivateKey = signingKeyPair.privateKey;
 
     // Export public keys in SPKI format
     const ecdhPublicKey = await crypto.subtle.exportKey('spki', this.ecdhKeyPair.publicKey);
-    const signingPublicKey = await crypto.subtle.exportKey('spki', this.signingKeyPair.publicKey);
+    const signingPublicKey = await crypto.subtle.exportKey('spki', signingKeyPair.publicKey);
 
     return {
       clientPublicKey: arrayBufferToBase64(ecdhPublicKey),
@@ -111,7 +113,7 @@ export class Encryptor {
       256
     );
     
-    // Derive AES key from shared secret using HKDF
+    // Derive AES key from shared secret using HKDF with salt from server
     const sharedSecretKey = await crypto.subtle.importKey(
       'raw',
       sharedSecret,
@@ -120,11 +122,14 @@ export class Encryptor {
       ['deriveKey']
     );
 
+    // Decode the salt from server response
+    const hkdfSaltBytes = base64ToArrayBuffer(response.hkdfSalt);
+
     const newAesKey = await crypto.subtle.deriveKey(
       {
         name: 'HKDF',
         hash: 'SHA-256',
-        salt: new Uint8Array(32), // HKDF spec: null salt defaults to HashLen zeros (32 for SHA-256)
+        salt: hkdfSaltBytes.buffer.slice(hkdfSaltBytes.byteOffset, hkdfSaltBytes.byteOffset + hkdfSaltBytes.byteLength) as ArrayBuffer,
         info: new TextEncoder().encode('titan-encryption-key'),
       },
       sharedSecretKey,
@@ -143,11 +148,12 @@ export class Encryptor {
       ['verify']
     );
 
-    // Rotation: Move current keys to previous
+    // Rotation: Move current keys to previous with expiry tracking
     if (this.keyId && this.aesKey && this.serverSigningPublicKey) {
       this.previousKeyId = this.keyId;
       this.previousAesKey = this.aesKey;
       this.previousServerSigningPublicKey = this.serverSigningPublicKey;
+      this.previousKeyExpiresAt = Date.now() + Encryptor.GRACE_PERIOD_MS;
     }
 
     // Set new keys
@@ -161,11 +167,94 @@ export class Encryptor {
   }
 
   /**
+   * Handle a key rotation request from the server.
+   * Generates new ECDH keypair and derives new AES key.
+   * Returns the client's new public key for the server.
+   */
+  async handleKeyRotation(request: KeyRotationRequest): Promise<{ clientPublicKey: string }> {
+    if (!this.aesKey || !this.keyId) {
+      throw new Error('Cannot rotate keys: encryption not initialized');
+    }
+
+    // Move current keys to previous for grace period
+    this.previousKeyId = this.keyId;
+    this.previousAesKey = this.aesKey;
+    this.previousServerSigningPublicKey = this.serverSigningPublicKey;
+    this.previousKeyExpiresAt = Date.now() + Encryptor.GRACE_PERIOD_MS;
+
+    // Generate new ECDH keypair
+    this.ecdhKeyPair = await crypto.subtle.generateKey(
+      { name: 'ECDH', namedCurve: CURVE },
+      true,
+      ['deriveBits']
+    );
+
+    // Export client public key
+    const clientPublicKeySpki = await crypto.subtle.exportKey('spki', this.ecdhKeyPair.publicKey);
+
+    // Import server's new public key
+    const serverPublicKeyBytes = base64ToArrayBuffer(request.serverPublicKey);
+    const serverEcdhPublicKey = await crypto.subtle.importKey(
+      'spki',
+      serverPublicKeyBytes.buffer.slice(serverPublicKeyBytes.byteOffset, serverPublicKeyBytes.byteOffset + serverPublicKeyBytes.byteLength) as ArrayBuffer,
+      { name: 'ECDH', namedCurve: CURVE },
+      false,
+      []
+    );
+
+    // Derive new shared secret
+    const sharedSecret = await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: serverEcdhPublicKey },
+      this.ecdhKeyPair.privateKey,
+      256
+    );
+
+    // Import shared secret for HKDF
+    const sharedSecretKey = await crypto.subtle.importKey(
+      'raw',
+      sharedSecret,
+      { name: 'HKDF' },
+      false,
+      ['deriveKey']
+    );
+
+    // Decode the salt from request
+    const hkdfSaltBytes = base64ToArrayBuffer(request.hkdfSalt);
+
+    // Derive new AES key using salt from request
+    this.aesKey = await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: hkdfSaltBytes.buffer.slice(hkdfSaltBytes.byteOffset, hkdfSaltBytes.byteOffset + hkdfSaltBytes.byteLength) as ArrayBuffer,
+        info: new TextEncoder().encode('titan-encryption-key'),
+      },
+      sharedSecretKey,
+      { name: 'AES-GCM', length: AES_KEY_LENGTH },
+      true,
+      ['encrypt', 'decrypt']
+    );
+
+    // Update key ID and reset sequence
+    this.keyId = request.newKeyId;
+    this.sequenceNumber = 0;
+
+    // Persist the updated state
+    await this.saveSession();
+
+    console.log('[Encryptor] Key rotation completed, new keyId:', this.keyId);
+
+    return {
+      clientPublicKey: arrayBufferToBase64(clientPublicKeySpki),
+    };
+  }
+
+  /**
    * Encrypt and sign data, returning a SecureEnvelope.
    * Always uses the CURRENT key.
    */
   async encryptAndSign(plaintext: Uint8Array): Promise<SecureEnvelope> {
-    if (!this.aesKey || !this.signingKeyPair || !this.keyId) {
+    if (!this.aesKey || !this.signingPrivateKey || !this.keyId) {
       throw new Error('Encryption not initialized. Complete key exchange first.');
     }
 
@@ -200,7 +289,7 @@ export class Encryptor {
     // Sign - slice to get proper ArrayBuffer
     const signature = await crypto.subtle.sign(
       { name: 'ECDSA', hash: 'SHA-256' },
-      this.signingKeyPair.privateKey,
+      this.signingPrivateKey,
       signatureData.buffer.slice(signatureData.byteOffset, signatureData.byteOffset + signatureData.byteLength) as ArrayBuffer
     );
 
@@ -271,11 +360,12 @@ export class Encryptor {
       envelope.sequenceNumber
     );
 
+    // Verify signature (use slice for safe ArrayBuffer extraction)
     const isValid = await crypto.subtle.verify(
       { name: 'ECDSA', hash: 'SHA-256' },
       activeServerSigningKey,
-      signature.buffer as ArrayBuffer,
-      signatureData.buffer as ArrayBuffer
+      signature.buffer.slice(signature.byteOffset, signature.byteOffset + signature.byteLength) as ArrayBuffer,
+      signatureData.buffer.slice(signatureData.byteOffset, signatureData.byteOffset + signatureData.byteLength) as ArrayBuffer
     );
 
     if (!isValid) {
@@ -329,14 +419,14 @@ export class Encryptor {
    */
   async saveSession(): Promise<void> {
       try {
-          if (!this.aesKey || !this.serverSigningPublicKey || !this.keyId || !this.signingKeyPair) {
+          if (!this.aesKey || !this.serverSigningPublicKey || !this.keyId || !this.signingPrivateKey) {
               return;
           }
 
           // Export keys to JWK
           const aesKeyJwk = await crypto.subtle.exportKey('jwk', this.aesKey);
           const serverSignJwk = await crypto.subtle.exportKey('jwk', this.serverSigningPublicKey);
-          const signingKeyPrivateJwk = await crypto.subtle.exportKey('jwk', this.signingKeyPair.privateKey);
+          const signingKeyPrivateJwk = await crypto.subtle.exportKey('jwk', this.signingPrivateKey);
           
           // Export previous keys if available
           let prevAesJwk = null;
@@ -408,11 +498,8 @@ export class Encryptor {
              }
           }
 
-          // Reconstruct keypair - publicKey is not needed for signing, only privateKey
-          this.signingKeyPair = {
-              privateKey: clientSigningPrivateKey,
-              publicKey: clientSigningPrivateKey // Use same key - public can be derived if needed
-          };
+          // Store only the private key - we don't need the public key for signing
+          this.signingPrivateKey = clientSigningPrivateKey;
 
           this.aesKey = aesKey;
           this.serverSigningPublicKey = serverSigningKey;
@@ -514,7 +601,7 @@ export class Encryptor {
    */
   reset(): void {
     this.ecdhKeyPair = null;
-    this.signingKeyPair = null;
+    this.signingPrivateKey = null;
     this.aesKey = null;
     this.serverSigningPublicKey = null;
     this.keyId = null;
@@ -523,6 +610,20 @@ export class Encryptor {
     this.previousKeyId = null;
     this.previousAesKey = null;
     this.previousServerSigningPublicKey = null;
+    this.previousKeyExpiresAt = null;
     sessionStorage.removeItem(this.STORAGE_KEY);
+  }
+
+  /**
+   * Clears expired previous key material.
+   * Should be called periodically or before decryption.
+   */
+  clearExpiredPreviousKey(): void {
+    if (this.previousKeyExpiresAt !== null && Date.now() > this.previousKeyExpiresAt) {
+      this.previousKeyId = null;
+      this.previousAesKey = null;
+      this.previousServerSigningPublicKey = null;
+      this.previousKeyExpiresAt = null;
+    }
   }
 }

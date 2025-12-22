@@ -20,11 +20,17 @@ public record KeyExchangeRequest(
 
 /// <summary>
 /// Server's response to key exchange with key identifier.
+/// Includes a cryptographically random salt for HKDF key derivation.
 /// </summary>
 public record KeyExchangeResponse(
     string KeyId,
     ReadOnlyMemory<byte> ServerPublicKey,
-    ReadOnlyMemory<byte> ServerSigningPublicKey
+    ReadOnlyMemory<byte> ServerSigningPublicKey,
+    /// <summary>
+    /// Cryptographically random salt for HKDF key derivation (32 bytes for SHA-256).
+    /// Both client and server must use this same salt.
+    /// </summary>
+    ReadOnlyMemory<byte> HkdfSalt
 );
 
 /// <summary>
@@ -33,7 +39,11 @@ public record KeyExchangeResponse(
 public record KeyRotationRequest(
     [property: JsonPropertyName("newKeyId")]
     string KeyId,
-    ReadOnlyMemory<byte> ServerPublicKey
+    ReadOnlyMemory<byte> ServerPublicKey,
+    /// <summary>
+    /// Cryptographically random salt for HKDF key derivation during rotation.
+    /// </summary>
+    ReadOnlyMemory<byte> HkdfSalt
 );
 
 /// <summary>

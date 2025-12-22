@@ -44,7 +44,11 @@ public class TradeHub : TitanHubBase
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        _broadcaster.UnregisterConnection(Context.ConnectionId);
+        var userId = Context.UserIdentifier;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _broadcaster.UnregisterConnection(Context.ConnectionId);
+        }
         await base.OnDisconnectedAsync(exception);
     }
 

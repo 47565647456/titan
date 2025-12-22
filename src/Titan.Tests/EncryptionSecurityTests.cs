@@ -155,6 +155,7 @@ public class EncryptionSecurityTests
         serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.ToArray(), out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
+            salt: response.HkdfSalt.ToArray(),
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         return new EncryptionConnectionSetup(response, aesKey, clientEcdsa);

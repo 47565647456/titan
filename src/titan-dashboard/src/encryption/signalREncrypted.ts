@@ -6,7 +6,7 @@
 import * as signalR from '@microsoft/signalr';
 import { Encryptor } from './encryptor';
 import { arrayBufferToBase64 } from './utils';
-import type { SecureEnvelope, EncryptionConfig, KeyExchangeResponse } from './types';
+import type { SecureEnvelope, EncryptionConfig, KeyExchangeResponse, KeyRotationRequest } from './types';
 
 /**
  * Options for creating an encrypted SignalR connection.
@@ -57,6 +57,9 @@ export class EncryptedSignalRConnection {
   private isEncryptionEnabled = false;
   private isEncryptionRequired = false;
   private options: EncryptedConnectionOptions;
+  
+  /** Tracks rotations being handled to dedupe events across all instances (React Strict Mode double-mounting) */
+  private static handledRotationKeyIds: Set<string> = new Set();
 
   constructor(options: EncryptedConnectionOptions) {
     this.options = options;
@@ -145,6 +148,9 @@ export class EncryptedSignalRConnection {
           console.log('[EncryptedSignalR] Skipping key exchange (session restored)');
       }
 
+      // Register key rotation handler
+      this.setupKeyRotationHandler();
+
       return true;
     } catch (error) {
       console.error('[EncryptedSignalR] Failed to initialize encryption:', error);
@@ -196,9 +202,11 @@ export class EncryptedSignalRConnection {
         } catch (error) {
           console.error('[EncryptedSignalR] Failed to re-negotiate keys after reconnection:', error);
           this.encryptor.reset();
+          // Don't throw from async callback - it would cause unhandled promise rejection
+          // Instead disable encryption gracefully if not required
           if (this.isEncryptionRequired) {
-            // Surface error to the application
-            throw error;
+            // Mark session as degraded - application should detect this via isEncryptionActive
+            console.error('[EncryptedSignalR] CRITICAL: Encryption required but key exchange failed after reconnection');
           }
         }
       }
@@ -210,6 +218,48 @@ export class EncryptedSignalRConnection {
       this.encryptor.reset();
       this.isEncryptionEnabled = false;
     });
+  }
+
+  /**
+   * Register handler for server-initiated key rotation.
+   */
+  private setupKeyRotationHandler(): void {
+    if (!this.encryptionHub) return;
+
+    this.encryptionHub.on('KeyRotation', async (request: KeyRotationRequest) => {
+      // Dedupe: React Strict Mode causes double-mount, skip if already handling this rotation
+      // Use Set.has() + Set.add() SYNCHRONOUSLY before any async work to prevent race
+      if (EncryptedSignalRConnection.handledRotationKeyIds.has(request.newKeyId)) {
+        console.log('[EncryptedSignalR] Skipping duplicate key rotation request for:', request.newKeyId);
+        return;
+      }
+      // Immediately mark as being handled (synchronously)
+      EncryptedSignalRConnection.handledRotationKeyIds.add(request.newKeyId);
+      
+      console.log('[EncryptedSignalR] Received key rotation request, newKeyId:', request.newKeyId);
+      try {
+        // Handle rotation (generates new client keys and derives new shared secret)
+        const ack = await this.encryptor.handleKeyRotation(request);
+        
+        // Send acknowledgment back to server with new client public key
+        await this.encryptionHub!.invoke('CompleteKeyRotation', ack);
+        console.log('[EncryptedSignalR] Key rotation acknowledged');
+      } catch (error) {
+        console.error('[EncryptedSignalR] Key rotation failed:', error);
+        // Remove from handled set so retry is possible
+        EncryptedSignalRConnection.handledRotationKeyIds.delete(request.newKeyId);
+        // If rotation fails, we may need to do a full key exchange
+        try {
+          await this.performKeyExchange();
+          console.log('[EncryptedSignalR] Recovered via full key exchange after rotation failure');
+        } catch (exchangeError) {
+          console.error('[EncryptedSignalR] Failed to recover from rotation failure:', exchangeError);
+          this.encryptor.reset();
+        }
+      }
+    });
+
+    console.log('[EncryptedSignalR] Key rotation handler registered');
   }
 
   /**
@@ -277,8 +327,8 @@ export class EncryptedSignalRConnection {
           // Invoke the generic encrypted gateway
           const result = await hubConnection.invoke<SecureEnvelope>('__encrypted__', envelope);
           
-          // Check if result is encrypted
-          if (result && typeof result === 'object' && 'keyId' in result) {
+          // Check if result is an encrypted envelope (check multiple fields for robustness)
+          if (this.isSecureEnvelope(result)) {
             // Decrypt response
             const decrypted = await this.encryptor.decryptAndVerify(result);
             const decoded = new TextDecoder().decode(decrypted);
@@ -287,9 +337,20 @@ export class EncryptedSignalRConnection {
           
           return result as unknown as T;
       } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
           console.error('[EncryptedSignalR] Invoke failed with encryption:', error);
-          // If it's a security error, server might have rejected our key. Reset.
-          this.encryptor.reset(); 
+          
+          // Only reset session for fatal errors that indicate key material is invalid
+          const isFatalError = 
+            errorMessage.includes('Key ID mismatch') ||
+            errorMessage.includes('key material missing') ||
+            errorMessage.includes('not initialized') ||
+            errorMessage.includes('Invalid key');
+            
+          if (isFatalError) {
+            console.warn('[EncryptedSignalR] Fatal encryption error in invoke, resetting session');
+            this.encryptor.reset();
+          }
           throw error;
       }
     } else {
@@ -313,8 +374,8 @@ export class EncryptedSignalRConnection {
       // Register handler that decrypts incoming messages
       hubConnection.on(methodName, async (envelope: SecureEnvelope | T) => {
         try {
-          // Check if it's an encrypted envelope
-          if (envelope && typeof envelope === 'object' && 'keyId' in envelope) {
+          // Check if it's an encrypted envelope (check multiple fields for robustness)
+          if (this.isSecureEnvelope(envelope)) {
             const decrypted = await this.encryptor.decryptAndVerify(envelope as SecureEnvelope);
             const decoded = new TextDecoder().decode(decrypted);
             handler(JSON.parse(decoded) as T);
@@ -344,6 +405,22 @@ export class EncryptedSignalRConnection {
       // Direct registration without decryption
       hubConnection.on(methodName, handler);
     }
+  }
+
+  /**
+   * Check if an object is a SecureEnvelope by verifying multiple envelope-specific fields.
+   * More robust than checking just 'keyId' which could misclassify arbitrary objects.
+   */
+  private isSecureEnvelope(obj: unknown): obj is SecureEnvelope {
+    return (
+      obj !== null &&
+      typeof obj === 'object' &&
+      'keyId' in obj &&
+      'nonce' in obj &&
+      'ciphertext' in obj &&
+      'tag' in obj &&
+      'signature' in obj
+    );
   }
 
   /**

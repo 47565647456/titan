@@ -31,6 +31,7 @@ export interface KeyExchangeResponse {
   keyId: string;
   serverPublicKey: string;  // Base64 encoded SPKI format
   serverSigningPublicKey: string;  // Base64 encoded SPKI format
+  hkdfSalt: string;  // Base64 encoded (32 bytes for SHA-256)
 }
 
 /**
@@ -47,6 +48,7 @@ export interface EncryptionConfig {
 export interface KeyRotationRequest {
   newKeyId: string;
   serverPublicKey: string;  // Base64 encoded
+  hkdfSalt: string;  // Base64 encoded (32 bytes for SHA-256)
 }
 
 /**

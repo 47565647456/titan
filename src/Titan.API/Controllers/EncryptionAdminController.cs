@@ -131,7 +131,13 @@ public class EncryptionAdminController : ControllerBase
     [HttpDelete("connections/{userId}")]
     public IActionResult RemoveConnection(string userId)
     {
-        _encryptionService.RemoveConnection(userId);
+        var removed = _encryptionService.RemoveConnection(userId);
+        if (!removed)
+        {
+            _logger.LogWarning("Attempted to remove encryption state for user {UserId} but no state existed", userId);
+            return NotFound(new { message = $"No encryption state found for user {userId}" });
+        }
+        
         _logger.LogInformation("Admin removed encryption state for user {UserId}", userId);
         return NoContent();
     }

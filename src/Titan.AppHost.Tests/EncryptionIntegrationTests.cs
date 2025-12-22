@@ -1199,4 +1199,49 @@ public class EncryptionIntegrationTests : IntegrationTestBase
     }
 
     #endregion
+
+    #region Test Infrastructure
+
+    /// <summary>
+    /// Invokes a hub method with a timeout to prevent test hangs.
+    /// Falls back to default 30 second timeout if not specified.
+    /// </summary>
+    private static async Task<T> InvokeWithTimeoutAsync<T>(
+        HubConnection hub,
+        string methodName,
+        TimeSpan? timeout = null,
+        params object?[] args)
+    {
+        using var cts = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(30));
+        try
+        {
+            return await hub.InvokeCoreAsync<T>(methodName, args, cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Hub invocation '{methodName}' timed out after {(timeout ?? TimeSpan.FromSeconds(30)).TotalSeconds}s");
+        }
+    }
+
+    /// <summary>
+    /// Invokes a hub method with a timeout (void return).
+    /// </summary>
+    private static async Task InvokeWithTimeoutAsync(
+        HubConnection hub,
+        string methodName,
+        TimeSpan? timeout = null,
+        params object?[] args)
+    {
+        using var cts = new CancellationTokenSource(timeout ?? TimeSpan.FromSeconds(30));
+        try
+        {
+            await hub.InvokeCoreAsync(methodName, args, cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Hub invocation '{methodName}' timed out after {(timeout ?? TimeSpan.FromSeconds(30)).TotalSeconds}s");
+        }
+    }
+
+    #endregion
 }

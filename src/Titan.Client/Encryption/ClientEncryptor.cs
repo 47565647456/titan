@@ -27,6 +27,13 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     // Previous key for grace period
     private string? _previousKeyId;
     private byte[]? _previousAesKey;
+    private DateTimeOffset? _previousKeyExpiresAt;
+    
+    /// <summary>
+    /// Grace period duration for previous keys during rotation.
+    /// Should match server's KeyRotationGracePeriodSeconds.
+    /// </summary>
+    private const int GracePeriodSeconds = 300;
 
     public bool IsInitialized => _aesKey != null;
     public string? CurrentKeyId => _keyId;
@@ -54,8 +61,8 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
         var sharedSecret = _currentEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
 
-        // Derive AES key from shared secret using HKDF
-        _aesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
+        // Derive AES key from shared secret using HKDF with salt from server
+        _aesKey = DeriveKey(sharedSecret, response.HkdfSalt.ToArray(), "titan-encryption-key", 32);
         
         // Zero out shared secret immediately after key derivation
         CryptographicOperations.ZeroMemory(sharedSecret);
@@ -146,9 +153,10 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
     public KeyRotationAck HandleRotationRequest(KeyRotationRequest request)
     {
-        // Keep previous key for grace period
+        // Keep previous key for grace period with expiry tracking
         _previousKeyId = _keyId;
         _previousAesKey = _aesKey;
+        _previousKeyExpiresAt = DateTimeOffset.UtcNow.AddSeconds(GracePeriodSeconds);
 
         // Generate new ECDH keypair
         _currentEcdh?.Dispose();
@@ -161,7 +169,7 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
         // Create ephemeral keys for KDF compatibility if needed, or just use raw agreement
         var sharedSecret = _currentEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
-        _aesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
+        _aesKey = DeriveKey(sharedSecret, request.HkdfSalt.ToArray(), "titan-encryption-key", 32);
         
         // Zero out shared secret immediately after key derivation
         CryptographicOperations.ZeroMemory(sharedSecret);
@@ -171,6 +179,24 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         _nonceCounter = 0;
 
         return new KeyRotationAck(clientPublicKey);
+    }
+
+    /// <summary>
+    /// Clears the previous key if it has expired.
+    /// Should be called periodically or before decryption.
+    /// </summary>
+    public void ClearExpiredPreviousKey()
+    {
+        if (_previousKeyExpiresAt.HasValue && DateTimeOffset.UtcNow > _previousKeyExpiresAt.Value)
+        {
+            if (_previousAesKey != null)
+            {
+                CryptographicOperations.ZeroMemory(_previousAesKey);
+                _previousAesKey = null;
+            }
+            _previousKeyId = null;
+            _previousKeyExpiresAt = null;
+        }
     }
 
     private byte[] CreateSignature(string keyId, byte[] nonce, byte[] ciphertext, byte[] tag, long timestamp, long sequenceNumber)
@@ -206,10 +232,10 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         return serverEcdsa.VerifyData(stream.ToArray(), envelope.Signature, HashAlgorithmName.SHA256);
     }
 
-    private static byte[] DeriveKey(byte[] sharedSecret, string info, int keyLength)
+    private static byte[] DeriveKey(byte[] sharedSecret, byte[] salt, string info, int keyLength)
     {
         return HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret,
-            keyLength, info: System.Text.Encoding.UTF8.GetBytes(info));
+            keyLength, salt: salt, info: System.Text.Encoding.UTF8.GetBytes(info));
     }
 
     public void Dispose()

@@ -25,7 +25,8 @@ public class ClientEncryptorTests
             return Task.FromResult(new KeyExchangeResponse(
                 "test-key-id",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
-                serverSigningKey.ExportSubjectPublicKeyInfo()
+                serverSigningKey.ExportSubjectPublicKeyInfo(),
+                new byte[32]  // HkdfSalt for testing
             ));
         });
 
@@ -58,7 +59,8 @@ public class ClientEncryptorTests
             new KeyExchangeResponse(
                 "initial-key",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
-                serverSigningKey.ExportSubjectPublicKeyInfo())
+                serverSigningKey.ExportSubjectPublicKeyInfo(),
+                new byte[32])
         ));
 
         var initialKeyId = encryptor.CurrentKeyId;
@@ -66,7 +68,7 @@ public class ClientEncryptorTests
         // Act - Key rotation
         using var newServerEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         var rotationAck = encryptor.HandleRotationRequest(
-            new KeyRotationRequest("rotated-key", newServerEcdh.ExportSubjectPublicKeyInfo())
+            new KeyRotationRequest("rotated-key", newServerEcdh.ExportSubjectPublicKeyInfo(), new byte[32])
         );
 
         // Assert
@@ -88,7 +90,8 @@ public class ClientEncryptorTests
             new KeyExchangeResponse(
                 "seq-test-key",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
-                serverSigningKey.ExportSubjectPublicKeyInfo())
+                serverSigningKey.ExportSubjectPublicKeyInfo(),
+                new byte[32])
         ));
 
         // Act - Encrypt multiple messages
@@ -118,7 +121,8 @@ public class ClientEncryptorTests
             new KeyExchangeResponse(
                 "dispose-test",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
-                serverSigningKey.ExportSubjectPublicKeyInfo())
+                serverSigningKey.ExportSubjectPublicKeyInfo(),
+                new byte[32])
         ));
 
         Assert.True(encryptor.IsInitialized);
@@ -146,7 +150,8 @@ public class ClientEncryptorTests
             return Task.FromResult(new KeyExchangeResponse(
                 "roundtrip-key",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
-                serverEcdsa.ExportSubjectPublicKeyInfo()
+                serverEcdsa.ExportSubjectPublicKeyInfo(),
+                new byte[32]
             ));
         });
 
@@ -155,9 +160,10 @@ public class ClientEncryptorTests
         clientEcdh.ImportSubjectPublicKeyInfo(capturedRequest!.ClientPublicKey.Span, out _);
         var serverSharedSecret = serverEcdh.DeriveRawSecretAgreement(clientEcdh.PublicKey);
 
-        // Derive AES key on server side
+        // Derive AES key on server side (matching the salt provided in KeyExchangeResponse)
         var serverAesKey = HKDF.DeriveKey(
             HashAlgorithmName.SHA256, serverSharedSecret, 32,
+            salt: new byte[32],  // Same salt as in KeyExchangeResponse
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         // Act - Client encrypts a message
@@ -188,7 +194,8 @@ public class ClientEncryptorTests
             new KeyExchangeResponse(
                 "key-v1",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
-                serverEcdsa.ExportSubjectPublicKeyInfo())
+                serverEcdsa.ExportSubjectPublicKeyInfo(),
+                new byte[32])
         ));
 
         // Encrypt with key-v1
@@ -198,7 +205,7 @@ public class ClientEncryptorTests
         // Rotate to key-v2
         using var newServerEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         encryptor.HandleRotationRequest(
-            new KeyRotationRequest("key-v2", newServerEcdh.ExportSubjectPublicKeyInfo())
+            new KeyRotationRequest("key-v2", newServerEcdh.ExportSubjectPublicKeyInfo(), new byte[32])
         );
 
         // Assert - Previous key is preserved during grace period

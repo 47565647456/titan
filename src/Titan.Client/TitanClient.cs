@@ -317,6 +317,10 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // Dispose encryptor first (cleans up cryptographic key material securely)
+        // This ensures no pending encryption operations are running before hub shutdown
+        (_encryptor as IDisposable)?.Dispose();
+        
         var hubs = new[] { _accountHub, _characterHub, _inventoryHub, _tradeHub, _baseTypeHub, _seasonHub, _authHub, _encryptionHub };
 
         foreach (var hub in hubs)
@@ -334,9 +338,6 @@ public sealed class TitanClient : IAsyncDisposable
                 }
             }
         }
-
-        // Dispose encryptor (cleans up cryptographic key material securely)
-        (_encryptor as IDisposable)?.Dispose();
 
         // Dispose the encryption initialization lock
         _encryptionInitLock.Dispose();

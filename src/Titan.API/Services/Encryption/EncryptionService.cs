@@ -151,8 +151,11 @@ public class EncryptionService : IEncryptionService, IDisposable
 
         var sharedSecret = serverEcdh.DeriveRawSecretAgreement(clientEcdh.PublicKey);
         
-        // Derive AES key from shared secret using HKDF
-        var aesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
+        // Generate cryptographically random salt for HKDF (32 bytes for SHA-256)
+        var hkdfSalt = RandomNumberGenerator.GetBytes(32);
+        
+        // Derive AES key from shared secret using HKDF with salt
+        var aesKey = DeriveKey(sharedSecret, hkdfSalt, "titan-encryption-key", 32);
         
         // Zero out shared secret immediately after key derivation
         CryptographicOperations.ZeroMemory(sharedSecret);
@@ -169,6 +172,7 @@ public class EncryptionService : IEncryptionService, IDisposable
         {
             KeyId = keyId,
             AesKey = aesKey,
+            HkdfSalt = hkdfSalt,
             ClientSigningPublicKey = clientSigningPublicKey,
             UserIdHash = ComputeConnectionHash(userId),
             NonceCounter = 0,
@@ -202,7 +206,7 @@ public class EncryptionService : IEncryptionService, IDisposable
         _logger.LogDebug("Key exchange completed for connection {userId}, KeyId: {KeyId}",
             userId, keyId);
 
-        return new KeyExchangeResponse(keyId, serverPublicKey, _serverSigningPublicKey!);
+        return new KeyExchangeResponse(keyId, serverPublicKey, _serverSigningPublicKey!, hkdfSalt);
     }
 
     public byte[] DecryptAndVerify(string userId, SecureEnvelope envelope)
@@ -218,28 +222,40 @@ public class EncryptionService : IEncryptionService, IDisposable
             throw new SecurityException($"Invalid key ID: {envelope.KeyId}");
         }
 
-        // Check if previous key has expired (enforce grace period)
-        if (envelope.KeyId == state.PreviousKeyId && state.PreviousKeyExpiresAt.HasValue)
+        // Lock during key selection to prevent cleanup from zeroing the key we're about to use
+        byte[] aesKey;
+        byte[] signingKey;
+        lock (state.StateLock)
         {
-            if (DateTimeOffset.UtcNow > state.PreviousKeyExpiresAt.Value)
+            // Check if previous key has expired (enforce grace period)
+            if (envelope.KeyId == state.PreviousKeyId && state.PreviousKeyExpiresAt.HasValue)
             {
-                // Clean up expired previous key
-                if (state.PreviousAesKey != null)
+                if (DateTimeOffset.UtcNow > state.PreviousKeyExpiresAt.Value)
                 {
-                    CryptographicOperations.ZeroMemory(state.PreviousAesKey);
-                    state.PreviousAesKey = null;
+                    // Clean up expired previous key
+                    if (state.PreviousAesKey != null)
+                    {
+                        CryptographicOperations.ZeroMemory(state.PreviousAesKey);
+                        state.PreviousAesKey = null;
+                    }
+                    state.PreviousKeyId = null;
+                    state.PreviousKeyExpiresAt = null;
+                    throw new SecurityException("Previous key has expired. Please complete key rotation.");
                 }
-                state.PreviousKeyId = null;
-                state.PreviousKeyExpiresAt = null;
-                throw new SecurityException("Previous key has expired. Please complete key rotation.");
             }
-        }
 
-        // Select appropriate key
-        var aesKey = envelope.KeyId == state.KeyId ? state.AesKey : state.PreviousAesKey;
-        if (aesKey == null)
-        {
-            throw new SecurityException("Key not available for decryption");
+            // Select appropriate key - copy references while holding lock
+            var selectedKey = envelope.KeyId == state.KeyId ? state.AesKey : state.PreviousAesKey;
+            if (selectedKey == null)
+            {
+                throw new SecurityException("Key not available for decryption");
+            }
+            aesKey = selectedKey;
+            
+            // Determine which signing key to use
+            signingKey = envelope.KeyId == state.PreviousKeyId && state.PreviousClientSigningPublicKey != null
+                ? state.PreviousClientSigningPublicKey
+                : state.ClientSigningPublicKey;
         }
 
         // Validate timestamp for replay protection
@@ -256,14 +272,7 @@ public class EncryptionService : IEncryptionService, IDisposable
             throw new SecurityException($"Sequence number regression detected: {envelope.SequenceNumber} <= {state.LastSequenceNumber}");
         }
 
-        // Determine which signing key to use
-        var signingKey = state.ClientSigningPublicKey;
-        if (envelope.KeyId == state.PreviousKeyId && state.PreviousClientSigningPublicKey != null)
-        {
-            signingKey = state.PreviousClientSigningPublicKey;
-        }
-
-        // Verify signature
+        // Verify signature (signingKey was selected inside lock above)
         if (!VerifySignature(envelope, signingKey))
         {
             throw new SecurityException("Signature verification failed");
@@ -355,16 +364,20 @@ public class EncryptionService : IEncryptionService, IDisposable
         var serverPublicKey = serverEcdh.ExportSubjectPublicKeyInfo();
 
         var newKeyId = GenerateKeyId();
+        
+        // Generate salt upfront so client can derive the same key
+        var newHkdfSalt = RandomNumberGenerator.GetBytes(32);
 
         // Store rotation state (will complete when client responds)
         state.PendingRotationKeyId = newKeyId;
         state.PendingRotationEcdhPrivateKey = serverEcdh.ExportECPrivateKey();
+        state.PendingRotationHkdfSalt = newHkdfSalt;
 
         _metrics.IncrementKeyRotationsTriggered();
         _logger.LogInformation("Initiated key rotation for connection {userId}, NewKeyId: {KeyId}",
             userId, newKeyId);
 
-        return new KeyRotationRequest(newKeyId, serverPublicKey);
+        return new KeyRotationRequest(newKeyId, serverPublicKey, newHkdfSalt);
     }
 
     public Task<KeyRotationRequest> InitiateKeyRotationAsync(string userId)
@@ -377,43 +390,51 @@ public class EncryptionService : IEncryptionService, IDisposable
             throw new InvalidOperationException("Connection has not completed key exchange");
         }
 
-        if (state.PendingRotationKeyId == null || state.PendingRotationEcdhPrivateKey == null)
+        // Lock to prevent TOCTOU race if multiple threads call CompleteKeyRotation concurrently
+        lock (state.StateLock)
         {
-            throw new InvalidOperationException("No pending key rotation for this connection");
+            if (state.PendingRotationKeyId == null || state.PendingRotationEcdhPrivateKey == null || state.PendingRotationHkdfSalt == null)
+            {
+                throw new InvalidOperationException("No pending key rotation for this connection");
+            }
+
+            // Recreate server ECDH from stored private key
+            using var serverEcdh = ECDiffieHellman.Create();
+            serverEcdh.ImportECPrivateKey(state.PendingRotationEcdhPrivateKey, out _);
+
+            // Import client's new public key
+            using var clientEcdh = ECDiffieHellman.Create();
+            clientEcdh.ImportSubjectPublicKeyInfo(ack.ClientPublicKey.Span, out _);
+
+            var sharedSecret = serverEcdh.DeriveRawSecretAgreement(clientEcdh.PublicKey);
+            
+            // Use the salt that was generated during InitiateKeyRotation
+            var newAesKey = DeriveKey(sharedSecret, state.PendingRotationHkdfSalt, "titan-encryption-key", 32);
+            
+            // Zero out shared secret immediately after key derivation
+            CryptographicOperations.ZeroMemory(sharedSecret);
+
+            // Rotate keys (keep previous for grace period)
+            state.PreviousKeyId = state.KeyId;
+            state.PreviousAesKey = state.AesKey;
+            state.PreviousKeyExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_options.KeyRotationGracePeriodSeconds);
+
+            state.KeyId = state.PendingRotationKeyId;
+            state.AesKey = newAesKey;
+            state.HkdfSalt = state.PendingRotationHkdfSalt;
+            state.KeyCreatedAt = DateTimeOffset.UtcNow;
+            state.MessageCount = 0;
+            state.NonceCounter = 0;
+
+            // Clear pending state
+            state.PendingRotationKeyId = null;
+            state.PendingRotationEcdhPrivateKey = null;
+            state.PendingRotationHkdfSalt = null;
+
+            _metrics.IncrementKeyRotationsCompleted();
+            _logger.LogInformation("Completed key rotation for connection {userId}, KeyId: {KeyId}",
+                userId, state.KeyId);
         }
-
-        // Recreate server ECDH from stored private key
-        using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportECPrivateKey(state.PendingRotationEcdhPrivateKey, out _);
-
-        // Import client's new public key
-        using var clientEcdh = ECDiffieHellman.Create();
-        clientEcdh.ImportSubjectPublicKeyInfo(ack.ClientPublicKey.Span, out _);
-
-        var sharedSecret = serverEcdh.DeriveRawSecretAgreement(clientEcdh.PublicKey);
-        var newAesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
-        
-        // Zero out shared secret immediately after key derivation
-        CryptographicOperations.ZeroMemory(sharedSecret);
-
-        // Rotate keys (keep previous for grace period)
-        state.PreviousKeyId = state.KeyId;
-        state.PreviousAesKey = state.AesKey;
-        state.PreviousKeyExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_options.KeyRotationGracePeriodSeconds);
-
-        state.KeyId = state.PendingRotationKeyId;
-        state.AesKey = newAesKey;
-        state.KeyCreatedAt = DateTimeOffset.UtcNow;
-        state.MessageCount = 0;
-        state.NonceCounter = 0;
-
-        // Clear pending state
-        state.PendingRotationKeyId = null;
-        state.PendingRotationEcdhPrivateKey = null;
-
-        _metrics.IncrementKeyRotationsCompleted();
-        _logger.LogInformation("Completed key rotation for connection {userId}, KeyId: {KeyId}",
-            userId, state.KeyId);
     }
 
     public Task CompleteKeyRotationAsync(string userId, KeyRotationAck ack)
@@ -454,7 +475,7 @@ public class EncryptionService : IEncryptionService, IDisposable
         );
     }
 
-    public void RemoveConnection(string userId)
+    public bool RemoveConnection(string userId)
     {
         if (_connections.TryRemove(userId, out var state))
         {
@@ -464,7 +485,9 @@ public class EncryptionService : IEncryptionService, IDisposable
                 CryptographicOperations.ZeroMemory(state.PreviousAesKey);
 
             _logger.LogDebug("Removed encryption state for connection {userId}", userId);
+            return true;
         }
+        return false;
     }
 
     public IEnumerable<string> GetConnectionsNeedingRotation()
@@ -488,19 +511,23 @@ public class EncryptionService : IEncryptionService, IDisposable
         {
             var state = kvp.Value;
             
-            // Check if this connection has an expired previous key
-            if (state.PreviousKeyExpiresAt.HasValue && 
-                now > state.PreviousKeyExpiresAt.Value &&
-                state.PreviousAesKey != null)
+            // Lock to synchronize with DecryptAndVerify - prevent zeroing key while in use
+            lock (state.StateLock)
             {
-                // Securely clear the expired key
-                CryptographicOperations.ZeroMemory(state.PreviousAesKey);
-                state.PreviousAesKey = null;
-                state.PreviousKeyId = null;
-                state.PreviousKeyExpiresAt = null;
-                cleanedCount++;
-                
-                _logger.LogDebug("Cleaned up expired previous key for user {UserId}", kvp.Key);
+                // Check if this connection has an expired previous key
+                if (state.PreviousKeyExpiresAt.HasValue && 
+                    now > state.PreviousKeyExpiresAt.Value &&
+                    state.PreviousAesKey != null)
+                {
+                    // Securely clear the expired key
+                    CryptographicOperations.ZeroMemory(state.PreviousAesKey);
+                    state.PreviousAesKey = null;
+                    state.PreviousKeyId = null;
+                    state.PreviousKeyExpiresAt = null;
+                    cleanedCount++;
+                    
+                    _logger.LogDebug("Cleaned up expired previous key for user {UserId}", kvp.Key);
+                }
             }
         }
 
@@ -541,10 +568,10 @@ public class EncryptionService : IEncryptionService, IDisposable
 
     #region Private Helpers
 
-    private static byte[] DeriveKey(byte[] sharedSecret, string info, int keyLength)
+    private static byte[] DeriveKey(byte[] sharedSecret, byte[] salt, string info, int keyLength)
     {
         return HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret,
-            keyLength, info: System.Text.Encoding.UTF8.GetBytes(info));
+            keyLength, salt: salt, info: System.Text.Encoding.UTF8.GetBytes(info));
     }
 
     private static string GenerateKeyId()
@@ -606,6 +633,7 @@ public class EncryptionService : IEncryptionService, IDisposable
     {
         public required string KeyId { get; set; }
         public required byte[] AesKey { get; set; }
+        public required byte[] HkdfSalt { get; set; }
         public required byte[] ClientSigningPublicKey { get; set; }
         public required int UserIdHash { get; set; }
         public long NonceCounter;
@@ -613,7 +641,14 @@ public class EncryptionService : IEncryptionService, IDisposable
         public long LastSequenceNumber;
         public long ServerSequenceNumber;
         public DateTimeOffset KeyCreatedAt { get; set; }
-        public DateTimeOffset? LastActivityAt { get; set; }
+        
+        // Use ticks for atomic updates via Interlocked
+        private long _lastActivityAtTicks;
+        public DateTimeOffset? LastActivityAt 
+        {
+            get => _lastActivityAtTicks == 0 ? null : new DateTimeOffset(_lastActivityAtTicks, TimeSpan.Zero);
+            set => Interlocked.Exchange(ref _lastActivityAtTicks, value?.UtcTicks ?? 0);
+        }
 
         // Previous key for grace period during rotation
         public string? PreviousKeyId { get; set; }
@@ -624,6 +659,10 @@ public class EncryptionService : IEncryptionService, IDisposable
         // Pending rotation state
         public string? PendingRotationKeyId { get; set; }
         public byte[]? PendingRotationEcdhPrivateKey { get; set; }
+        public byte[]? PendingRotationHkdfSalt { get; set; }
+        
+        // Lock for rotation completion and key access to prevent TOCTOU races
+        public readonly object StateLock = new();
 
         /// <summary>
         /// Creates a ConnectionEncryptionState from a persisted state.
@@ -634,6 +673,7 @@ public class EncryptionService : IEncryptionService, IDisposable
             {
                 KeyId = persisted.KeyId,
                 AesKey = persisted.AesKey,
+                HkdfSalt = persisted.HkdfSalt,
                 ClientSigningPublicKey = persisted.ClientSigningPublicKey,
                 UserIdHash = persisted.UserIdHash,
                 NonceCounter = persisted.NonceCounter,
@@ -658,6 +698,7 @@ public class EncryptionService : IEncryptionService, IDisposable
             {
                 KeyId = KeyId,
                 AesKey = AesKey,
+                HkdfSalt = HkdfSalt,
                 ClientSigningPublicKey = ClientSigningPublicKey,
                 UserIdHash = UserIdHash,
                 NonceCounter = NonceCounter,

@@ -195,6 +195,7 @@ public partial class PersistedEncryptionState
 {
     public required string KeyId { get; init; }
     public required byte[] AesKey { get; init; }
+    public required byte[] HkdfSalt { get; init; }
     public required byte[] ClientSigningPublicKey { get; init; }
     public required int UserIdHash { get; init; }
     public required long NonceCounter { get; init; }
