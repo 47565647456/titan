@@ -44,7 +44,7 @@ public class EncryptedBroadcastTests : IntegrationTestBase
 
         try 
         {
-            var (sessionId, userId) = await CreateAuthenticatedAdminClientAsync();
+            var (sessionId, userId) = await LoginAsRealAdminAsync();
             userIdToCleanup = userId;
 
             // Step 1: Crypto Setup
@@ -122,10 +122,6 @@ public class EncryptedBroadcastTests : IntegrationTestBase
             }
             catch (Exception ex)
             {
-                // If it fails, maybe it IS MemoryPack?
-                // EncryptedHubBroadcaster uses JsonSerializer:
-                // var json = JsonSerializer.Serialize(data, ...);
-                // var plainBytes = Encoding.UTF8.GetBytes(json);
                 throw new Exception($"Payload decryption succeeded but content check failed: {ex.Message}");
             }
 
