@@ -148,7 +148,13 @@ public class EncryptionStateStore
         try
         {
             var db = _redis.GetDatabase();
-            var server = _redis.GetServer(_redis.GetEndPoints().First());
+            var endpoints = _redis.GetEndPoints();
+            if (endpoints.Length == 0)
+            {
+                _logger.LogWarning("No Redis endpoints available, cannot load encryption states");
+                return states;
+            }
+            var server = _redis.GetServer(endpoints[0]);
             
             // Scan for all encryption state keys
             var pattern = $"{EncryptionStatePrefix}*";

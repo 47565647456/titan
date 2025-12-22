@@ -1,14 +1,9 @@
-using System.Text.Json;
-using System.Security.Cryptography;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.DependencyInjection;
-using Titan.AppHost.Tests;
 using Titan.Client.Encryption;
 using Titan.Abstractions.Models;
 using Titan.Client;
 using System.Net.Http.Json;
 using Xunit.Abstractions;
-using MemoryPack;
 
 namespace Titan.AppHost.Tests;
 
@@ -152,6 +147,4 @@ public class EncryptedBroadcastTests : IntegrationTestBase
             if (disposeException != null) throw disposeException;
         }
     }
-
-    private record EncryptionConfigResponse(bool Enabled, bool Required);
 }

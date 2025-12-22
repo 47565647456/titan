@@ -345,23 +345,6 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
     #endregion
 
-    #region Response Models
-
-    private record EncryptionConfigResponse(bool Enabled, bool Required);
-    private record ConnectionsNeedingRotationResponse(List<string> Connections, int Count);
-    private record RotationAllResponse(string Message);
-    private record EncryptionMetricsResponse(
-        long KeyExchangesPerformed,
-        long MessagesEncrypted,
-        long MessagesDecrypted,
-        long KeyRotationsTriggered,
-        long KeyRotationsCompleted,
-        long EncryptionFailures,
-        long DecryptionFailures,
-        long ExpiredKeysCleanedUp);
-
-    #endregion
-
     #region EncryptedHubConnection Wrapper Tests
 
     [Fact]
@@ -607,7 +590,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
                 new { Enabled = true });
             
             // Poll until config reflects enabled state
-            await WaitForConditionAsync(
+            await EncryptionIntegrationHelpers.WaitForConditionAsync(
                 async () => (await encryptionHub.InvokeAsync<EncryptionConfig>("GetConfig")).Enabled,
                 TimeSpan.FromSeconds(5),
                 "Config to show Enabled=true");
@@ -621,7 +604,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
                 new { Enabled = false });
             
             // Poll until config reflects disabled state
-            await WaitForConditionAsync(
+            await EncryptionIntegrationHelpers.WaitForConditionAsync(
                 async () => !(await encryptionHub.InvokeAsync<EncryptionConfig>("GetConfig")).Enabled,
                 TimeSpan.FromSeconds(5),
                 "Config to show Enabled=false");
@@ -635,21 +618,6 @@ public class EncryptionIntegrationTests : IntegrationTestBase
                 new { Enabled = wasEnabled });
             await encryptionHub.DisposeAsync();
         }
-    }
-    
-    /// <summary>
-    /// Polls a condition until it returns true or timeout is reached.
-    /// </summary>
-    private static async Task WaitForConditionAsync(Func<Task<bool>> condition, TimeSpan timeout, string description)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            if (await condition())
-                return;
-            await Task.Delay(50); // Small delay between polls
-        }
-        throw new TimeoutException($"Timed out waiting for: {description}");
     }
 
     [Fact]

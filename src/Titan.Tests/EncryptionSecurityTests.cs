@@ -1,6 +1,4 @@
 using System.Security.Cryptography;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Titan.Abstractions.Models;
 using Titan.API.Config;
 using Titan.API.Services.Encryption;
@@ -11,21 +9,15 @@ namespace Titan.Tests;
 public class EncryptionSecurityTests
 {
     private readonly EncryptionService _service;
-    private readonly EncryptionOptions _options;
 
     public EncryptionSecurityTests()
     {
-        _options = new EncryptionOptions
+        _service = EncryptionTestHelpers.CreateEncryptionService(new EncryptionOptions
         {
             Enabled = true,
             RequireEncryption = true,
             ReplayWindowSeconds = 60
-        };
-
-        _service = new EncryptionService(
-            Options.Create(_options),
-            NullLogger<EncryptionService>.Instance,
-            new EncryptionMetrics());
+        });
     }
 
     [Fact]
@@ -115,51 +107,10 @@ public class EncryptionSecurityTests
         Assert.Contains("Sequence number", ex.Message);
     }
 
-    #region Helpers
+    #region Helpers - Delegating to shared helpers
 
-    /// <summary>
-    /// Disposable wrapper for encryption connection state used in tests.
-    /// Automatically disposes the ECDsa signing key when disposed.
-    /// </summary>
-    private sealed class EncryptionConnectionSetup : IDisposable
-    {
-        public KeyExchangeResponse Response { get; }
-        public byte[] AesKey { get; }
-        public ECDsa SigningKey { get; }
-        
-        public EncryptionConnectionSetup(KeyExchangeResponse response, byte[] aesKey, ECDsa signingKey)
-        {
-            Response = response;
-            AesKey = aesKey;
-            SigningKey = signingKey;
-        }
-        
-        public void Dispose() => SigningKey.Dispose();
-    }
-
-    /// <summary>
-    /// Sets up an encryption connection for testing.
-    /// The returned wrapper implements IDisposable and will clean up the signing key.
-    /// </summary>
-    private async Task<EncryptionConnectionSetup> SetupConnection(string userId)
-    {
-        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-
-        var response = await _service.PerformKeyExchangeAsync(
-            userId,
-            clientEcdh.ExportSubjectPublicKeyInfo(),
-            clientEcdsa.ExportSubjectPublicKeyInfo());
-
-        using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.ToArray(), out _);
-        var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
-        var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
-            salt: response.HkdfSalt.ToArray(),
-            info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
-
-        return new EncryptionConnectionSetup(response, aesKey, clientEcdsa);
-    }
+    private Task<EncryptionConnectionSetup> SetupConnection(string userId)
+        => EncryptionTestHelpers.SetupConnectionAsync(_service, userId);
 
     private static SecureEnvelope CreateClientEnvelope(
         byte[] plaintext,
@@ -168,40 +119,7 @@ public class EncryptionSecurityTests
         ECDsa signingKey,
         long sequenceNumber,
         long? timestamp = null)
-    {
-        var nonce = new byte[12];
-        RandomNumberGenerator.Fill(nonce);
-
-        using var aesGcm = new AesGcm(aesKey, 16);
-        var ciphertext = new byte[plaintext.Length];
-        var tag = new byte[16];
-        aesGcm.Encrypt(nonce, plaintext, ciphertext, tag);
-
-        var ts = timestamp ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-        writer.Write(keyId);
-        writer.Write(nonce);
-        writer.Write(ciphertext);
-        writer.Write(tag);
-        writer.Write(ts);
-        writer.Write(sequenceNumber);
-        writer.Flush();
-
-        var signature = signingKey.SignData(stream.ToArray(), HashAlgorithmName.SHA256);
-
-        return new SecureEnvelope
-        {
-            KeyId = keyId,
-            Nonce = nonce,
-            Ciphertext = ciphertext,
-            Tag = tag,
-            Signature = signature,
-            Timestamp = ts,
-            SequenceNumber = sequenceNumber
-        };
-    }
+        => EncryptionTestHelpers.CreateClientEnvelope(plaintext, aesKey, keyId, signingKey, sequenceNumber, timestamp);
 
     #endregion
 }

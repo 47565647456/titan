@@ -96,11 +96,11 @@ export class Encryptor {
       throw new Error('Key exchange not initiated. Call createKeyExchangeRequest first.');
     }
 
-    // Import server's ECDH public key
+    // Import server's ECDH public key - use slice for safe ArrayBuffer extraction
     const serverPublicKeyBytes = base64ToArrayBuffer(response.serverPublicKey);
     const serverEcdhPublicKey = await crypto.subtle.importKey(
       'spki',
-      serverPublicKeyBytes.buffer as ArrayBuffer,
+      serverPublicKeyBytes.buffer.slice(serverPublicKeyBytes.byteOffset, serverPublicKeyBytes.byteOffset + serverPublicKeyBytes.byteLength) as ArrayBuffer,
       { name: 'ECDH', namedCurve: CURVE },
       false,
       []
@@ -138,11 +138,11 @@ export class Encryptor {
       ['encrypt', 'decrypt']
     );
 
-    // Import server's new signing public key
+    // Import server's new signing public key - use slice for safe ArrayBuffer extraction
     const serverSigningKeyBytes = base64ToArrayBuffer(response.serverSigningPublicKey);
     const newServerSigningKey = await crypto.subtle.importKey(
       'spki',
-      serverSigningKeyBytes.buffer as ArrayBuffer,
+      serverSigningKeyBytes.buffer.slice(serverSigningKeyBytes.byteOffset, serverSigningKeyBytes.byteOffset + serverSigningKeyBytes.byteLength) as ArrayBuffer,
       { name: 'ECDSA', namedCurve: CURVE },
       true,
       ['verify']
@@ -309,6 +309,9 @@ export class Encryptor {
    * checks both CURRENT and PREVIOUS keys.
    */
   async decryptAndVerify(envelope: SecureEnvelope): Promise<Uint8Array> {
+    // Clear any expired previous key material before attempting decryption
+    this.clearExpiredPreviousKey();
+
     // Determine which key to use
     let usePrevious = false;
     let activeAesKey = this.aesKey;

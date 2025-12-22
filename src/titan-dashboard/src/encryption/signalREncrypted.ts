@@ -58,12 +58,42 @@ export class EncryptedSignalRConnection {
   private isEncryptionRequired = false;
   private options: EncryptedConnectionOptions;
   
-  /** Tracks rotations being handled to dedupe events across all instances (React Strict Mode double-mounting) */
-  private static handledRotationKeyIds: Set<string> = new Set();
+  /** 
+   * Tracks rotations being handled to dedupe events across all instances (React Strict Mode double-mounting).
+   * Uses Map<keyId, timestamp> for bounded growth with TTL cleanup.
+   */
+  private static handledRotationKeyIds: Map<string, number> = new Map();
+  private static readonly ROTATION_DEDUPE_TTL_MS = 60_000; // 1 minute TTL
+  private static readonly ROTATION_DEDUPE_MAX_SIZE = 100; // Max entries before forced cleanup
 
   constructor(options: EncryptedConnectionOptions) {
     this.options = options;
     this.encryptor = new Encryptor();
+  }
+
+  /**
+   * Cleans up stale rotation deduplication entries.
+   */
+  private static cleanupRotationDedupeEntries(): void {
+    const now = Date.now();
+    const cutoff = now - EncryptedSignalRConnection.ROTATION_DEDUPE_TTL_MS;
+    
+    // Remove entries older than TTL
+    for (const [keyId, timestamp] of EncryptedSignalRConnection.handledRotationKeyIds) {
+      if (timestamp < cutoff) {
+        EncryptedSignalRConnection.handledRotationKeyIds.delete(keyId);
+      }
+    }
+    
+    // If still over max size, remove oldest entries
+    if (EncryptedSignalRConnection.handledRotationKeyIds.size > EncryptedSignalRConnection.ROTATION_DEDUPE_MAX_SIZE) {
+      const entries = Array.from(EncryptedSignalRConnection.handledRotationKeyIds.entries())
+        .sort((a, b) => a[1] - b[1]); // Sort by timestamp ascending
+      const toRemove = entries.slice(0, entries.length - EncryptedSignalRConnection.ROTATION_DEDUPE_MAX_SIZE);
+      for (const [keyId] of toRemove) {
+        EncryptedSignalRConnection.handledRotationKeyIds.delete(keyId);
+      }
+    }
   }
 
   /**
@@ -227,14 +257,17 @@ export class EncryptedSignalRConnection {
     if (!this.encryptionHub) return;
 
     this.encryptionHub.on('KeyRotation', async (request: KeyRotationRequest) => {
+      // Cleanup stale entries before checking
+      EncryptedSignalRConnection.cleanupRotationDedupeEntries();
+      
       // Dedupe: React Strict Mode causes double-mount, skip if already handling this rotation
-      // Use Set.has() + Set.add() SYNCHRONOUSLY before any async work to prevent race
+      // Use Map.has() + Map.set() SYNCHRONOUSLY before any async work to prevent race
       if (EncryptedSignalRConnection.handledRotationKeyIds.has(request.newKeyId)) {
         console.log('[EncryptedSignalR] Skipping duplicate key rotation request for:', request.newKeyId);
         return;
       }
-      // Immediately mark as being handled (synchronously)
-      EncryptedSignalRConnection.handledRotationKeyIds.add(request.newKeyId);
+      // Immediately mark as being handled with current timestamp (synchronously)
+      EncryptedSignalRConnection.handledRotationKeyIds.set(request.newKeyId, Date.now());
       
       console.log('[EncryptedSignalR] Received key rotation request, newKeyId:', request.newKeyId);
       try {
@@ -434,6 +467,8 @@ export class EncryptedSignalRConnection {
       await this.encryptionHub?.stop();
     }
     this.encryptor.reset();
+    // Clear rotation deduplication entries for this instance
+    EncryptedSignalRConnection.handledRotationKeyIds.clear();
   }
 }
 

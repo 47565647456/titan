@@ -1,6 +1,4 @@
 using System.Security.Cryptography;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Titan.Abstractions.Models;
 using Titan.API.Config;
 using Titan.API.Services.Encryption;
@@ -14,26 +12,10 @@ namespace Titan.Tests;
 public class EncryptionServiceTests
 {
     private readonly EncryptionService _service;
-    private readonly EncryptionOptions _options;
-    private readonly EncryptionMetrics _metrics;
 
     public EncryptionServiceTests()
     {
-        _options = new EncryptionOptions
-        {
-            Enabled = true,
-            RequireEncryption = false,
-            KeyRotationIntervalMinutes = 30,
-            MaxMessagesPerKey = 1000000,
-            ReplayWindowSeconds = 60,
-            KeyRotationGracePeriodSeconds = 30
-        };
-        _metrics = new EncryptionMetrics();
-
-        _service = new EncryptionService(
-            Options.Create(_options),
-            NullLogger<EncryptionService>.Instance,
-            _metrics);
+        _service = EncryptionTestHelpers.CreateEncryptionService();
     }
 
     #region Key Exchange Tests
@@ -190,8 +172,8 @@ public class EncryptionServiceTests
     {
         // Arrange
         var connectionId = "connection-replay";
-        var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         var response = await _service.PerformKeyExchangeAsync(
             connectionId,
@@ -226,8 +208,8 @@ public class EncryptionServiceTests
     {
         // Arrange
         var connectionId = "connection-rotation";
-        var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         var initialResponse = await _service.PerformKeyExchangeAsync(
             connectionId,
@@ -254,14 +236,11 @@ public class EncryptionServiceTests
             KeyRotationIntervalMinutes = 60
         };
 
-        var service = new EncryptionService(
-            Options.Create(testOptions),
-            NullLogger<EncryptionService>.Instance,
-            new EncryptionMetrics());
+        var service = EncryptionTestHelpers.CreateEncryptionService(testOptions);
 
         var connectionId = "connection-max-messages";
-        var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         var response = await service.PerformKeyExchangeAsync(
             connectionId,
@@ -291,8 +270,8 @@ public class EncryptionServiceTests
     {
         // Arrange
         var connectionId = "connection-stats";
-        var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         var response = await _service.PerformKeyExchangeAsync(
             connectionId,
@@ -314,8 +293,8 @@ public class EncryptionServiceTests
     {
         // Arrange
         var connectionId = "connection-remove";
-        var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
+        using var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
         await _service.PerformKeyExchangeAsync(
             connectionId,
@@ -386,10 +365,7 @@ public class EncryptionServiceTests
             KeyRotationGracePeriodSeconds = 30
         };
 
-        var service = new EncryptionService(
-            Options.Create(testOptions),
-            NullLogger<EncryptionService>.Instance,
-            new EncryptionMetrics());
+        var service = EncryptionTestHelpers.CreateEncryptionService(testOptions);
 
         var connectionId = "connection-expired";
         using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
@@ -501,28 +477,21 @@ public class EncryptionServiceTests
     {
         // Arrange
         var connectionId = "connection-message-metrics";
-        var (response, aesKey, clientEcdsa) = await SetupEncryptedConnectionWithSigningKeyAsync(connectionId);
+        using var setup = await SetupEncryptedConnectionWithSigningKeyAsync(connectionId);
         var initialMetrics = _service.GetMetrics();
 
-        try
-        {
-            // Act - Decrypt a message (using the same signing key registered during key exchange)
-            var envelope = CreateClientEnvelope(
-                "test message"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1);
-            _service.DecryptAndVerify(connectionId, envelope);
+        // Act - Decrypt a message (using the same signing key registered during key exchange)
+        var envelope = CreateClientEnvelope(
+            "test message"u8.ToArray(), setup.AesKey, setup.Response.KeyId, setup.SigningKey, 1);
+        _service.DecryptAndVerify(connectionId, envelope);
 
-            // Act - Encrypt a message
-            _service.EncryptAndSign(connectionId, "response"u8.ToArray());
+        // Act - Encrypt a message
+        _service.EncryptAndSign(connectionId, "response"u8.ToArray());
 
-            // Assert
-            var newMetrics = _service.GetMetrics();
-            Assert.True(newMetrics.MessagesDecrypted > initialMetrics.MessagesDecrypted);
-            Assert.True(newMetrics.MessagesEncrypted > initialMetrics.MessagesEncrypted);
-        }
-        finally
-        {
-            clientEcdsa.Dispose();
-        }
+        // Assert
+        var newMetrics = _service.GetMetrics();
+        Assert.True(newMetrics.MessagesDecrypted > initialMetrics.MessagesDecrypted);
+        Assert.True(newMetrics.MessagesEncrypted > initialMetrics.MessagesEncrypted);
     }
 
     [Fact]
@@ -606,81 +575,10 @@ public class EncryptionServiceTests
         string keyId,
         ECDsa signingKey,
         long? sequenceNumber = null)
-    {
-        var nonce = new byte[12];
-        RandomNumberGenerator.Fill(nonce);
+        => EncryptionTestHelpers.CreateClientEnvelope(plaintext, aesKey, keyId, signingKey, sequenceNumber);
 
-        using var aesGcm = new AesGcm(aesKey, 16);
-        var ciphertext = new byte[plaintext.Length];
-        var tag = new byte[16];
-        aesGcm.Encrypt(nonce, plaintext, ciphertext, tag);
-
-        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var seqNum = sequenceNumber ?? DateTimeOffset.UtcNow.Ticks;
-
-        // Create signature
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream);
-        writer.Write(keyId);
-        writer.Write(nonce);
-        writer.Write(ciphertext);
-        writer.Write(tag);
-        writer.Write(timestamp);
-        writer.Write(seqNum);
-        writer.Flush();
-
-        var signature = signingKey.SignData(stream.ToArray(), HashAlgorithmName.SHA256);
-
-        return new SecureEnvelope
-        {
-            KeyId = keyId,
-            Nonce = nonce,
-            Ciphertext = ciphertext,
-            Tag = tag,
-            Signature = signature,
-            Timestamp = timestamp,
-            SequenceNumber = seqNum
-        };
-    }
-
-    /// <summary>
-    /// Sets up an encrypted connection for testing, including key exchange and AES key derivation.
-    /// </summary>
-    /// <param name="connectionId">The connection ID to use for the encryption session.</param>
-    /// <returns>
-    /// A tuple containing:
-    /// - response: The key exchange response from the server
-    /// - aesKey: The derived AES key for encryption/decryption
-    /// - signingKey: The client's ECDsa signing key. <b>Caller must dispose this key.</b>
-    /// </returns>
-    /// <remarks>
-    /// The returned ECDsa signingKey is NOT disposed by this method and must be disposed by the caller.
-    /// Use try/finally or a using statement in the calling code:
-    /// <code>
-    /// var (response, aesKey, signingKey) = await SetupEncryptedConnectionWithSigningKeyAsync("conn1");
-    /// try { /* use keys */ } finally { signingKey.Dispose(); }
-    /// </code>
-    /// </remarks>
-    private async Task<(KeyExchangeResponse response, byte[] aesKey, ECDsa signingKey)> SetupEncryptedConnectionWithSigningKeyAsync(string connectionId)
-    {
-        using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256); // Caller must dispose
-
-        var response = await _service.PerformKeyExchangeAsync(connectionId,
-            clientEcdh.ExportSubjectPublicKeyInfo(),
-            clientEcdsa.ExportSubjectPublicKeyInfo());
-
-        // Derive the AES key the same way client would
-        using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
-        var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
-        var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
-            salt: response.HkdfSalt.ToArray(),
-            info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
-
-        return (response, aesKey, clientEcdsa);
-    }
+    private async Task<EncryptionConnectionSetup> SetupEncryptedConnectionWithSigningKeyAsync(string connectionId)
+        => await EncryptionTestHelpers.SetupConnectionAsync(_service, connectionId);
 
     #endregion
 }
-

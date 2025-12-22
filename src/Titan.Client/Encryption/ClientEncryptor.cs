@@ -22,7 +22,10 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     private int _connectionIdHash;
     private long _nonceCounter;
     private long _sequenceNumber;
-    private long _lastServerSequenceNumber;
+    /// <summary>
+    /// Tracks last received sequence number per keyId to prevent sequence regression after key rotation.
+    /// </summary>
+    private readonly Dictionary<string, long> _lastServerSequencePerKey = new();
 
     // Previous key for grace period
     private string? _previousKeyId;
@@ -73,7 +76,7 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         _connectionIdHash = RandomNumberGenerator.GetInt32(int.MaxValue);
         _nonceCounter = 0;
         _sequenceNumber = 0;
-        _lastServerSequenceNumber = 0;
+        _lastServerSequencePerKey.Clear();
 
         return true;
     }
@@ -114,6 +117,9 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
     public byte[] DecryptAndVerify(SecureEnvelope envelope)
     {
+        // Clear expired previous key material before decryption
+        ClearExpiredPreviousKey();
+
         if (_serverSigningPublicKey == null)
             throw new InvalidOperationException("Key exchange has not been completed");
 
@@ -133,9 +139,10 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         if (age.TotalSeconds > ReplayWindowSeconds || age.TotalSeconds < -ClockSkewSeconds)
             throw new SecurityException($"Message timestamp outside valid window: {age.TotalSeconds}s");
 
-        // Validate sequence number
-        if (envelope.SequenceNumber <= _lastServerSequenceNumber)
-            throw new SecurityException($"Sequence number regression: {envelope.SequenceNumber} <= {_lastServerSequenceNumber}");
+        // Validate sequence number per keyId to handle key rotation correctly
+        _lastServerSequencePerKey.TryGetValue(envelope.KeyId, out var lastSeqForKey);
+        if (envelope.SequenceNumber <= lastSeqForKey)
+            throw new SecurityException($"Sequence number regression for key {envelope.KeyId}: {envelope.SequenceNumber} <= {lastSeqForKey}");
 
         // Verify signature
         if (!VerifySignature(envelope, _serverSigningPublicKey))
@@ -146,7 +153,8 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         var plaintext = new byte[envelope.Ciphertext.Length];
         aesGcm.Decrypt(envelope.Nonce, envelope.Ciphertext, envelope.Tag, plaintext);
 
-        _lastServerSequenceNumber = envelope.SequenceNumber;
+        // Update last received sequence for this keyId
+        _lastServerSequencePerKey[envelope.KeyId] = envelope.SequenceNumber;
 
         return plaintext;
     }
