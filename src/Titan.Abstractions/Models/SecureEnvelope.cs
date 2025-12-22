@@ -48,12 +48,12 @@ public partial record SecureEnvelope
     /// Used for replay protection with time window validation.
     /// </summary>
     [Id(5), MemoryPackOrder(5)]
-    public long Timestamp { get; init; }
+    public required long Timestamp { get; init; }
 
     /// <summary>
     /// Monotonically increasing sequence number per connection.
     /// Used for gap detection and replay protection.
     /// </summary>
     [Id(6), MemoryPackOrder(6)]
-    public long SequenceNumber { get; init; }
+    public required long SequenceNumber { get; init; }
 }

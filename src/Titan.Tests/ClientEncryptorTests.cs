@@ -21,7 +21,7 @@ public class ClientEncryptorTests
         // Act - Simulate key exchange
         var exchanged = await encryptor.PerformKeyExchangeAsync(request =>
         {
-            Assert.NotEmpty(request.ClientSigningPublicKey);
+            Assert.NotEmpty(request.ClientSigningPublicKey.ToArray());
             return Task.FromResult(new KeyExchangeResponse(
                 "test-key-id",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
@@ -71,7 +71,7 @@ public class ClientEncryptorTests
 
         // Assert
         Assert.NotNull(rotationAck);
-        Assert.NotEmpty(rotationAck.ClientPublicKey);
+        Assert.NotEmpty(rotationAck.ClientPublicKey.ToArray());
         Assert.Equal("rotated-key", encryptor.CurrentKeyId);
         Assert.NotEqual(initialKeyId, encryptor.CurrentKeyId);
     }
@@ -152,7 +152,7 @@ public class ClientEncryptorTests
 
         // Server derives same shared secret
         using var clientEcdh = ECDiffieHellman.Create();
-        clientEcdh.ImportSubjectPublicKeyInfo(capturedRequest!.ClientPublicKey, out _);
+        clientEcdh.ImportSubjectPublicKeyInfo(capturedRequest!.ClientPublicKey.Span, out _);
         var serverSharedSecret = serverEcdh.DeriveRawSecretAgreement(clientEcdh.PublicKey);
 
         // Derive AES key on server side
@@ -200,6 +200,9 @@ public class ClientEncryptorTests
         encryptor.HandleRotationRequest(
             new KeyRotationRequest("key-v2", newServerEcdh.ExportSubjectPublicKeyInfo())
         );
+
+        // Assert - Previous key is preserved during grace period
+        Assert.Equal("key-v1", encryptor.PreviousKeyId);
 
         // Encrypt with key-v2
         var newKeyMessage = encryptor.EncryptAndSign("Message with new key"u8.ToArray());

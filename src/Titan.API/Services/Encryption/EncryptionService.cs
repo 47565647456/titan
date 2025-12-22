@@ -107,15 +107,6 @@ public class EncryptionService : IEncryptionService
         }
     }
 
-    /// <summary>
-    /// Synchronous initialization (for backwards compatibility with non-async callers).
-    /// </summary>
-    private void EnsureInitialized()
-    {
-        if (_initialized) return;
-        EnsureInitializedAsync().GetAwaiter().GetResult();
-    }
-
     public EncryptionConfig GetConfig() => new(_runtimeEnabled, _runtimeRequired);
 
     public void SetEnabled(bool enabled)
@@ -132,12 +123,23 @@ public class EncryptionService : IEncryptionService
         _logger.LogInformation("Encryption required state changed: {Previous} -> {Current}", previous, required);
     }
 
+    /// <summary>
+    /// Synchronous key exchange (for backwards compatibility).
+    /// Prefer PerformKeyExchangeAsync to avoid potential deadlocks.
+    /// </summary>
+    [Obsolete("Use PerformKeyExchangeAsync to avoid potential deadlocks")]
     public KeyExchangeResponse PerformKeyExchange(
         string userId,
         byte[] clientPublicKey,
         byte[] clientSigningPublicKey)
+        => PerformKeyExchangeAsync(userId, clientPublicKey, clientSigningPublicKey).GetAwaiter().GetResult();
+
+    public async Task<KeyExchangeResponse> PerformKeyExchangeAsync(
+        string userId,
+        byte[] clientPublicKey,
+        byte[] clientSigningPublicKey)
     {
-        EnsureInitialized();
+        await EnsureInitializedAsync();
         
         // Generate ephemeral ECDH keypair for this connection
         using var serverEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
@@ -185,8 +187,13 @@ public class EncryptionService : IEncryptionService
                 return state;
             });
 
-        // Persist state to Redis (fire-and-forget)
-        _ = _stateStore?.SaveEncryptionStateAsync(userId, state.ToPersisted());
+        // Persist state to Redis (fire-and-forget with error logging)
+        _stateStore?.SaveEncryptionStateAsync(userId, state.ToPersisted())
+            .ContinueWith(t => 
+            {
+                if (t.IsFaulted)
+                    _logger.LogError(t.Exception, "Failed to persist encryption state for user {UserId}", userId);
+            }, TaskContinuationOptions.OnlyOnFaulted);
 
         _metrics.IncrementKeyExchanges();
         _logger.LogDebug("Key exchange completed for connection {userId}, KeyId: {KeyId}",
@@ -194,12 +201,6 @@ public class EncryptionService : IEncryptionService
 
         return new KeyExchangeResponse(keyId, serverPublicKey, _serverSigningPublicKey!);
     }
-
-    public Task<KeyExchangeResponse> PerformKeyExchangeAsync(
-        string userId,
-        byte[] clientPublicKey,
-        byte[] clientSigningPublicKey)
-        => Task.FromResult(PerformKeyExchange(userId, clientPublicKey, clientSigningPublicKey));
 
     public byte[] DecryptAndVerify(string userId, SecureEnvelope envelope)
     {
@@ -384,7 +385,7 @@ public class EncryptionService : IEncryptionService
 
         // Import client's new public key
         using var clientEcdh = ECDiffieHellman.Create();
-        clientEcdh.ImportSubjectPublicKeyInfo(ack.ClientPublicKey, out _);
+        clientEcdh.ImportSubjectPublicKeyInfo(ack.ClientPublicKey.Span, out _);
 
         var sharedSecret = serverEcdh.DeriveRawSecretAgreement(clientEcdh.PublicKey);
         var newAesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);

@@ -55,6 +55,7 @@ public class SeasonHub : TitanHubBase
     public async Task JoinSeasonGroup(string seasonId)
     {
         await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"season-{seasonId}");
         _broadcaster.AddToGroup(Context.ConnectionId, $"season-{seasonId}");
     }
 
@@ -64,6 +65,7 @@ public class SeasonHub : TitanHubBase
     public async Task LeaveSeasonGroup(string seasonId)
     {
         await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"season-{seasonId}");
         _broadcaster.RemoveFromGroup(Context.ConnectionId, $"season-{seasonId}");
     }
 
@@ -72,6 +74,7 @@ public class SeasonHub : TitanHubBase
     /// </summary>
     public async Task JoinAllSeasonsGroup()
     {
+        await Groups.AddToGroupAsync(Context.ConnectionId, "all-seasons");
         _broadcaster.AddToGroup(Context.ConnectionId, "all-seasons");
     }
 
@@ -80,6 +83,7 @@ public class SeasonHub : TitanHubBase
     /// </summary>
     public async Task LeaveAllSeasonsGroup()
     {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, "all-seasons");
         _broadcaster.RemoveFromGroup(Context.ConnectionId, "all-seasons");
     }
 

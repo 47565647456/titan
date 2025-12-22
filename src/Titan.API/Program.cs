@@ -250,7 +250,6 @@ builder.Services.AddCors(options =>
 
 // Register rate limiting services (Redis-backed)
 builder.Services.AddSingleton<RateLimitService>();
-builder.Services.AddSingleton<RateLimitHubFilter>();
 builder.Services.AddHostedService<RateLimitConfigInitializer>();
 
 // Register admin metrics broadcaster for SignalR push updates

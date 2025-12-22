@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 using Titan.Abstractions.Models;
+using Titan.API.Config;
 
 namespace Titan.API.Services.Encryption;
 
@@ -15,6 +17,7 @@ public class EncryptedHubBroadcaster<THub> where THub : Hub
     private readonly IHubContext<THub> _hubContext;
     private readonly IEncryptionService _encryptionService;
     private readonly ILogger<EncryptedHubBroadcaster<THub>> _logger;
+    private readonly int _broadcastMaxConcurrency;
 
     // Track which connections belong to which users
     private readonly ConcurrentDictionary<string, string> _connectionToUser = new();
@@ -25,12 +28,19 @@ public class EncryptedHubBroadcaster<THub> where THub : Hub
     public EncryptedHubBroadcaster(
         IHubContext<THub> hubContext,
         IEncryptionService encryptionService,
+        IOptions<EncryptionOptions> options,
         ILogger<EncryptedHubBroadcaster<THub>> logger)
     {
         _hubContext = hubContext;
         _encryptionService = encryptionService;
+        _broadcastMaxConcurrency = options.Value.BroadcastMaxConcurrency;
         _logger = logger;
     }
+
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     /// <summary>
     /// Register a connection with its user ID. Call this when a client connects.
@@ -81,7 +91,7 @@ public class EncryptedHubBroadcaster<THub> where THub : Hub
 
     /// <summary>
     /// Send an encrypted message to all connections in a group.
-    /// Encrypts per-user if they have encryption enabled.
+    /// Uses parallel execution with concurrency limits for scalability.
     /// </summary>
     public async Task SendToGroupAsync<T>(string groupName, string method, T data)
     {
@@ -97,43 +107,55 @@ public class EncryptedHubBroadcaster<THub> where THub : Hub
         _logger.LogDebug("Broadcasting {Method} to {Count} connections in group {Group}", 
             method, connections.Count, groupName);
 
-        foreach (var connectionId in connections)
+        // Process connections in parallel with configurable concurrency limit
+        foreach (var batch in connections.Chunk(_broadcastMaxConcurrency))
         {
-            try
+            var tasks = batch.Select(connectionId => SendToSingleConnectionInGroupAsync(
+                connectionId, method, data, config));
+            
+            await Task.WhenAll(tasks);
+        }
+    }
+
+    /// <summary>
+    /// Helper method to send to a single connection within a group broadcast.
+    /// Isolated for parallel execution with per-connection error handling.
+    /// </summary>
+    private async Task SendToSingleConnectionInGroupAsync<T>(
+        string connectionId, 
+        string method, 
+        T data, 
+        EncryptionConfig config)
+    {
+        try
+        {
+            if (!_connectionToUser.TryGetValue(connectionId, out var userId))
             {
-                if (!_connectionToUser.TryGetValue(connectionId, out var userId))
+                _logger.LogDebug("Connection {ConnectionId} has no registered user", connectionId);
+                return;
+            }
+
+            if (config.Enabled && _encryptionService.IsEncryptionEnabled(userId))
+            {
+                var envelope = await EncryptForUserAsync(userId, data);
+                await _hubContext.Clients.Client(connectionId).SendAsync(method, envelope);
+            }
+            else
+            {
+                if (config.Required)
                 {
-                    // User not registered - skip or send plaintext
-                    _logger.LogDebug("Connection {ConnectionId} has no registered user", connectionId);
-                    continue;
+                    _logger.LogWarning("Dropping broadcast to connection {ConnectionId} (user {UserId}) because strict encryption is required but not established", 
+                        connectionId, userId);
+                    return;
                 }
 
-                if (config.Enabled && _encryptionService.IsEncryptionEnabled(userId))
-                {
-                    // Encrypt for this user
-                    var envelope = await EncryptForUserAsync(userId, method, data);
-                    
-                    await _hubContext.Clients.Client(connectionId).SendAsync(method, envelope);
-                }
-                else
-                {
-                    // Downgrade protection: If strict encryption is required, DO NOT send plaintext.
-                    if (config.Required)
-                    {
-                        _logger.LogWarning("Dropping broadcast to connection {ConnectionId} (user {UserId}) because strict encryption is required but not established", 
-                            connectionId, userId);
-                        continue;
-                    }
-
-                    // Send plaintext (legacy/fallback mode only)
-                    await _hubContext.Clients.Client(connectionId).SendAsync(method, data);
-                    _logger.LogDebug("Sent plaintext {Method} to connection {ConnectionId}", method, connectionId);
-                }
+                await _hubContext.Clients.Client(connectionId).SendAsync(method, data);
+                _logger.LogDebug("Sent plaintext {Method} to connection {ConnectionId}", method, connectionId);
             }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to send {Method} to connection {ConnectionId}", method, connectionId);
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send {Method} to connection {ConnectionId}", method, connectionId);
         }
     }
 
@@ -147,6 +169,12 @@ public class EncryptedHubBroadcaster<THub> where THub : Hub
         {
             if (!_connectionToUser.TryGetValue(connectionId, out var userId))
             {
+                var cfg = _encryptionService.GetConfig();
+                if (cfg.Required)
+                {
+                    _logger.LogWarning("Dropping message to unregistered connection {ConnectionId} - encryption required", connectionId);
+                    return;
+                }
                 _logger.LogDebug("Connection {ConnectionId} has no registered user, sending plaintext", connectionId);
                 await _hubContext.Clients.Client(connectionId).SendAsync(method, data);
                 return;
@@ -156,7 +184,7 @@ public class EncryptedHubBroadcaster<THub> where THub : Hub
             if (config.Enabled && _encryptionService.IsEncryptionEnabled(userId))
             {
                 // Encrypt for this user
-                var envelope = await EncryptForUserAsync(userId, method, data);
+                var envelope = await EncryptForUserAsync(userId, data);
                 await _hubContext.Clients.Client(connectionId).SendAsync(method, envelope);
                 _logger.LogDebug("Sent encrypted {Method} to connection {ConnectionId}", method, connectionId);
             }
@@ -178,13 +206,10 @@ public class EncryptedHubBroadcaster<THub> where THub : Hub
         }
     }
 
-    private async Task<SecureEnvelope> EncryptForUserAsync<T>(string userId, string method, T data)
+    private async Task<SecureEnvelope> EncryptForUserAsync<T>(string userId, T data)
     {
         // Serialize the data payload directly
-        var json = JsonSerializer.Serialize(data, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        });
+        var json = JsonSerializer.Serialize(data, s_jsonOptions);
         
         var plainBytes = System.Text.Encoding.UTF8.GetBytes(json);
         return await _encryptionService.EncryptAndSignAsync(userId, plainBytes);

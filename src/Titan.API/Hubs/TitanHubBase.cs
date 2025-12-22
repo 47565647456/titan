@@ -168,7 +168,7 @@ public abstract class TitanHubBase : Hub
 
         // 3. Find the target method
         var method = GetType().GetMethod(invocation.Target, 
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase | BindingFlags.DeclaredOnly);
         
         if (method == null || method.Name == nameof(InvokeEncrypted) || method.GetCustomAttribute<HubMethodNameAttribute>()?.Name == "__encrypted__")
         {
@@ -213,13 +213,20 @@ public abstract class TitanHubBase : Hub
                 var resultProperty = task.GetType().GetProperty("Result");
                 return resultProperty?.GetValue(task);
             }
+            else if (result != null && result.GetType().IsGenericType && 
+                     result.GetType().GetGenericTypeDefinition() == typeof(ValueTask<>))
+            {
+                // Handle ValueTask<T>
+                var asTask = (Task)result.GetType().GetMethod("AsTask")!.Invoke(result, null)!;
+                await asTask;
+                var resultProperty = asTask.GetType().GetProperty("Result");
+                return resultProperty?.GetValue(asTask);
+            }
             else if (result is ValueTask valueTask)
             {
                 await valueTask;
                 return null;
             }
-            // Logic for ValueTask<T> would be similar but slightly more complex.
-            // For now, most of our methods return Task or Task<T>.
             
             return result;
         }
@@ -242,7 +249,11 @@ public abstract class TitanHubBase : Hub
                 var arg = MemoryPackSerializer.Deserialize(parameters[0].ParameterType, payload);
                 return new[] { arg };
             }
-            catch { /* Fall through to JSON */ }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "MemoryPack deserialization failed for type {TypeName}, falling back to JSON", 
+                    parameters[0].ParameterType.Name);
+            }
         }
 
         // Handle JSON (TS/Dashboard client)

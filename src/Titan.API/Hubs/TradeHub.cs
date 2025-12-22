@@ -86,8 +86,7 @@ public class TradeHub : TitanHubBase
         // Verify caller is a participant before allowing subscription
         await GetOwnedCharacterInTradeAsync(tradeId);
         
-        await GetOwnedCharacterInTradeAsync(tradeId);
-        
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"trade-{tradeId}");
         _broadcaster.AddToGroup(Context.ConnectionId, $"trade-{tradeId}");
         await _streamSubscriber.SubscribeToTradeAsync(tradeId);
     }
@@ -97,6 +96,7 @@ public class TradeHub : TitanHubBase
     /// </summary>
     public async Task LeaveTradeSession(Guid tradeId)
     {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"trade-{tradeId}");
         _broadcaster.RemoveFromGroup(Context.ConnectionId, $"trade-{tradeId}");
     }
 

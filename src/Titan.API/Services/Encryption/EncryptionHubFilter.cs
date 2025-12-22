@@ -47,6 +47,16 @@ public class EncryptionHubFilter : IHubFilter
         _logger = logger;
     }
 
+    private static bool IsVoidResult(object result)
+    {
+        var type = result.GetType();
+        // Check for Task without result (non-generic Task completes without value)
+        if (result is Task && !type.IsGenericType)
+            return true;
+        // VoidTaskResult is internal, check by name as fallback
+        return type.Name == "VoidTaskResult";
+    }
+
     public async ValueTask<object?> InvokeMethodAsync(
         HubInvocationContext context,
         Func<HubInvocationContext, ValueTask<object?>> next)
@@ -107,9 +117,7 @@ public class EncryptionHubFilter : IHubFilter
 
             // Automatically encrypt the response for any call to an encrypted user
             // This ensures even discovery/unencrypted calls that return data are protected if keys exist
-            // Automatically encrypt the response for any call to an encrypted user
-            // This ensures even discovery/unencrypted calls that return data are protected if keys exist
-            if (result != null && result.GetType().Name != "VoidTaskResult")
+            if (result != null && !IsVoidResult(result))
             {
                 // Serialize result to MemoryPack bytes
                 var plaintext = MemoryPackSerializer.Serialize(result.GetType(), result);

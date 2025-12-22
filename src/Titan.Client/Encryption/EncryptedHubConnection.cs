@@ -14,6 +14,11 @@ public class EncryptedHubConnection : IAsyncDisposable
     private readonly IClientEncryptor? _encryptor;
     private readonly bool _encryptionEnabled;
 
+    private static readonly System.Text.Json.JsonSerializerOptions s_jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public EncryptedHubConnection(HubConnection inner, IClientEncryptor? encryptor, bool encryptionEnabled)
     {
         _inner = inner;
@@ -88,8 +93,7 @@ public class EncryptedHubConnection : IAsyncDisposable
         {
             try
             {
-                var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var envelopeFromJson = System.Text.Json.JsonSerializer.Deserialize<SecureEnvelope>(jsonElement.GetRawText(), jsonOptions);
+                var envelopeFromJson = System.Text.Json.JsonSerializer.Deserialize<SecureEnvelope>(jsonElement.GetRawText(), s_jsonOptions);
                 if (envelopeFromJson != null && !string.IsNullOrEmpty(envelopeFromJson.KeyId))
                 {
                     var decrypted = _encryptor.DecryptAndVerify(envelopeFromJson);
@@ -99,8 +103,7 @@ public class EncryptedHubConnection : IAsyncDisposable
             }
             catch (System.Text.Json.JsonException) { }
             
-            var fallbackOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            return System.Text.Json.JsonSerializer.Deserialize<TResult>(jsonElement.GetRawText(), fallbackOptions)
+            return System.Text.Json.JsonSerializer.Deserialize<TResult>(jsonElement.GetRawText(), s_jsonOptions)
                 ?? throw new InvalidOperationException("Failed to deserialize response");
         }
 
@@ -145,22 +148,7 @@ public class EncryptedHubConnection : IAsyncDisposable
         // Register handler that can receive either encrypted or plain messages
         return _inner.On<object>(methodName, message =>
         {
-            T result;
-            if (message is SecureEnvelope envelope)
-            {
-                var decrypted = _encryptor.DecryptAndVerify(envelope);
-                result = MemoryPackSerializer.Deserialize<T>(decrypted)
-                    ?? throw new InvalidOperationException("Failed to deserialize encrypted message");
-            }
-            else if (message is T typed)
-            {
-                result = typed;
-            }
-            else
-            {
-                throw new InvalidOperationException($"Unexpected message type: {message?.GetType().Name ?? "null"}");
-            }
-
+            T result = ProcessIncomingMessage<T>(message);
             handler(result);
         });
     }
@@ -177,24 +165,53 @@ public class EncryptedHubConnection : IAsyncDisposable
 
         return _inner.On<object>(methodName, async message =>
         {
-            T result;
-            if (message is SecureEnvelope envelope)
-            {
-                var decrypted = _encryptor.DecryptAndVerify(envelope);
-                result = MemoryPackSerializer.Deserialize<T>(decrypted)
-                    ?? throw new InvalidOperationException("Failed to deserialize encrypted message");
-            }
-            else if (message is T typed)
-            {
-                result = typed;
-            }
-            else
-            {
-                throw new InvalidOperationException($"Unexpected message type: {message?.GetType().Name ?? "null"}");
-            }
-
+            T result = ProcessIncomingMessage<T>(message);
             await handler(result);
         });
+    }
+
+    /// <summary>
+    /// Process incoming message, handling JsonElement, SecureEnvelope, or plain T.
+    /// </summary>
+    private T ProcessIncomingMessage<T>(object message)
+    {
+        // Handle SecureEnvelope directly
+        if (message is SecureEnvelope envelope)
+        {
+            var decrypted = _encryptor!.DecryptAndVerify(envelope);
+            return MemoryPackSerializer.Deserialize<T>(decrypted)
+                ?? throw new InvalidOperationException("Failed to deserialize encrypted message");
+        }
+
+        // Handle JsonElement (SignalR JSON protocol delivers this for object type)
+        if (message is System.Text.Json.JsonElement jsonElement)
+        {
+            try
+            {
+                var envelopeFromJson = System.Text.Json.JsonSerializer.Deserialize<SecureEnvelope>(
+                    jsonElement.GetRawText(), s_jsonOptions);
+                
+                if (envelopeFromJson != null && !string.IsNullOrEmpty(envelopeFromJson.KeyId))
+                {
+                    var decrypted = _encryptor!.DecryptAndVerify(envelopeFromJson);
+                    return MemoryPackSerializer.Deserialize<T>(decrypted)
+                        ?? throw new InvalidOperationException("Failed to deserialize encrypted message");
+                }
+            }
+            catch (System.Text.Json.JsonException) { }
+            
+            // Fallback: try deserializing as T directly
+            return System.Text.Json.JsonSerializer.Deserialize<T>(jsonElement.GetRawText(), s_jsonOptions)
+                ?? throw new InvalidOperationException("Failed to deserialize message");
+        }
+
+        // Handle already-typed message
+        if (message is T typed)
+        {
+            return typed;
+        }
+
+        throw new InvalidOperationException($"Unexpected message type: {message?.GetType().Name ?? "null"}");
     }
 
     public async ValueTask DisposeAsync()

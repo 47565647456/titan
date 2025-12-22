@@ -11,7 +11,7 @@ namespace Titan.API.Hubs;
 /// Clients connect to this hub to establish encrypted communication.
 /// </summary>
 [Authorize(AuthenticationSchemes = "SessionTicket")]
-public class EncryptionHub : Hub, IEncryptionHubClient
+public class EncryptionHub : Hub<IEncryptionHubReceiver>
 {
     private readonly IEncryptionService _encryptionService;
     private readonly ILogger<EncryptionHub> _logger;
@@ -41,8 +41,8 @@ public class EncryptionHub : Hub, IEncryptionHubClient
 
         var response = await _encryptionService.PerformKeyExchangeAsync(
             userId,
-            request.ClientPublicKey,
-            request.ClientSigningPublicKey);
+            request.ClientPublicKey.ToArray(),
+            request.ClientSigningPublicKey.ToArray());
 
         _logger.LogInformation("Key exchange completed for user {UserId}, KeyId: {KeyId}",
             userId, response.KeyId);

@@ -56,6 +56,7 @@ public class BaseTypeHub : TitanHubBase
     /// </summary>
     public async Task JoinBaseTypesGroup()
     {
+        await Groups.AddToGroupAsync(Context.ConnectionId, "base-types");
         _broadcaster.AddToGroup(Context.ConnectionId, "base-types");
     }
 
@@ -64,6 +65,7 @@ public class BaseTypeHub : TitanHubBase
     /// </summary>
     public async Task LeaveBaseTypesGroup()
     {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, "base-types");
         _broadcaster.RemoveFromGroup(Context.ConnectionId, "base-types");
     }
 

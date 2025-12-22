@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Titan.Abstractions.Models;
 
 /// <summary>
@@ -12,8 +14,8 @@ public record EncryptionConfig(
 /// Client's public keys for ECDH key exchange and ECDSA signing.
 /// </summary>
 public record KeyExchangeRequest(
-    byte[] ClientPublicKey,
-    byte[] ClientSigningPublicKey
+    ReadOnlyMemory<byte> ClientPublicKey,
+    ReadOnlyMemory<byte> ClientSigningPublicKey
 );
 
 /// <summary>
@@ -21,21 +23,22 @@ public record KeyExchangeRequest(
 /// </summary>
 public record KeyExchangeResponse(
     string KeyId,
-    byte[] ServerPublicKey,
-    byte[] ServerSigningPublicKey
+    ReadOnlyMemory<byte> ServerPublicKey,
+    ReadOnlyMemory<byte> ServerSigningPublicKey
 );
 
 /// <summary>
 /// Server-initiated key rotation request.
 /// </summary>
 public record KeyRotationRequest(
+    [property: JsonPropertyName("newKeyId")]
     string KeyId,
-    byte[] ServerPublicKey
+    ReadOnlyMemory<byte> ServerPublicKey
 );
 
 /// <summary>
 /// Client acknowledgment of key rotation with new client public key.
 /// </summary>
 public record KeyRotationAck(
-    byte[] ClientPublicKey
+    ReadOnlyMemory<byte> ClientPublicKey
 );

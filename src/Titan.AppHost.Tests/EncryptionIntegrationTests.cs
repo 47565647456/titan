@@ -229,15 +229,15 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         // Assert
         Assert.NotNull(response);
         Assert.NotEmpty(response.KeyId);
-        Assert.NotEmpty(response.ServerPublicKey);
-        Assert.NotEmpty(response.ServerSigningPublicKey);
+        Assert.NotEmpty(response.ServerPublicKey.ToArray());
+        Assert.NotEmpty(response.ServerSigningPublicKey.ToArray());
 
         // Verify we can import the server's public key (valid format)
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         
         using var serverEcdsa = ECDsa.Create();
-        serverEcdsa.ImportSubjectPublicKeyInfo(response.ServerSigningPublicKey, out _);
+        serverEcdsa.ImportSubjectPublicKeyInfo(response.ServerSigningPublicKey.Span, out _);
 
         await encryptionHub.DisposeAsync();
     }
@@ -478,7 +478,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
         // Derive shared secret
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
 
         // Assert
@@ -709,12 +709,12 @@ public class EncryptionIntegrationTests : IntegrationTestBase
             // Assert
             Assert.NotNull(response);
             Assert.NotEmpty(response.KeyId);
-            Assert.NotEmpty(response.ServerPublicKey);
-            Assert.NotEmpty(response.ServerSigningPublicKey);
+            Assert.NotEmpty(response.ServerPublicKey.ToArray());
+            Assert.NotEmpty(response.ServerSigningPublicKey.ToArray());
 
             // Verify we can derive shared secret
             using var serverEcdh = ECDiffieHellman.Create();
-            serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+            serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
             var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
             Assert.Equal(32, sharedSecret.Length);
 
@@ -863,8 +863,8 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
             // Verify key exchange was successful
             Assert.NotEmpty(keyResponse.KeyId);
-            Assert.NotEmpty(keyResponse.ServerPublicKey);
-            Assert.NotEmpty(keyResponse.ServerSigningPublicKey);
+            Assert.NotEmpty(keyResponse.ServerPublicKey.ToArray());
+            Assert.NotEmpty(keyResponse.ServerSigningPublicKey.ToArray());
 
             // Verify config still shows enabled
             var config = await encryptionHub.InvokeAsync<EncryptionConfig>("GetConfig");

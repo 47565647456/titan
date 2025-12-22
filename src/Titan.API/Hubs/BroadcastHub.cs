@@ -38,15 +38,16 @@ public class BroadcastHub : TitanHubBase
         }
         await base.OnConnectedAsync();
         
-        // Add to group via broadcaster for encrypted support
+        // Add to both SignalR native groups AND broadcaster's internal tracking
+        await Groups.AddToGroupAsync(Context.ConnectionId, AllPlayersGroup);
         _broadcaster.AddToGroup(Context.ConnectionId, AllPlayersGroup);
         _logger.LogDebug("Client {ConnectionId} joined broadcast group", Context.ConnectionId);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        _broadcaster.RemoveFromGroup(Context.ConnectionId, AllPlayersGroup);
         _broadcaster.UnregisterConnection(Context.ConnectionId);
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, AllPlayersGroup);
         _logger.LogDebug("Client {ConnectionId} left broadcast group", Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }

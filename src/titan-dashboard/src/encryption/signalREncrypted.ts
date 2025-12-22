@@ -103,6 +103,13 @@ export class EncryptedSignalRConnection {
         return false;
       }
 
+      // Try to restore previous session state to handle graceful rotation on refresh
+      // This allows us to decrypt messages sent with the "old" key while we negotiate a new one
+      const restored = await this.encryptor.restoreSession();
+      if (restored) {
+          console.log('[EncryptedSignalR] Restored previous encryption session');
+      }
+
       // Connect to encryption hub
       this.encryptionHub = new signalR.HubConnectionBuilder()
         .withUrl(`${this.options.baseUrl || ''}/encryptionHub`, {
@@ -115,18 +122,23 @@ export class EncryptedSignalRConnection {
       await this.encryptionHub.start();
       console.log('[EncryptedSignalR] Connected to encryption hub');
 
-      // Perform key exchange
-      const keyExchangeRequest = await this.encryptor.createKeyExchangeRequest();
-      const response = await this.encryptionHub.invoke<KeyExchangeResponse>(
-        'KeyExchange',
-        keyExchangeRequest
-      );
-      await this.encryptor.completeKeyExchange(response);
+      // Perform key exchange only if not restored
+      if (!restored) {
+          const keyExchangeRequest = await this.encryptor.createKeyExchangeRequest();
+          const response = await this.encryptionHub.invoke<KeyExchangeResponse>(
+            'KeyExchange',
+            keyExchangeRequest
+          );
+          await this.encryptor.completeKeyExchange(response);
+          console.log('[EncryptedSignalR] Key exchange completed');
+      } else {
+          console.log('[EncryptedSignalR] Skipping key exchange (session restored)');
+      }
 
-      console.log('[EncryptedSignalR] Key exchange completed');
       return true;
     } catch (error) {
       console.error('[EncryptedSignalR] Failed to initialize encryption:', error);
+      this.encryptor.reset(); // Clear bad state
       if (this.isEncryptionRequired) {
         throw error;
       }
@@ -177,42 +189,43 @@ export class EncryptedSignalRConnection {
     ...args: unknown[]
   ): Promise<T> {
     if (this.encryptionActive) {
-      // Create EncryptedInvocation object
-      // For single arg, we send it directly as JSON. For multi, we send as array.
-      const payloadObj = args.length === 1 ? args[0] : args;
-      const payloadJson = JSON.stringify(payloadObj);
-      const payloadBytes = new TextEncoder().encode(payloadJson);
-      
-      // Convert payload to Base64 string because C# System.Text.Json expects Base64 for byte[] properties
-      const payloadBase64 = arrayBufferToBase64(payloadBytes);
+      try {
+          // Create EncryptedInvocation object
+          // For single arg, we send it directly as JSON. For multi, we send as array.
+          const payloadObj = args.length === 1 ? args[0] : args;
+          const payloadJson = JSON.stringify(payloadObj);
+          const payloadBytes = new TextEncoder().encode(payloadJson);
+          
+          // Convert payload to Base64 string because C# System.Text.Json expects Base64 for byte[] properties
+          const payloadBase64 = arrayBufferToBase64(payloadBytes);
 
-      const invocation = {
-        target: methodName,
-        payload: payloadBase64
-      };
+          const invocation = {
+            target: methodName,
+            payload: payloadBase64
+          };
 
-      // Serialize the invocation wrapper to JSON (to be compatible with server's MemoryPack or JSON expectation)
-      // Actually, server expects MemoryPack for EncryptedInvocation, but since we are JS, 
-      // we'll hope the server can also fallback to JSON for the wrapper if we send it as JSON string.
-      // Wait, TitanHubBase.cs: InvokeEncrypted expects MemoryPack for EncryptedInvocation.
-      // I'll update TitanHubBase.cs to also support JSON for the Wrapper!
-      
-      const invocationJson = JSON.stringify(invocation);
-      const plaintext = new TextEncoder().encode(invocationJson);
-      const envelope = await this.encryptor.encryptAndSign(plaintext);
-      
-      // Invoke the generic encrypted gateway
-      const result = await hubConnection.invoke<SecureEnvelope>('__encrypted__', envelope);
-      
-      // Check if result is encrypted
-      if (result && typeof result === 'object' && 'keyId' in result) {
-        // Decrypt response
-        const decrypted = await this.encryptor.decryptAndVerify(result);
-        const decoded = new TextDecoder().decode(decrypted);
-        return JSON.parse(decoded) as T;
+          const invocationJson = JSON.stringify(invocation);
+          const plaintext = new TextEncoder().encode(invocationJson);
+          const envelope = await this.encryptor.encryptAndSign(plaintext);
+          
+          // Invoke the generic encrypted gateway
+          const result = await hubConnection.invoke<SecureEnvelope>('__encrypted__', envelope);
+          
+          // Check if result is encrypted
+          if (result && typeof result === 'object' && 'keyId' in result) {
+            // Decrypt response
+            const decrypted = await this.encryptor.decryptAndVerify(result);
+            const decoded = new TextDecoder().decode(decrypted);
+            return JSON.parse(decoded) as T;
+          }
+          
+          return result as unknown as T;
+      } catch (error) {
+          console.error('[EncryptedSignalR] Invoke failed with encryption:', error);
+          // If it's a security error, server might have rejected our key. Reset.
+          this.encryptor.reset(); 
+          throw error;
       }
-      
-      return result as unknown as T;
     } else {
       // Direct invocation without encryption
       return hubConnection.invoke<T>(methodName, ...args);
@@ -245,6 +258,7 @@ export class EncryptedSignalRConnection {
           }
         } catch (error) {
           console.error('[EncryptedSignalR] Failed to decrypt message:', error);
+          this.encryptor.reset(); // Reset session on decryption failure so next reload recovers
         }
       });
     } else {

@@ -34,6 +34,7 @@ public sealed class TitanClient : IAsyncDisposable
     // Encryption support
     private IClientEncryptor? _encryptor;
     private bool _encryptionEnabled;
+    private readonly SemaphoreSlim _encryptionInitLock = new(1, 1);
 
     /// <summary>
     /// HTTP authentication client.
@@ -243,13 +244,21 @@ public sealed class TitanClient : IAsyncDisposable
         // Perform key exchange if encryption is enabled
         if (_options.EnablePayloadEncryption && !_encryptionEnabled)
         {
+            await _encryptionInitLock.WaitAsync();
             try
             {
-                await InitializeEncryptionAsync();
+                if (!_encryptionEnabled) // Double-check after acquiring lock
+                {
+                    await InitializeEncryptionAsync();
+                }
             }
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex, "Failed to initialize encryption for {HubPath}", hubPath);
+            }
+            finally
+            {
+                _encryptionInitLock.Release();
             }
         }
 
@@ -269,11 +278,18 @@ public sealed class TitanClient : IAsyncDisposable
         // Register for key rotation messages
         _encryptionHub.On<KeyRotationRequest>("KeyRotation", async request =>
         {
-            if (_encryptor != null)
+            try
             {
-                var ack = _encryptor.HandleRotationRequest(request);
-                await _encryptionHub.InvokeAsync("CompleteKeyRotation", ack);
-                _logger?.LogDebug("Completed key rotation, new KeyId: {KeyId}", request.KeyId);
+                if (_encryptor != null)
+                {
+                    var ack = _encryptor.HandleRotationRequest(request);
+                    await _encryptionHub.InvokeAsync("CompleteKeyRotation", ack);
+                    _logger?.LogDebug("Completed key rotation, new KeyId: {KeyId}", request.KeyId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Key rotation failed for KeyId: {KeyId}", request.KeyId);
             }
         });
 

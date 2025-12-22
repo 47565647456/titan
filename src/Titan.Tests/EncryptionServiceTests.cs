@@ -56,8 +56,8 @@ public class EncryptionServiceTests
         // Assert
         Assert.NotNull(response);
         Assert.NotEmpty(response.KeyId);
-        Assert.NotEmpty(response.ServerPublicKey);
-        Assert.NotEmpty(response.ServerSigningPublicKey);
+        Assert.NotEmpty(response.ServerPublicKey.ToArray());
+        Assert.NotEmpty(response.ServerSigningPublicKey.ToArray());
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public class EncryptionServiceTests
 
         // Derive shared secret client-side
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
@@ -162,7 +162,7 @@ public class EncryptionServiceTests
             clientEcdsa.ExportSubjectPublicKeyInfo());
 
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
@@ -197,7 +197,7 @@ public class EncryptionServiceTests
             clientEcdsa.ExportSubjectPublicKeyInfo());
 
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
@@ -237,7 +237,7 @@ public class EncryptionServiceTests
         // Assert
         Assert.NotNull(rotationRequest);
         Assert.NotEqual(initialResponse.KeyId, rotationRequest.KeyId);
-        Assert.NotEmpty(rotationRequest.ServerPublicKey);
+        Assert.NotEmpty(rotationRequest.ServerPublicKey.ToArray());
     }
 
     [Fact]
@@ -266,7 +266,7 @@ public class EncryptionServiceTests
             clientEcdsa.ExportSubjectPublicKeyInfo());
 
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
@@ -544,7 +544,7 @@ public class EncryptionServiceTests
 
         // Act - Try to decrypt using the FIRST key (which should now be the PreviousKeyId)
         using var serverEcdh1 = ECDiffieHellman.Create();
-        serverEcdh1.ImportSubjectPublicKeyInfo(response1.ServerPublicKey, out _);
+        serverEcdh1.ImportSubjectPublicKeyInfo(response1.ServerPublicKey.Span, out _);
         var sharedSecret1 = client1.DeriveRawSecretAgreement(serverEcdh1.PublicKey);
         var aesKey1 = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret1, 32,
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
@@ -649,7 +649,7 @@ public class EncryptionServiceTests
 
         // Derive the AES key the same way client would
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32, 
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));

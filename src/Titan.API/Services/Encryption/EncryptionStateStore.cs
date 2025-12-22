@@ -88,7 +88,8 @@ public class EncryptionStateStore
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to save encryption state for user {UserId}", userId);
+            _logger.LogError(ex, "Failed to save encryption state for user {UserId}", userId);
+            throw;
         }
     }
 

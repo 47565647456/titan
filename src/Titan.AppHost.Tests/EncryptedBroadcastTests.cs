@@ -41,6 +41,8 @@ public class EncryptedBroadcastTests : IntegrationTestBase
         await adminClient.PostAsJsonAsync("/api/admin/encryption/enabled", new { Enabled = true });
 
         Guid? userIdToCleanup = null;
+        HubConnection? encryptionHub = null;
+        HubConnection? seasonHub = null;
 
         try 
         {
@@ -48,7 +50,7 @@ public class EncryptedBroadcastTests : IntegrationTestBase
             userIdToCleanup = userId;
 
             // Step 1: Crypto Setup
-            var encryptionHub = new HubConnectionBuilder()
+            encryptionHub = new HubConnectionBuilder()
                 .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
                 .Build();
             await encryptionHub.StartAsync();
@@ -57,7 +59,7 @@ public class EncryptedBroadcastTests : IntegrationTestBase
             await encryptor.PerformKeyExchangeAsync(async req => await encryptionHub.InvokeAsync<KeyExchangeResponse>("KeyExchange", req));
             
             // Step 2: Connect to SeasonHub and Subscribe
-            var seasonHub = new HubConnectionBuilder()
+            seasonHub = new HubConnectionBuilder()
                 .WithUrl($"{ApiBaseUrl}/seasonHub?access_token={sessionId}")
                 .Build();
 
@@ -122,19 +124,32 @@ public class EncryptedBroadcastTests : IntegrationTestBase
             }
             catch (Exception ex)
             {
-                throw new Exception($"Payload decryption succeeded but content check failed: {ex.Message}");
+                throw new Exception($"Payload decryption succeeded but content check failed: {ex.Message}", ex);
             }
-
-            await seasonHub.DisposeAsync();
-            await encryptionHub.DisposeAsync();
         }
         finally
         {
-             await adminClient.PostAsJsonAsync("/api/admin/encryption/enabled", new { Enabled = wasEnabled });
-             if (userIdToCleanup.HasValue)
-             {
-                 await adminClient.DeleteAsync($"/api/admin/encryption/connections/{userIdToCleanup}");
-             }
+            // Ensure both hubs are disposed even if one throws
+            Exception? disposeException = null;
+            if (seasonHub != null)
+            {
+                try { await seasonHub.DisposeAsync(); } 
+                catch (Exception ex) { disposeException = ex; }
+            }
+            
+            if (encryptionHub != null)
+            {
+                try { await encryptionHub.DisposeAsync(); } 
+                catch (Exception ex) { disposeException = disposeException == null ? ex : new AggregateException(disposeException, ex); }
+            }
+
+            await adminClient.PostAsJsonAsync("/api/admin/encryption/enabled", new { Enabled = wasEnabled });
+            if (userIdToCleanup.HasValue)
+            {
+                await adminClient.DeleteAsync($"/api/admin/encryption/connections/{userIdToCleanup}");
+            }
+            
+            if (disposeException != null) throw disposeException;
         }
     }
 

@@ -51,4 +51,19 @@ public class EncryptionOptions
     /// </summary>
     [Range(5, 120)]
     public int KeyRotationGracePeriodSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// How often the background service checks for keys needing rotation.
+    /// Default: 30 seconds
+    /// </summary>
+    [Range(5, 300)]
+    public int KeyRotationCheckIntervalSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Maximum concurrent sends during group broadcasts.
+    /// Higher values increase throughput but consume more resources.
+    /// Default: 50
+    /// </summary>
+    [Range(1, 500)]
+    public int BroadcastMaxConcurrency { get; set; } = 50;
 }

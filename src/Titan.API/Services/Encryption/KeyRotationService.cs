@@ -38,8 +38,8 @@ public class KeyRotationService : BackgroundService
         _logger.LogInformation("Key rotation service started. Interval: {Minutes} minutes, Max messages: {MaxMessages}",
             _options.KeyRotationIntervalMinutes, _options.MaxMessagesPerKey);
 
-        // Check every 30 seconds for users needing rotation
-        var checkInterval = TimeSpan.FromSeconds(30);
+        // Check interval is configurable
+        var checkInterval = TimeSpan.FromSeconds(_options.KeyRotationCheckIntervalSeconds);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -107,11 +107,7 @@ public class KeyRotationService : BackgroundService
     /// </summary>
     public async Task ForceRotationAllAsync()
     {
-        // Get all users with encryption enabled
-        var allUsers = _encryptionService.GetAllEncryptedUserIds();
-        var usersNeedingRotation = _encryptionService.GetConnectionsNeedingRotation();
-        
-        var allUserIds = allUsers.Concat(usersNeedingRotation).Distinct().ToList();
+        var allUserIds = _encryptionService.GetAllEncryptedUserIds().ToList();
 
         foreach (var userId in allUserIds)
         {

@@ -35,14 +35,21 @@ public class EncryptionSecurityTests
         var connectionId = "expired-timestamp-user";
         var (response, aesKey, clientEcdsa) = await SetupConnection(connectionId);
         
-        // Create an envelope with an old timestamp (older than 60s)
-        var oldTimestamp = DateTimeOffset.UtcNow.AddSeconds(-70).ToUnixTimeMilliseconds();
-        var envelope = CreateClientEnvelope("Plaintext"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1, oldTimestamp);
+        try
+        {
+            // Create an envelope with an old timestamp (older than 60s)
+            var oldTimestamp = DateTimeOffset.UtcNow.AddSeconds(-70).ToUnixTimeMilliseconds();
+            var envelope = CreateClientEnvelope("Plaintext"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1, oldTimestamp);
 
-        // Act & Assert
-        var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
-            () => _service.DecryptAndVerifyAsync(connectionId, envelope));
-        Assert.Contains("timestamp outside valid window", ex.Message);
+            // Act & Assert
+            var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
+                () => _service.DecryptAndVerifyAsync(connectionId, envelope));
+            Assert.Contains("timestamp outside valid window", ex.Message);
+        }
+        finally
+        {
+            clientEcdsa.Dispose();
+        }
     }
 
     [Fact]
@@ -52,14 +59,21 @@ public class EncryptionSecurityTests
         var connectionId = "future-timestamp-user";
         var (response, aesKey, clientEcdsa) = await SetupConnection(connectionId);
         
-        // Create an envelope with a future timestamp (more than 5s in future)
-        var futureTimestamp = DateTimeOffset.UtcNow.AddSeconds(10).ToUnixTimeMilliseconds();
-        var envelope = CreateClientEnvelope("Plaintext"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1, futureTimestamp);
+        try
+        {
+            // Create an envelope with a future timestamp (more than 5s in future)
+            var futureTimestamp = DateTimeOffset.UtcNow.AddSeconds(10).ToUnixTimeMilliseconds();
+            var envelope = CreateClientEnvelope("Plaintext"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1, futureTimestamp);
 
-        // Act & Assert
-        var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
-            () => _service.DecryptAndVerifyAsync(connectionId, envelope));
-        Assert.Contains("timestamp outside valid window", ex.Message);
+            // Act & Assert
+            var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
+                () => _service.DecryptAndVerifyAsync(connectionId, envelope));
+            Assert.Contains("timestamp outside valid window", ex.Message);
+        }
+        finally
+        {
+            clientEcdsa.Dispose();
+        }
     }
 
     [Fact]
@@ -69,15 +83,22 @@ public class EncryptionSecurityTests
         var connectionId = "invalid-sig-user";
         var (response, aesKey, clientEcdsa) = await SetupConnection(connectionId);
         
-        var envelope = CreateClientEnvelope("Plaintext"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1);
+        try
+        {
+            var envelope = CreateClientEnvelope("Plaintext"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1);
 
-        // Tamper with the signature
-        envelope.Signature[0] ^= 0xFF;
+            // Tamper with the signature
+            envelope.Signature[0] ^= 0xFF;
 
-        // Act & Assert
-        var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
-            () => _service.DecryptAndVerifyAsync(connectionId, envelope));
-        Assert.Contains("Signature verification failed", ex.Message);
+            // Act & Assert
+            var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
+                () => _service.DecryptAndVerifyAsync(connectionId, envelope));
+            Assert.Contains("Signature verification failed", ex.Message);
+        }
+        finally
+        {
+            clientEcdsa.Dispose();
+        }
     }
 
     [Fact]
@@ -87,20 +108,58 @@ public class EncryptionSecurityTests
         var connectionId = "wrong-keyid-user";
         var (response, aesKey, clientEcdsa) = await SetupConnection(connectionId);
         
-        var envelope = CreateClientEnvelope("Plaintext"u8.ToArray(), aesKey, "invalid-key-id", clientEcdsa, 1);
+        try
+        {
+            var envelope = CreateClientEnvelope("Plaintext"u8.ToArray(), aesKey, "invalid-key-id", clientEcdsa, 1);
 
-        // Act & Assert
-        var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
-            () => _service.DecryptAndVerifyAsync(connectionId, envelope));
-        Assert.Contains("Invalid key ID", ex.Message);
+            // Act & Assert
+            var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
+                () => _service.DecryptAndVerifyAsync(connectionId, envelope));
+            Assert.Contains("Invalid key ID", ex.Message);
+        }
+        finally
+        {
+            clientEcdsa.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task Decrypt_WithReplayedSequenceNumber_ThrowsSecurityException()
+    {
+        // Arrange
+        var connectionId = "replay-test-user";
+        var (response, aesKey, clientEcdsa) = await SetupConnection(connectionId);
+        
+        try
+        {
+            // First message with sequence 1 should succeed
+            var envelope1 = CreateClientEnvelope("First message"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1);
+            await _service.DecryptAndVerifyAsync(connectionId, envelope1);
+            
+            // Second message with same sequence 1 should fail (replay attack)
+            var envelope2 = CreateClientEnvelope("Replayed message"u8.ToArray(), aesKey, response.KeyId, clientEcdsa, 1);
+            
+            // Act & Assert
+            var ex = await Assert.ThrowsAsync<System.Security.SecurityException>(
+                () => _service.DecryptAndVerifyAsync(connectionId, envelope2));
+            Assert.Contains("Sequence number", ex.Message);
+        }
+        finally
+        {
+            clientEcdsa.Dispose();
+        }
     }
 
     #region Helpers
 
+    /// <summary>
+    /// Sets up an encryption connection for testing.
+    /// NOTE: The returned ECDsa (signingKey) is NOT disposed here - caller must dispose.
+    /// </summary>
     private async Task<(KeyExchangeResponse response, byte[] aesKey, ECDsa signingKey)> SetupConnection(string userId)
     {
         using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
-        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var clientEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256); // Caller must dispose
 
         var response = await _service.PerformKeyExchangeAsync(
             userId,
@@ -108,7 +167,7 @@ public class EncryptionSecurityTests
             clientEcdsa.ExportSubjectPublicKeyInfo());
 
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.ToArray(), out _);
         var sharedSecret = clientEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
         var aesKey = HKDF.DeriveKey(HashAlgorithmName.SHA256, sharedSecret, 32,
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));

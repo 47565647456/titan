@@ -50,14 +50,14 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
         // Import server's public key and derive shared secret
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(response.ServerPublicKey.Span, out _);
 
         var sharedSecret = _currentEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
 
         // Derive AES key from shared secret using HKDF
         _aesKey = DeriveKey(sharedSecret, "titan-encryption-key", 32);
         _keyId = response.KeyId;
-        _serverSigningPublicKey = response.ServerSigningPublicKey;
+        _serverSigningPublicKey = response.ServerSigningPublicKey.ToArray();
 
         // Generate connection ID hash from a random value for this session
         _connectionIdHash = RandomNumberGenerator.GetInt32(int.MaxValue);
@@ -154,7 +154,7 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
         // Import server's new public key and derive new shared secret
         using var serverEcdh = ECDiffieHellman.Create();
-        serverEcdh.ImportSubjectPublicKeyInfo(request.ServerPublicKey, out _);
+        serverEcdh.ImportSubjectPublicKeyInfo(request.ServerPublicKey.Span, out _);
 
         // Create ephemeral keys for KDF compatibility if needed, or just use raw agreement
         var sharedSecret = _currentEcdh.DeriveRawSecretAgreement(serverEcdh.PublicKey);
