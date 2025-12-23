@@ -112,7 +112,11 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
-        if (_aesKey == null || _keyId == null)
+        // Capture key state atomically to prevent race with HandleRotationRequest
+        var keyId = _keyId;
+        var aesKey = _aesKey;
+        
+        if (aesKey == null || keyId == null)
             throw new InvalidOperationException("Key exchange has not been completed");
 
         // Generate nonce: [4 bytes connection hash][8 bytes counter]
@@ -120,8 +124,8 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         BitConverter.TryWriteBytes(nonce.AsSpan(0, 4), _connectionIdHash);
         BitConverter.TryWriteBytes(nonce.AsSpan(4, 8), Interlocked.Increment(ref _nonceCounter));
 
-        // Encrypt
-        using var aesGcm = new AesGcm(_aesKey, 16);
+        // Encrypt using captured key
+        using var aesGcm = new AesGcm(aesKey, 16);
         var ciphertext = new byte[plaintext.Length];
         var tag = new byte[16];
         aesGcm.Encrypt(nonce, plaintext, ciphertext, tag);
@@ -129,12 +133,12 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var sequenceNumber = Interlocked.Increment(ref _sequenceNumber);
 
-        // Sign
-        var signature = CreateSignature(_keyId, nonce, ciphertext, tag, timestamp, sequenceNumber);
+        // Sign using captured keyId
+        var signature = CreateSignature(keyId, nonce, ciphertext, tag, timestamp, sequenceNumber);
 
         return new SecureEnvelope
         {
-            KeyId = _keyId,
+            KeyId = keyId,
             Nonce = nonce,
             Ciphertext = ciphertext,
             Tag = tag,
@@ -151,15 +155,22 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         // Clear expired previous key material before decryption
         ClearExpiredPreviousKey();
 
-        if (_serverSigningPublicKey == null)
+        // Capture key state atomically to prevent race with HandleRotationRequest
+        var currentKeyId = _keyId;
+        var currentAesKey = _aesKey;
+        var previousKeyId = _previousKeyId;
+        var previousAesKey = _previousAesKey;
+        var serverSigningPublicKey = _serverSigningPublicKey;
+
+        if (serverSigningPublicKey == null)
             throw new InvalidOperationException("Key exchange has not been completed");
 
         // Validate key ID (support current and previous key during rotation)
         byte[]? aesKey = null;
-        if (envelope.KeyId == _keyId)
-            aesKey = _aesKey;
-        else if (envelope.KeyId == _previousKeyId)
-            aesKey = _previousAesKey;
+        if (envelope.KeyId == currentKeyId)
+            aesKey = currentAesKey;
+        else if (envelope.KeyId == previousKeyId)
+            aesKey = previousAesKey;
 
         if (aesKey == null)
             throw new SecurityException($"Invalid key ID: {envelope.KeyId}");
@@ -175,11 +186,11 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         if (envelope.SequenceNumber <= lastSeqForKey)
             throw new SecurityException($"Sequence number regression for key {envelope.KeyId}: {envelope.SequenceNumber} <= {lastSeqForKey}");
 
-        // Verify signature
-        if (!VerifySignature(envelope, _serverSigningPublicKey))
+        // Verify signature using captured key
+        if (!VerifySignature(envelope, serverSigningPublicKey))
             throw new SecurityException("Signature verification failed");
 
-        // Decrypt
+        // Decrypt using captured key
         using var aesGcm = new AesGcm(aesKey, 16);
         var plaintext = new byte[envelope.Ciphertext.Length];
         aesGcm.Decrypt(envelope.Nonce, envelope.Ciphertext, envelope.Tag, plaintext);
@@ -237,6 +248,8 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     /// </summary>
     public void ClearExpiredPreviousKey()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         if (_previousKeyExpiresAt.HasValue && DateTimeOffset.UtcNow > _previousKeyExpiresAt.Value)
         {
             if (_previousAesKey != null)

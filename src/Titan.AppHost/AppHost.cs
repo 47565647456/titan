@@ -85,17 +85,16 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithReference(orleans.AsClient())
     .WithReference(titanDb)
     .WithReference(titanAdminDb)  // Admin Identity database for dashboard auth
-    .WithReference(rateLimitRedis)
-    .WithReference(sessionsRedis)  // Session storage Redis
+    .WithReference(rateLimitRedis) // Rate limiting state
+    .WithReference(sessionsRedis)  // Session storage
     .WithReference(encryptionRedis)  // Encryption state persistence
     .WaitFor(identityHost)  // Wait for at least one silo to be running
     .WaitFor(sessionsRedis) // Wait for session storage to be ready
     .WaitFor(encryptionRedis) // Wait for encryption storage to be ready
-    .WithExternalHttpEndpoints()
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment)
-
     .WithEnvironment("RateLimiting__Enabled", builder.Configuration["RateLimiting:Enabled"] ?? "true")
-    .WithEnvironment("Encryption__RequireEncryption", builder.Configuration["Encryption:RequireEncryption"] ?? "false");
+    .WithEnvironment("Encryption__RequireEncryption", builder.Configuration["Encryption:RequireEncryption"] ?? "false")
+    .WithExternalHttpEndpoints();
 
 // =============================================================================
 // Admin Dashboard (React SPA via Vite)
@@ -104,6 +103,7 @@ var api = builder.AddProject<Projects.Titan_API>("api")
 var dashboard = builder.AddViteApp("dashboard", "../titan-dashboard")
     .WithReference(api)
     .WaitFor(api)
+    .WithHttpHealthCheck("/login")
     .WithExternalHttpEndpoints();
 
 builder.Build().Run();
