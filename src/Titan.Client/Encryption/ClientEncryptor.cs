@@ -74,6 +74,14 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
             CryptographicOperations.ZeroMemory(_serverSigningPublicKey);
             _serverSigningPublicKey = null;
         }
+        // Also clear any previous rotation key material
+        if (_previousAesKey != null)
+        {
+            CryptographicOperations.ZeroMemory(_previousAesKey);
+            _previousAesKey = null;
+        }
+        _previousKeyId = null;
+        _previousKeyExpiresAt = null;
         
         // Generate ephemeral ECDH keypair
         _currentEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);

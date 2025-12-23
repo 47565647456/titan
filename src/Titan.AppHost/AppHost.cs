@@ -89,6 +89,7 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithReference(sessionsRedis)  // Session storage
     .WithReference(encryptionRedis)  // Encryption state persistence
     .WaitFor(identityHost)  // Wait for at least one silo to be running
+    .WaitFor(rateLimitRedis)
     .WaitFor(sessionsRedis) // Wait for session storage to be ready
     .WaitFor(encryptionRedis) // Wait for encryption storage to be ready
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment)
@@ -103,7 +104,7 @@ var api = builder.AddProject<Projects.Titan_API>("api")
 var dashboard = builder.AddViteApp("dashboard", "../titan-dashboard")
     .WithReference(api)
     .WaitFor(api)
-    .WithHttpHealthCheck("/login")
+    .WithHttpHealthCheck("/health")
     .WithExternalHttpEndpoints();
 
 builder.Build().Run();
