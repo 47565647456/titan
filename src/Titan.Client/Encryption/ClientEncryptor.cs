@@ -22,6 +22,11 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     private byte[]? _serverSigningPublicKey;
     private int _connectionIdHash;
     private long _nonceCounter;
+    /// <summary>
+    /// Client's outgoing sequence number. Intentionally NOT reset during key rotation because
+    /// the server tracks sequence numbers per-keyId via _lastSequencePerKey dictionary.
+    /// This allows sequence continuity across rotations while still detecting replay attacks.
+    /// </summary>
     private long _sequenceNumber;
     /// <summary>
     /// Tracks last received sequence number per keyId to prevent sequence regression after key rotation.
@@ -39,6 +44,8 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     /// Set from server's KeyRotationGracePeriodSeconds during key exchange.
     /// </summary>
     private int _gracePeriodSeconds = 30; // Default to server's default value
+    
+    private bool _disposed;
 
     public bool IsInitialized => _aesKey != null;
     public string? CurrentKeyId => _keyId;
@@ -53,6 +60,16 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
     public async Task<bool> PerformKeyExchangeAsync(Func<KeyExchangeRequest, Task<KeyExchangeResponse>> keyExchangeFunc)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        // Clean up previous key material before generating new keys (handles reconnection)
+        _currentEcdh?.Dispose();
+        if (_aesKey != null)
+        {
+            CryptographicOperations.ZeroMemory(_aesKey);
+            _aesKey = null;
+        }
+        
         // Generate ephemeral ECDH keypair
         _currentEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         var clientPublicKey = _currentEcdh.ExportSubjectPublicKeyInfo();
@@ -88,6 +105,8 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
     public SecureEnvelope EncryptAndSign(byte[] plaintext)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         if (_aesKey == null || _keyId == null)
             throw new InvalidOperationException("Key exchange has not been completed");
 
@@ -122,6 +141,8 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
     public byte[] DecryptAndVerify(SecureEnvelope envelope)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         // Clear expired previous key material before decryption
         ClearExpiredPreviousKey();
 
@@ -262,13 +283,22 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        
         _signingKey.Dispose();
         _currentEcdh?.Dispose();
 
         if (_aesKey != null)
+        {
             CryptographicOperations.ZeroMemory(_aesKey);
+            _aesKey = null;
+        }
         if (_previousAesKey != null)
+        {
             CryptographicOperations.ZeroMemory(_previousAesKey);
+            _previousAesKey = null;
+        }
 
         GC.SuppressFinalize(this);
     }

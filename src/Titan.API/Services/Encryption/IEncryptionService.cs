@@ -121,13 +121,15 @@ public interface IEncryptionService
     EncryptionMetricsSnapshot GetMetrics();
 
     /// <summary>
-    /// Sets encryption enabled state at runtime (for testing).
+    /// Sets encryption enabled state at runtime.
+    /// WARNING: Admin-only operation. Must be protected by authorization at the controller/endpoint level.
     /// </summary>
     /// <param name="enabled">Whether encryption should be enabled</param>
     void SetEnabled(bool enabled);
 
     /// <summary>
-    /// Sets encryption required state at runtime (for testing).
+    /// Sets encryption required state at runtime.
+    /// WARNING: Admin-only operation. Must be protected by authorization at the controller/endpoint level.
     /// </summary>
     /// <param name="required">Whether encryption should be required</param>
     void SetRequired(bool required);

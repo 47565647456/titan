@@ -142,7 +142,10 @@ public abstract class TitanHubBase : Hub
         {
             invocation = MemoryPackSerializer.Deserialize<EncryptedInvocation>(plaintext);
         }
-        catch { /* Fallback to JSON */ }
+        catch (Exception ex)
+        { 
+            _logger.LogDebug(ex, "MemoryPack deserialization of EncryptedInvocation failed, falling back to JSON");
+        }
 
         if (invocation == null)
         {
