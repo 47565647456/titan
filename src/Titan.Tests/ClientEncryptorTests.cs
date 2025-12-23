@@ -26,8 +26,8 @@ public class ClientEncryptorTests
                 "test-key-id",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
                 serverSigningKey.ExportSubjectPublicKeyInfo(),
-                new byte[32]  // HkdfSalt for testing
-            ));
+                new byte[32],
+                30));
         });
 
         // Assert
@@ -60,7 +60,8 @@ public class ClientEncryptorTests
                 "initial-key",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
                 serverSigningKey.ExportSubjectPublicKeyInfo(),
-                new byte[32])
+                new byte[32],
+                30)
         ));
 
         var initialKeyId = encryptor.CurrentKeyId;
@@ -91,7 +92,8 @@ public class ClientEncryptorTests
                 "seq-test-key",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
                 serverSigningKey.ExportSubjectPublicKeyInfo(),
-                new byte[32])
+                new byte[32],
+                30)
         ));
 
         // Act - Encrypt multiple messages
@@ -122,7 +124,8 @@ public class ClientEncryptorTests
                 "dispose-test",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
                 serverSigningKey.ExportSubjectPublicKeyInfo(),
-                new byte[32])
+                new byte[32],
+                30)
         ));
 
         Assert.True(encryptor.IsInitialized);
@@ -151,7 +154,8 @@ public class ClientEncryptorTests
                 "roundtrip-key",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
                 serverEcdsa.ExportSubjectPublicKeyInfo(),
-                new byte[32]
+                new byte[32],
+                30
             ));
         });
 
@@ -195,7 +199,8 @@ public class ClientEncryptorTests
                 "key-v1",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
                 serverEcdsa.ExportSubjectPublicKeyInfo(),
-                new byte[32])
+                new byte[32],
+                30)
         ));
 
         // Encrypt with key-v1

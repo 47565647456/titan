@@ -15,7 +15,14 @@ const NONCE_LENGTH = 12;
 const GCM_TAG_LENGTH = 128; // Bits
 const REPLAY_WINDOW_SECONDS = 60;
 const CLOCK_SKEW_SECONDS = 5;
-const MAX_SEQUENCE_GAP = 100; // Small buffer for in-flight messages on refresh
+/**
+ * Gap added to sequence number after session restore to account for in-flight messages.
+ * When a page is refreshed, any messages sent immediately before the refresh may still be
+ * in transit. Adding this buffer ensures the server won't reject the first post-restore
+ * message as a replay. The server resets sequence tracking per-keyId, so this only matters
+ * within the same key.
+ */
+const MAX_SEQUENCE_GAP = 100;
 
 
 
@@ -42,8 +49,8 @@ export class Encryptor {
   private previousServerSigningPublicKey: CryptoKey | null = null;
   private previousKeyExpiresAt: number | null = null;  // Unix timestamp (ms)
   
-  /** Grace period duration in milliseconds (should match server) */
-  private static readonly GRACE_PERIOD_MS = 300 * 1000;  // 5 minutes
+  /** Grace period duration in milliseconds (set from server during key exchange) */
+  private gracePeriodMs = 30 * 1000; // Default to 30s as fallback
 
   private readonly STORAGE_KEY = 'titan_encryption_session';
 
@@ -158,7 +165,7 @@ export class Encryptor {
       this.previousKeyId = this.keyId;
       this.previousAesKey = this.aesKey;
       this.previousServerSigningPublicKey = this.serverSigningPublicKey;
-      this.previousKeyExpiresAt = Date.now() + Encryptor.GRACE_PERIOD_MS;
+      this.previousKeyExpiresAt = Date.now() + this.gracePeriodMs;
     }
 
     // Set new keys
@@ -166,6 +173,12 @@ export class Encryptor {
     this.serverSigningPublicKey = newServerSigningKey;
     this.keyId = response.keyId;
     this.sequenceNumber = 0; // Reset sequence for new key
+    
+    // Store server's grace period
+    this.gracePeriodMs = (response.gracePeriodSeconds || 30) * 1000;
+    
+    // Clear ephemeral ECDH keypair - no longer needed after key derivation
+    this.ecdhKeyPair = null;
 
     // Persist immediately
     await this.saveSession();
@@ -185,7 +198,7 @@ export class Encryptor {
     this.previousKeyId = this.keyId;
     this.previousAesKey = this.aesKey;
     this.previousServerSigningPublicKey = this.serverSigningPublicKey;
-    this.previousKeyExpiresAt = Date.now() + Encryptor.GRACE_PERIOD_MS;
+    this.previousKeyExpiresAt = Date.now() + this.gracePeriodMs;
 
     // Generate new ECDH keypair
     this.ecdhKeyPair = await crypto.subtle.generateKey(
@@ -248,6 +261,9 @@ export class Encryptor {
     await this.saveSession();
 
     console.log('[Encryptor] Key rotation completed, new keyId:', this.keyId);
+    
+    // Clear ephemeral ECDH keypair - no longer needed after key derivation
+    this.ecdhKeyPair = null;
 
     return {
       clientPublicKey: arrayBufferToBase64(clientPublicKeySpki),
@@ -343,10 +359,14 @@ export class Encryptor {
                  activeAesKey = this.previousAesKey;
                  activeServerSigningKey = this.previousServerSigningPublicKey;
              } else {
-                 throw new Error(`Key ID mismatch after reload. Expected ${this.keyId}, got ${envelope.keyId}`);
+                 // Log detailed mismatch for debugging, throw generic error
+                 console.error('[Encryptor] Key ID mismatch after potential reload. Current:', this.keyId, 'Previous:', this.previousKeyId, 'Received:', envelope.keyId);
+                 throw new Error('Key ID mismatch');
              }
         } else {
-            throw new Error(`Key ID mismatch. Expected ${this.keyId} (or ${this.previousKeyId}), got ${envelope.keyId}`);
+            // Log detailed mismatch for debugging, throw generic error
+            console.error('[Encryptor] Key ID mismatch. Current:', this.keyId, 'Previous:', this.previousKeyId, 'Received:', envelope.keyId);
+            throw new Error('Key ID mismatch');
         }
     }
 
@@ -398,10 +418,11 @@ export class Encryptor {
         }
         this.lastReceivedSequencePerKey.set(envelope.keyId, envelope.sequenceNumber);
     } else {
-        // For previous key, just ensure it's > 0 to avoid obvious replays
-        if (envelope.sequenceNumber <= 0) {
-           throw new Error(`Invalid sequence number for previous key: ${envelope.sequenceNumber}`);
+        // For previous key, also enforce sequence ordering to prevent replays during grace period
+        if (envelope.sequenceNumber <= lastSeqForKey) {
+           throw new Error(`Sequence number regression for previous key ${envelope.keyId}: ${envelope.sequenceNumber} <= ${lastSeqForKey}`);
         }
+        this.lastReceivedSequencePerKey.set(envelope.keyId, envelope.sequenceNumber);
     }
 
     // Recombine ciphertext and tag for decryption
@@ -409,9 +430,9 @@ export class Encryptor {
     ciphertextWithTag.set(ciphertext, 0);
     ciphertextWithTag.set(tag, ciphertext.length);
 
-    // Defensive copy for safety against buffer views
-    const ivCopy = new Uint8Array(nonce).buffer;
-    const dataCopy = new Uint8Array(ciphertextWithTag).buffer;
+    // Defensive copy for safety against buffer views (use consistent slice pattern)
+    const ivCopy = nonce.buffer.slice(nonce.byteOffset, nonce.byteOffset + nonce.byteLength) as ArrayBuffer;
+    const dataCopy = ciphertextWithTag.buffer.slice(ciphertextWithTag.byteOffset, ciphertextWithTag.byteOffset + ciphertextWithTag.byteLength) as ArrayBuffer;
 
     // Decrypt
     const plaintext = await crypto.subtle.decrypt(
@@ -458,7 +479,8 @@ export class Encryptor {
               // Persist previous key state
               previousKeyId: this.previousKeyId,
               previousAesKey: prevAesJwk,
-              previousServerSigningKey: prevServerSignJwk
+              previousServerSigningKey: prevServerSignJwk,
+              previousKeyExpiresAt: this.previousKeyExpiresAt
           };
 
           sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(minimalState));
@@ -503,6 +525,8 @@ export class Encryptor {
                     'jwk', state.previousServerSigningKey, { name: 'ECDSA', namedCurve: CURVE }, true, ['verify']
                 );
                 this.previousKeyId = state.previousKeyId;
+                // Restore previous key expiration timestamp
+                this.previousKeyExpiresAt = state.previousKeyExpiresAt ?? null;
              } catch (e) {
                  console.warn("Failed to restore previous keys, continuing with current only", e);
              }
@@ -597,7 +621,7 @@ export class Encryptor {
     offset += tag.length;
 
     // Write timestamp (long, little endian)
-    const view = new DataView(result.buffer);
+    const view = new DataView(result.buffer, result.byteOffset, result.byteLength);
     view.setBigInt64(offset, BigInt(timestamp), true);
     offset += 8;
 

@@ -36,9 +36,9 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     
     /// <summary>
     /// Grace period duration for previous keys during rotation.
-    /// Should match server's KeyRotationGracePeriodSeconds.
+    /// Set from server's KeyRotationGracePeriodSeconds during key exchange.
     /// </summary>
-    private const int GracePeriodSeconds = 300;
+    private int _gracePeriodSeconds = 30; // Default to server's default value
 
     public bool IsInitialized => _aesKey != null;
     public string? CurrentKeyId => _keyId;
@@ -73,6 +73,9 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         CryptographicOperations.ZeroMemory(sharedSecret);
         _keyId = response.KeyId;
         _serverSigningPublicKey = response.ServerSigningPublicKey.ToArray();
+        
+        // Store server's configured grace period
+        _gracePeriodSeconds = response.GracePeriodSeconds;
 
         // Generate connection ID hash from a random value for this session
         _connectionIdHash = RandomNumberGenerator.GetInt32(int.MaxValue);
@@ -169,7 +172,7 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         // Keep previous key for grace period with expiry tracking
         _previousKeyId = _keyId;
         _previousAesKey = _aesKey;
-        _previousKeyExpiresAt = DateTimeOffset.UtcNow.AddSeconds(GracePeriodSeconds);
+        _previousKeyExpiresAt = DateTimeOffset.UtcNow.AddSeconds(_gracePeriodSeconds);
 
         // Generate new ECDH keypair
         _currentEcdh?.Dispose();

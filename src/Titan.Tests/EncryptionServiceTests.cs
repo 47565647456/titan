@@ -9,13 +9,18 @@ namespace Titan.Tests;
 /// Unit tests for the EncryptionService.
 /// Tests key exchange, encryption/decryption, signing, and key rotation.
 /// </summary>
-public class EncryptionServiceTests
+public class EncryptionServiceTests : IDisposable
 {
     private readonly EncryptionService _service;
 
     public EncryptionServiceTests()
     {
         _service = EncryptionTestHelpers.CreateEncryptionService();
+    }
+
+    public void Dispose()
+    {
+        _service.Dispose();
     }
 
     #region Key Exchange Tests

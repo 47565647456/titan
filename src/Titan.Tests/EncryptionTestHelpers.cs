@@ -124,7 +124,7 @@ public static class EncryptionTestHelpers
 
 /// <summary>
 /// Disposable wrapper for encryption connection state used in tests.
-/// Automatically disposes the ECDsa signing key when disposed.
+/// Automatically disposes the ECDsa signing key and zeroes AES key when disposed.
 /// </summary>
 public sealed class EncryptionConnectionSetup : IDisposable
 {
@@ -139,5 +139,10 @@ public sealed class EncryptionConnectionSetup : IDisposable
         SigningKey = signingKey;
     }
 
-    public void Dispose() => SigningKey.Dispose();
+    public void Dispose()
+    {
+        // Zero sensitive key material first
+        CryptographicOperations.ZeroMemory(AesKey);
+        SigningKey.Dispose();
+    }
 }

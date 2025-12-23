@@ -32,6 +32,7 @@ export interface KeyExchangeResponse {
   serverPublicKey: string;  // Base64 encoded SPKI format
   serverSigningPublicKey: string;  // Base64 encoded SPKI format
   hkdfSalt: string;  // Base64 encoded (32 bytes for SHA-256)
+  gracePeriodSeconds: number;
 }
 
 /**

@@ -15,18 +15,6 @@ public interface IEncryptionService
     EncryptionConfig GetConfig();
 
     /// <summary>
-    /// Performs ECDH key exchange with a client.
-    /// </summary>
-    /// <param name="userId">User ID (from JWT)</param>
-    /// <param name="clientPublicKey">Client's ECDH public key</param>
-    /// <param name="clientSigningPublicKey">Client's ECDSA signing public key</param>
-    /// <returns>Server's response with key ID and public keys</returns>
-    KeyExchangeResponse PerformKeyExchange(
-        string userId,
-        byte[] clientPublicKey,
-        byte[] clientSigningPublicKey);
-
-    /// <summary>
     /// Performs ECDH key exchange with a client (async wrapper for hub compatibility).
     /// </summary>
     Task<KeyExchangeResponse> PerformKeyExchangeAsync(

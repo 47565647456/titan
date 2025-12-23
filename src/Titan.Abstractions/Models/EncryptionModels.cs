@@ -30,7 +30,12 @@ public record KeyExchangeResponse(
     /// Cryptographically random salt for HKDF key derivation (32 bytes for SHA-256).
     /// Both client and server must use this same salt.
     /// </summary>
-    ReadOnlyMemory<byte> HkdfSalt
+    ReadOnlyMemory<byte> HkdfSalt,
+    /// <summary>
+    /// Server's configured grace period in seconds for key rotation.
+    /// Clients should use this value instead of hardcoding their own.
+    /// </summary>
+    int GracePeriodSeconds
 );
 
 /// <summary>

@@ -123,17 +123,6 @@ public class EncryptionService : IEncryptionService, IDisposable
         _logger.LogInformation("Encryption required state changed: {Previous} -> {Current}", previous, required);
     }
 
-    /// <summary>
-    /// Synchronous key exchange (for backwards compatibility).
-    /// Prefer PerformKeyExchangeAsync to avoid potential deadlocks.
-    /// </summary>
-    [Obsolete("Use PerformKeyExchangeAsync to avoid potential deadlocks")]
-    public KeyExchangeResponse PerformKeyExchange(
-        string userId,
-        byte[] clientPublicKey,
-        byte[] clientSigningPublicKey)
-        => PerformKeyExchangeAsync(userId, clientPublicKey, clientSigningPublicKey).GetAwaiter().GetResult();
-
     public async Task<KeyExchangeResponse> PerformKeyExchangeAsync(
         string userId,
         byte[] clientPublicKey,
@@ -205,7 +194,7 @@ public class EncryptionService : IEncryptionService, IDisposable
         _logger.LogDebug("Key exchange completed for connection {userId}, KeyId: {KeyId}",
             userId, keyId);
 
-        return new KeyExchangeResponse(keyId, serverPublicKey, _serverSigningPublicKey!, hkdfSalt);
+        return new KeyExchangeResponse(keyId, serverPublicKey, _serverSigningPublicKey!, hkdfSalt, _options.KeyRotationGracePeriodSeconds);
     }
 
     public byte[] DecryptAndVerify(string userId, SecureEnvelope envelope)
