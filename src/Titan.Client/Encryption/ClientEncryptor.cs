@@ -50,7 +50,7 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
     public bool IsInitialized => _aesKey != null;
     public string? CurrentKeyId => _keyId;
     public string? PreviousKeyId => _previousKeyId;
-    public byte[] SigningPublicKey => _signingPublicKey;
+    public ReadOnlyMemory<byte> SigningPublicKey => _signingPublicKey;
 
     public ClientEncryptor()
     {
@@ -68,6 +68,11 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
         {
             CryptographicOperations.ZeroMemory(_aesKey);
             _aesKey = null;
+        }
+        if (_serverSigningPublicKey != null)
+        {
+            CryptographicOperations.ZeroMemory(_serverSigningPublicKey);
+            _serverSigningPublicKey = null;
         }
         
         // Generate ephemeral ECDH keypair
@@ -190,6 +195,8 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
     public KeyRotationAck HandleRotationRequest(KeyRotationRequest request)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         // Zero any existing previous key before overwriting
         if (_previousAesKey != null)
         {

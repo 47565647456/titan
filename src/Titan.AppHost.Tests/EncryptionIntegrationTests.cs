@@ -795,7 +795,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
             // Step 6: Verify the signature using the encryptor's public key
             using var clientSigner = ECDsa.Create();
-            clientSigner.ImportSubjectPublicKeyInfo(clientEncryptor.SigningPublicKey, out _);
+            clientSigner.ImportSubjectPublicKeyInfo(clientEncryptor.SigningPublicKey.Span, out _);
             
             using var signatureStream = new MemoryStream();
             using var signatureWriter = new BinaryWriter(signatureStream);

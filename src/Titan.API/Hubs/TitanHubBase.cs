@@ -293,7 +293,9 @@ public abstract class TitanHubBase : Hub
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to deserialize multi-argument payload for {Hub}.{Target}", GetType().Name, parameters[0].Member.Name);
+            var parameterList = string.Join(", ", parameters.Select(p => $"{p.ParameterType.Name} {p.Name}"));
+            _logger.LogError(ex, "Failed to deserialize multi-argument payload for {Hub}.{Method}({ParameterList})", 
+                GetType().Name, parameters[0].Member.Name, parameterList);
             throw new HubException("Invalid argument format for multi-parameter call.");
         }
     }
