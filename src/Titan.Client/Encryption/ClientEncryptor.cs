@@ -328,6 +328,12 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
             _previousAesKey = null;
         }
 
+        if (_serverSigningPublicKey != null)
+        {
+            CryptographicOperations.ZeroMemory(_serverSigningPublicKey);
+            _serverSigningPublicKey = null;
+        }
+
         GC.SuppressFinalize(this);
     }
 }
