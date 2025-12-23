@@ -228,7 +228,7 @@ public class RateLimitingTests : RateLimitingTestBase
     [Fact]
     public async Task AuthenticatedRequest_UsesAccountBasedLimiting()
     {
-        // Arrange - clear state and login to get a JWT token
+        // Arrange - clear state and login to get a session ticket
         await ClearRateLimitStateAsync();
         
         var loginRequest = new { token = $"mock:{Guid.NewGuid()}", provider = "Mock" };
@@ -239,7 +239,7 @@ public class RateLimitingTests : RateLimitingTestBase
         var loginResult = await loginResponse.Content.ReadFromJsonAsync<LoginResult>();
         Assert.NotNull(loginResult?.SessionId);
         
-        // Act - make an authenticated request with the session token
+        // Act - make an authenticated request with the session ticket
         using var authClient = new HttpClient { BaseAddress = HttpClient.BaseAddress };
         authClient.DefaultRequestHeaders.Authorization = 
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", loginResult.SessionId);
@@ -247,7 +247,7 @@ public class RateLimitingTests : RateLimitingTestBase
         var response = await authClient.GetAsync("/health");
         
         // Assert - should use account-based limiting (not IP)
-        // The middleware now extracts user ID from the JWT token directly
+        // The middleware extracts user ID from the session ticket principal directly
         Assert.True(response.Headers.Contains("X-Rate-Limit-Rules"),
             $"Expected X-Rate-Limit-Rules header. Headers: {string.Join(", ", response.Headers.Select(h => h.Key))}");
         var rulesValue = response.Headers.GetValues("X-Rate-Limit-Rules").FirstOrDefault();

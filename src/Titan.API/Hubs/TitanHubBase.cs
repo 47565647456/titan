@@ -27,7 +27,7 @@ public abstract class TitanHubBase : Hub
     }
 
     /// <summary>
-    /// Gets the authenticated user's ID from the JWT token.
+    /// Gets the authenticated user's ID from the principal (claims derived from session ticket).
     /// </summary>
     protected Guid GetUserId() => Guid.Parse(Context.UserIdentifier!);
 

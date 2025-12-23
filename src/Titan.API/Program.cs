@@ -16,7 +16,7 @@ using Titan.API.Config;
 using Titan.API.Controllers;
 using Titan.API.Services.RateLimiting;
 using Titan.API.Services.Encryption;
-using Titan.API.OpenApi;
+
 using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,7 +29,7 @@ builder.Services.AddScoped<HubValidationService>();
 
 
 // Validate configuration early (fails fast if critical config is missing)
-builder.ValidateTitanConfiguration(requireJwtKey: false, requireEosInProduction: true);
+builder.ValidateTitanConfiguration(requireEosInProduction: true);
 
 // Add Aspire ServiceDefaults (OpenTelemetry, Health Checks, Service Discovery)
 builder.AddServiceDefaults();
@@ -140,7 +140,6 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<KeyRotationService
 
 builder.Services.AddOpenApi(options =>
 {
-    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
     options.AddDocumentTransformer((document, context, _) =>
     {
         document.Info = new()

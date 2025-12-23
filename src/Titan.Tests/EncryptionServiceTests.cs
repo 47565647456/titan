@@ -241,7 +241,7 @@ public class EncryptionServiceTests : IDisposable
             KeyRotationIntervalMinutes = 60
         };
 
-        var service = EncryptionTestHelpers.CreateEncryptionService(testOptions);
+        using var service = EncryptionTestHelpers.CreateEncryptionService(testOptions);
 
         var connectionId = "connection-max-messages";
         using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
@@ -370,7 +370,7 @@ public class EncryptionServiceTests : IDisposable
             KeyRotationGracePeriodSeconds = 30
         };
 
-        var service = EncryptionTestHelpers.CreateEncryptionService(testOptions);
+        using var service = EncryptionTestHelpers.CreateEncryptionService(testOptions);
 
         var connectionId = "connection-expired";
         using var clientEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);

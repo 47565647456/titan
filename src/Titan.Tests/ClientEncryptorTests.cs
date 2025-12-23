@@ -134,7 +134,7 @@ public class ClientEncryptorTests
         encryptor.Dispose();
 
         // Assert - After dispose, attempting to use should fail
-        Assert.ThrowsAny<Exception>(() => encryptor.EncryptAndSign("test"u8.ToArray()));
+        Assert.Throws<ObjectDisposedException>(() => encryptor.EncryptAndSign("test"u8.ToArray()));
     }
 
     [Fact]
@@ -145,6 +145,9 @@ public class ClientEncryptorTests
         using var serverEcdh = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);
         using var serverEcdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 
+        var testSalt = new byte[32];
+        RandomNumberGenerator.Fill(testSalt);
+
         // Client performs key exchange
         KeyExchangeRequest? capturedRequest = null;
         await clientEncryptor.PerformKeyExchangeAsync(request =>
@@ -154,7 +157,7 @@ public class ClientEncryptorTests
                 "roundtrip-key",
                 serverEcdh.ExportSubjectPublicKeyInfo(),
                 serverEcdsa.ExportSubjectPublicKeyInfo(),
-                new byte[32],
+                testSalt,
                 30
             ));
         });
@@ -167,7 +170,7 @@ public class ClientEncryptorTests
         // Derive AES key on server side (matching the salt provided in KeyExchangeResponse)
         var serverAesKey = HKDF.DeriveKey(
             HashAlgorithmName.SHA256, serverSharedSecret, 32,
-            salt: new byte[32],  // Same salt as in KeyExchangeResponse
+            salt: testSalt,  // Same salt as in KeyExchangeResponse
             info: System.Text.Encoding.UTF8.GetBytes("titan-encryption-key"));
 
         // Act - Client encrypts a message

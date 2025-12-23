@@ -21,7 +21,7 @@ Automatically configures metrics and tracing.
 - **Sentry**: Configured via `AddTitanLogging`. Captures Errors and Exceptions if `Sentry:Dsn` is present.
 
 ### Configuration Validation
-- `ValidateTitanConfiguration`: A helper to fail-fast on startup if critical config (like JWT Keys or Database passwords) is missing.
+- `ValidateTitanConfiguration`: A helper to fail-fast on startup if critical config (like Database passwords) is missing.
 
 ### Grain Storage
 - `AddTitanGrainStorage(IConfiguration)`: Configures Orleans grain persistence backed by PostgreSQL.

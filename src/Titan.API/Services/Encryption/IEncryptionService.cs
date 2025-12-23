@@ -25,7 +25,7 @@ public interface IEncryptionService
     /// <summary>
     /// Decrypts and verifies a secure envelope from a client.
     /// </summary>
-    /// <param name="userId">User ID (from JWT)</param>
+    /// <param name="userId">User ID (from session ticket)</param>
     /// <param name="envelope">Encrypted envelope to decrypt</param>
     /// <returns>Decrypted plaintext bytes</returns>
     /// <exception cref="System.Security.SecurityException">If verification or decryption fails</exception>
@@ -39,7 +39,7 @@ public interface IEncryptionService
     /// <summary>
     /// Encrypts and signs a payload for a client.
     /// </summary>
-    /// <param name="userId">User ID (from JWT)</param>
+    /// <param name="userId">User ID (from session ticket)</param>
     /// <param name="plaintext">Plaintext bytes to encrypt</param>
     /// <param name="keyId">Optional key ID to use (if it's a valid current/previous key)</param>
     /// <returns>Encrypted and signed envelope</returns>
@@ -48,7 +48,7 @@ public interface IEncryptionService
     /// <summary>
     /// Encrypts and signs a payload synchronously (for use in sync protocol contexts).
     /// </summary>
-    /// <param name="userId">User ID (from JWT)</param>
+    /// <param name="userId">User ID (from session ticket)</param>
     /// <param name="plaintext">Plaintext bytes to encrypt</param>
     /// <param name="keyId">Optional key ID to use (if it's a valid current/previous key)</param>
     SecureEnvelope EncryptAndSign(string userId, byte[] plaintext, string? keyId = null);

@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Microsoft.Extensions.Options;
 using Titan.Abstractions.Models;
 using Titan.API.Config;
+using System.Threading;
 
 namespace Titan.API.Services.Encryption;
 
@@ -213,7 +214,7 @@ public class EncryptionService : IEncryptionService, IDisposable
         // Lock during key selection to prevent cleanup from zeroing the key we're about to use
         byte[] aesKey;
         byte[] signingKey;
-        lock (state.StateLock)
+        using (state._lock.EnterScope())
         {
             // Check if previous key has expired (enforce grace period)
             if (envelope.KeyId == state.PreviousKeyId && state.PreviousKeyExpiresAt.HasValue)
@@ -294,14 +295,23 @@ public class EncryptionService : IEncryptionService, IDisposable
             throw new InvalidOperationException("Connection has not completed key exchange");
         }
 
-        // Determine which key to use (support conversational symmetry with keyId hints)
-        var aesKey = state.AesKey;
-        var actualKeyId = state.KeyId;
-
-        if (keyId != null && keyId == state.PreviousKeyId && state.PreviousAesKey != null)
+        // Lock during key selection to prevent cleanup from zeroing the key we're about to use
+        byte[] aesKey;
+        string actualKeyId;
+        using (state._lock.EnterScope())
         {
-            aesKey = state.PreviousAesKey;
-            actualKeyId = state.PreviousKeyId;
+            // Determine which key to use (support conversational symmetry with keyId hints)
+            if (keyId != null && keyId == state.PreviousKeyId && state.PreviousAesKey != null)
+            {
+                // Copy previous key bytes to avoid race with CleanupExpiredPreviousKeys
+                aesKey = state.PreviousAesKey.ToArray();
+                actualKeyId = state.PreviousKeyId;
+            }
+            else
+            {
+                aesKey = state.AesKey;
+                actualKeyId = state.KeyId;
+            }
         }
 
         // Generate nonce: [4 bytes connection hash][8 bytes counter]
@@ -380,7 +390,7 @@ public class EncryptionService : IEncryptionService, IDisposable
         }
 
         // Lock to prevent TOCTOU race if multiple threads call CompleteKeyRotation concurrently
-        lock (state.StateLock)
+        using (state._lock.EnterScope())
         {
             if (state.PendingRotationKeyId == null || state.PendingRotationEcdhPrivateKey == null || state.PendingRotationHkdfSalt == null)
             {
@@ -505,7 +515,7 @@ public class EncryptionService : IEncryptionService, IDisposable
             var state = kvp.Value;
             
             // Lock to synchronize with DecryptAndVerify - prevent zeroing key while in use
-            lock (state.StateLock)
+            using (state._lock.EnterScope())
             {
                 // Check if this connection has an expired previous key
                 if (state.PreviousKeyExpiresAt.HasValue && 
@@ -658,7 +668,7 @@ public class EncryptionService : IEncryptionService, IDisposable
         public byte[]? PendingRotationHkdfSalt { get; set; }
         
         // Lock for rotation completion and key access to prevent TOCTOU races
-        public readonly object StateLock = new();
+        public readonly Lock _lock = new();
 
         /// <summary>
         /// Gets the last received sequence number for a specific keyId.

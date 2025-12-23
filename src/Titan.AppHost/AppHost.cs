@@ -93,7 +93,7 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WaitFor(encryptionRedis) // Wait for encryption storage to be ready
     .WithExternalHttpEndpoints()
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment)
-    .WithEnvironment("Jwt__Key", builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is missing in AppHost configuration"))
+
     .WithEnvironment("RateLimiting__Enabled", builder.Configuration["RateLimiting:Enabled"] ?? "true")
     .WithEnvironment("Encryption__RequireEncryption", builder.Configuration["Encryption:RequireEncryption"] ?? "false");
 

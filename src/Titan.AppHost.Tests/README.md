@@ -21,7 +21,7 @@ var invHub = await user.GetInventoryHubAsync();  // Reuses same session
 ```
 
 ### Features Tested
-- **Authentication**: Verifies JWT generation, Admin roles, and SignalR connection security (`AuthenticationTests.cs`, `ValidationTests.cs`).
+- **Authentication**: Verifies session ticket validation, Admin roles, and SignalR connection security (`AuthenticationTests.cs`, `ValidationTests.cs`).
 - **Account Management**: Character creation, inventory access, cross-user isolation (`AccountTests.cs`, `AccountsAdminTests.cs`).
 - **Admin Operations**: Item type and season creation with role-based authorization (`AdminTests.cs`, `BaseTypesAdminTests.cs`, `SeasonsAdminTests.cs`, `AdminUsersTests.cs`).
 - **Rate Limiting**: Verifies IP and Account-based limiting, policy management, and dynamic configuration updates (`RateLimitingTests.cs`).

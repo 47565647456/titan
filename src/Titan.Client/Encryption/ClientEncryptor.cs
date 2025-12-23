@@ -169,6 +169,12 @@ public class ClientEncryptor : IClientEncryptor, IDisposable
 
     public KeyRotationAck HandleRotationRequest(KeyRotationRequest request)
     {
+        // Zero any existing previous key before overwriting
+        if (_previousAesKey != null)
+        {
+            CryptographicOperations.ZeroMemory(_previousAesKey);
+        }
+        
         // Keep previous key for grace period with expiry tracking
         _previousKeyId = _keyId;
         _previousAesKey = _aesKey;

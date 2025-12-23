@@ -11,7 +11,7 @@ The API uses SignalR Hubs for full duplex communication, primarily for game stat
 
 | Hub Class | Route | Purpose |
 |-----------|-------|---------|
-| `AuthHub` | `/authHub` | Token refresh and session management over WebSocket. Login is handled via HTTP. |
+| `AuthHub` | `/authHub` | Session management over WebSocket. Login is handled via HTTP. |
 | `AccountHub` | `/accountHub` | User profile management. |
 | `InventoryHub` | `/inventoryHub` | Remote inventory view. |
 | `TradeHub` | `/tradeHub` | Real-time trading updates and negotiation. |
@@ -24,8 +24,8 @@ The API uses SignalR Hubs for full duplex communication, primarily for game stat
 The API uses REST principles for stateless operations like authentication and administrative management.
 - **Authentication Route**: `/api/auth`
     - `POST /login`: Authenticate with provider token (EOS or Mock).
-    - `POST /refresh`: Refresh access token (token rotation).
-    - `POST /logout`: Revoke refresh token.
+    - `POST /logout`: Invalidate the current session.
+    - `POST /logout-all`: Invalidate all sessions for the user.
     - `GET /providers`: List available providers.
 - **Admin Routes**: `/api/admin`
     - `/api/admin/auth`: Admin dashboard authentication.
@@ -33,17 +33,14 @@ The API uses REST principles for stateless operations like authentication and ad
     - `/api/admin/ratelimit`: Dynamics management of rate limiting policies.
 
 ### Authentication
-The API supports JWT Authentication tailored for game clients and Identity Core for administrative users.
-- **Provider**: `Titan.API.Services.Auth.TokenService`
+The API uses a **Redis-backed Session Ticket** system.
+- **Provider**: `Titan.API.Services.Auth.RedisSessionService`
 - **Configuration**:
-    - **Development**: Supports Mock authentication giving 'Admin' or 'User' roles.
-    - **Production**: Configured via `Eos:ClientId` for EOS Connect.
+    - **Development**: Supports Mock auth (prefix `mock:guid` or `mock:admin:guid`).
+    - **Production**: Validates identities via `EosConnectService` using Epic Online Services.
 
 ### Configuration
 Key configuration in `appsettings.json` or Environment Variables:
-- `Jwt:Key`: **Required**. Shared secret for token signing (min 32 chars).
-- `Jwt:Issuer`: User for token verification (default: "Titan").
-- `Jwt:Audience`: Audience for token verification (default: "Titan").
 - `Eos:ClientId`: **Required in Production**. EOS Client ID.
 - `Cors:AllowedOrigins`: Array of allowed origins for web clients.
 - `RateLimiting`: Flexible policy-based limiting.
