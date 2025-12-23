@@ -29,6 +29,10 @@ var rateLimitRedis = builder.AddRedis("rate-limiting")
 var sessionsRedis = builder.AddRedis("sessions")
     .WithImage(redisImage, redisTag);
 
+// Redis for encryption state (signing keys, per-user encryption state)
+var encryptionRedis = builder.AddRedis("encryption")
+    .WithImage(redisImage, redisTag);
+
 // Database password
 var dbPassword = builder.AddParameter("postgres-password");
 
@@ -81,14 +85,17 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithReference(orleans.AsClient())
     .WithReference(titanDb)
     .WithReference(titanAdminDb)  // Admin Identity database for dashboard auth
-    .WithReference(rateLimitRedis)
-    .WithReference(sessionsRedis)  // Session storage Redis
+    .WithReference(rateLimitRedis) // Rate limiting state
+    .WithReference(sessionsRedis)  // Session storage
+    .WithReference(encryptionRedis)  // Encryption state persistence
     .WaitFor(identityHost)  // Wait for at least one silo to be running
+    .WaitFor(rateLimitRedis)
     .WaitFor(sessionsRedis) // Wait for session storage to be ready
-    .WithExternalHttpEndpoints()
+    .WaitFor(encryptionRedis) // Wait for encryption storage to be ready
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", environment)
-    .WithEnvironment("Jwt__Key", builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is missing in AppHost configuration"))
-    .WithEnvironment("RateLimiting__Enabled", builder.Configuration["RateLimiting:Enabled"] ?? "true");
+    .WithEnvironment("RateLimiting__Enabled", builder.Configuration["RateLimiting:Enabled"] ?? "true")
+    .WithEnvironment("Encryption__RequireEncryption", builder.Configuration["Encryption:RequireEncryption"] ?? "false")
+    .WithExternalHttpEndpoints();
 
 // =============================================================================
 // Admin Dashboard (React SPA via Vite)
@@ -97,6 +104,7 @@ var api = builder.AddProject<Projects.Titan_API>("api")
 var dashboard = builder.AddViteApp("dashboard", "../titan-dashboard")
     .WithReference(api)
     .WaitFor(api)
+    .WithHttpHealthCheck("/health")
     .WithExternalHttpEndpoints();
 
 builder.Build().Run();

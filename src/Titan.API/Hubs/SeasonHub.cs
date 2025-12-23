@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Events;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.API.Services.Encryption;
 using Titan.API.Services;
 
 namespace Titan.API.Hubs;
@@ -16,11 +17,34 @@ namespace Titan.API.Hubs;
 public class SeasonHub : TitanHubBase
 {
     private readonly HubValidationService _validation;
+    private readonly EncryptedHubBroadcaster<SeasonHub> _broadcaster;
 
-    public SeasonHub(IClusterClient clusterClient, HubValidationService validation, ILogger<SeasonHub> logger)
-        : base(clusterClient, logger)
+    public SeasonHub(
+        IClusterClient clusterClient, 
+        IEncryptionService encryptionService, 
+        HubValidationService validation, 
+        EncryptedHubBroadcaster<SeasonHub> broadcaster,
+        ILogger<SeasonHub> logger)
+        : base(clusterClient, encryptionService, logger)
     {
         _validation = validation;
+        _broadcaster = broadcaster;
+    }
+
+    public override async Task OnConnectedAsync()
+    {
+        var userId = Context.UserIdentifier;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _broadcaster.RegisterConnection(Context.ConnectionId, userId);
+        }
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        _broadcaster.UnregisterConnection(Context.ConnectionId);
+        await base.OnDisconnectedAsync(exception);
     }
 
     #region Subscriptions
@@ -32,6 +56,7 @@ public class SeasonHub : TitanHubBase
     {
         await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         await Groups.AddToGroupAsync(Context.ConnectionId, $"season-{seasonId}");
+        _broadcaster.AddToGroup(Context.ConnectionId, $"season-{seasonId}");
     }
 
     /// <summary>
@@ -41,6 +66,7 @@ public class SeasonHub : TitanHubBase
     {
         await _validation.ValidateIdAsync(seasonId, nameof(seasonId));
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"season-{seasonId}");
+        _broadcaster.RemoveFromGroup(Context.ConnectionId, $"season-{seasonId}");
     }
 
     /// <summary>
@@ -49,6 +75,7 @@ public class SeasonHub : TitanHubBase
     public async Task JoinAllSeasonsGroup()
     {
         await Groups.AddToGroupAsync(Context.ConnectionId, "all-seasons");
+        _broadcaster.AddToGroup(Context.ConnectionId, "all-seasons");
     }
 
     /// <summary>
@@ -57,6 +84,7 @@ public class SeasonHub : TitanHubBase
     public async Task LeaveAllSeasonsGroup()
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, "all-seasons");
+        _broadcaster.RemoveFromGroup(Context.ConnectionId, "all-seasons");
     }
 
     #endregion
@@ -230,10 +258,10 @@ public class SeasonHub : TitanHubBase
         };
 
         // Notify specific season subscribers
-        await Clients.Group($"season-{seasonId}").SendAsync("SeasonEvent", seasonEvent);
+        await _broadcaster.SendToGroupAsync($"season-{seasonId}", "SeasonEvent", seasonEvent);
 
         // Also notify global subscribers
-        await Clients.Group("all-seasons").SendAsync("SeasonEvent", seasonEvent);
+        await _broadcaster.SendToGroupAsync("all-seasons", "SeasonEvent", seasonEvent);
     }
 
     /// <summary>

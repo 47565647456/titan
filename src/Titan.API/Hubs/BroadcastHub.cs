@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.Abstractions.Contracts;
+using Titan.API.Services.Encryption;
 
 namespace Titan.API.Hubs;
 
@@ -14,23 +15,38 @@ namespace Titan.API.Hubs;
 public class BroadcastHub : TitanHubBase
 {
     private const string AllPlayersGroup = "all-players";
+    private readonly EncryptedHubBroadcaster<BroadcastHub> _broadcaster;
     private readonly ILogger<BroadcastHub> _logger;
 
-    public BroadcastHub(IClusterClient clusterClient, ILogger<BroadcastHub> logger)
-        : base(clusterClient, logger)
+    public BroadcastHub(
+        IClusterClient clusterClient, 
+        IEncryptionService encryptionService, 
+        EncryptedHubBroadcaster<BroadcastHub> broadcaster,
+        ILogger<BroadcastHub> logger)
+        : base(clusterClient, encryptionService, logger)
     {
+        _broadcaster = broadcaster;
         _logger = logger;
     }
 
     public override async Task OnConnectedAsync()
     {
+        var userId = Context.UserIdentifier;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _broadcaster.RegisterConnection(Context.ConnectionId, userId);
+        }
         await base.OnConnectedAsync();
+        
+        // Add to both SignalR native groups AND broadcaster's internal tracking
         await Groups.AddToGroupAsync(Context.ConnectionId, AllPlayersGroup);
+        _broadcaster.AddToGroup(Context.ConnectionId, AllPlayersGroup);
         _logger.LogDebug("Client {ConnectionId} joined broadcast group", Context.ConnectionId);
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        _broadcaster.UnregisterConnection(Context.ConnectionId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, AllPlayersGroup);
         _logger.LogDebug("Client {ConnectionId} left broadcast group", Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);

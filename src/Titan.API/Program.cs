@@ -15,7 +15,8 @@ using Titan.Grains.Trading.Rules;
 using Titan.API.Config;
 using Titan.API.Controllers;
 using Titan.API.Services.RateLimiting;
-using Titan.API.OpenApi;
+using Titan.API.Services.Encryption;
+
 using FluentValidation;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -28,7 +29,7 @@ builder.Services.AddScoped<HubValidationService>();
 
 
 // Validate configuration early (fails fast if critical config is missing)
-builder.ValidateTitanConfiguration(requireJwtKey: false, requireEosInProduction: true);
+builder.ValidateTitanConfiguration(requireEosInProduction: true);
 
 // Add Aspire ServiceDefaults (OpenTelemetry, Health Checks, Service Discovery)
 builder.AddServiceDefaults();
@@ -42,6 +43,9 @@ builder.AddKeyedRedisClient("rate-limiting");
 
 // Add Redis client for session storage (separate from rate limiting)
 builder.AddKeyedRedisClient("sessions");
+
+// Add Redis client for encryption state persistence
+builder.AddKeyedRedisClient("encryption");
 
 // Configure EF Core with PostgreSQL for Admin Identity
 var adminConnectionString = builder.Configuration.GetConnectionString("titan-admin");
@@ -102,7 +106,10 @@ builder.UseOrleansClient(client =>
     client.AddMemoryStreams(TradeStreamConstants.ProviderName);
 });
 
-// Add SignalR for WebSocket hubs with rate limiting filter
+// Add SignalR for WebSocket hubs with filters
+builder.Services.AddSingleton<RateLimitHubFilter>();
+builder.Services.AddSingleton<EncryptionHubFilter>();
+
 builder.Services.AddSignalR(options =>
 {
     // Enable detailed errors in development/testing for debugging
@@ -110,17 +117,29 @@ builder.Services.AddSignalR(options =>
     {
         options.EnableDetailedErrors = true;
     }
-}).AddHubOptions<Titan.API.Hubs.TitanHubBase>(options =>
+    
+    // Add hub filters - order matters, rate limiting first
+    options.AddFilter<RateLimitHubFilter>();
+    options.AddFilter<EncryptionHubFilter>();
+})
+.AddHubOptions<Titan.API.Hubs.TitanHubBase>(options =>
 {
     // Hub-specific options if needed
 });
 
-// Register hub filter for rate limiting (applied to all hubs)
-builder.Services.AddSingleton<IHubFilter, RateLimitHubFilter>();
+// Register encryption options and services
+builder.Services.AddOptions<EncryptionOptions>()
+    .Bind(builder.Configuration.GetSection(EncryptionOptions.SectionName))
+    .ValidateDataAnnotations();
+builder.Services.AddSingleton<EncryptionMetrics>();
+builder.Services.AddSingleton<EncryptionStateStore>();
+builder.Services.AddSingleton<IEncryptionService, EncryptionService>();
+builder.Services.AddSingleton<KeyRotationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<KeyRotationService>());
+
 
 builder.Services.AddOpenApi(options =>
 {
-    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
     options.AddDocumentTransformer((document, context, _) =>
     {
         document.Info = new()
@@ -230,10 +249,12 @@ builder.Services.AddCors(options =>
 
 // Register rate limiting services (Redis-backed)
 builder.Services.AddSingleton<RateLimitService>();
-builder.Services.AddSingleton<RateLimitHubFilter>();
 builder.Services.AddHostedService<RateLimitConfigInitializer>();
 
 // Register admin metrics broadcaster for SignalR push updates
+// Register encrypted hub broadcaster (generic) for any hub to use
+builder.Services.AddSingleton(typeof(EncryptedHubBroadcaster<>));
+
 builder.Services.AddSingleton<AdminMetricsBroadcaster>();
 
 // Register server broadcast service for sending messages to all players
@@ -347,6 +368,9 @@ app.MapHub<BaseTypeHub>("/baseTypeHub");
 app.MapHub<SeasonHub>("/seasonHub");
 app.MapHub<TradeHub>("/tradeHub");
 app.MapHub<BroadcastHub>("/broadcastHub");
+
+// Encryption hub for key exchange and rotation
+app.MapHub<EncryptionHub>("/encryptionHub");
 
 // Admin dashboard SignalR hub for real-time metrics
 app.MapHub<AdminMetricsHub>("/hubs/admin-metrics");

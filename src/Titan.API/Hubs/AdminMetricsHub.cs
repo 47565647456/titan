@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.API.Services.RateLimiting;
+using Titan.API.Services.Encryption;
+using Titan.Abstractions.Grains;
 
 namespace Titan.API.Hubs;
 
@@ -9,45 +11,58 @@ namespace Titan.API.Hubs;
 /// Provides push updates for rate limiting metrics instead of polling.
 /// </summary>
 [Authorize(Policy = "AdminDashboard")]
-public class AdminMetricsHub : Hub
+public class AdminMetricsHub : TitanHubBase
 {
     private readonly RateLimitService _rateLimitService;
+    private readonly EncryptedHubBroadcaster<AdminMetricsHub> _broadcaster;
     private readonly ILogger<AdminMetricsHub> _logger;
     
     private const string MetricsGroup = "RateLimitMetrics";
 
     public AdminMetricsHub(
+        IClusterClient clusterClient,
+        IEncryptionService encryptionService,
         RateLimitService rateLimitService,
+        EncryptedHubBroadcaster<AdminMetricsHub> broadcaster,
         ILogger<AdminMetricsHub> logger)
+        : base(clusterClient, encryptionService, logger)
     {
         _rateLimitService = rateLimitService;
+        _broadcaster = broadcaster;
         _logger = logger;
     }
 
     public override async Task OnConnectedAsync()
     {
-        _logger.LogDebug("Admin client connected: {ConnectionId}", Context.ConnectionId);
+        var userId = Context.UserIdentifier;
+        _logger.LogInformation("Connection {ConnectionId} (user {UserId}) connected to AdminMetricsHub", 
+            Context.ConnectionId, userId);
+        
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _broadcaster.RegisterConnection(Context.ConnectionId, userId);
+        }
+        
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        _logger.LogDebug("Admin client disconnected: {ConnectionId}", Context.ConnectionId);
+        _logger.LogInformation("Connection {ConnectionId} disconnected from AdminMetricsHub", Context.ConnectionId);
+        _broadcaster.UnregisterConnection(Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }
 
     /// <summary>
-    /// Subscribe to rate limiting metrics updates.
-    /// Client will receive "MetricsUpdated" events when metrics change.
+    /// Formats rate limit metrics for client consumption.
+    /// Shared across SubscribeToMetrics, RefreshMetrics, and AdminMetricsBroadcaster.
     /// </summary>
-    public async Task SubscribeToMetrics()
+    public static object FormatMetrics(
+        (int ActiveBuckets, int ActiveTimeouts,
+        List<(string PartitionKey, string PolicyName, int PeriodSeconds, int CurrentCount, int SecondsRemaining)> Buckets,
+        List<(string PartitionKey, string PolicyName, int SecondsRemaining)> Timeouts) metrics)
     {
-        await Groups.AddToGroupAsync(Context.ConnectionId, MetricsGroup);
-        _logger.LogDebug("Client {ConnectionId} subscribed to metrics", Context.ConnectionId);
-        
-        // Send current metrics immediately upon subscription
-        var metrics = await _rateLimitService.GetMetricsAsync();
-        await Clients.Caller.SendAsync("MetricsUpdated", new
+        return new
         {
             metrics.ActiveBuckets,
             metrics.ActiveTimeouts,
@@ -65,7 +80,48 @@ public class AdminMetricsHub : Hub
                 t.PolicyName,
                 t.SecondsRemaining
             }).ToList()
-        });
+        };
+    }
+
+    /// <summary>
+    /// Subscribe to rate limiting metrics updates.
+    /// Client will receive "MetricsUpdated" events when metrics change.
+    /// </summary>
+    public async Task SubscribeToMetrics()
+    {
+        var addedToSignalRGroup = false;
+        var addedToBroadcaster = false;
+        
+        try
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, MetricsGroup);
+            addedToSignalRGroup = true;
+            
+            _broadcaster.AddToGroup(Context.ConnectionId, MetricsGroup);
+            addedToBroadcaster = true;
+            
+            _logger.LogDebug("Client {ConnectionId} subscribed to metrics", Context.ConnectionId);
+            
+            // Send current metrics immediately upon subscription (using encrypted sender)
+            var metrics = await _rateLimitService.GetMetricsAsync();
+            await _broadcaster.SendToConnectionAsync(Context.ConnectionId, "MetricsUpdated", FormatMetrics(metrics));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to subscribe client {ConnectionId} to metrics", Context.ConnectionId);
+            
+            // Rollback any successful registrations to maintain consistent state
+            if (addedToBroadcaster)
+            {
+                _broadcaster.RemoveFromGroup(Context.ConnectionId, MetricsGroup);
+            }
+            if (addedToSignalRGroup)
+            {
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, MetricsGroup);
+            }
+            
+            throw;
+        }
     }
 
     /// <summary>
@@ -74,6 +130,7 @@ public class AdminMetricsHub : Hub
     public async Task UnsubscribeFromMetrics()
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, MetricsGroup);
+        _broadcaster.RemoveFromGroup(Context.ConnectionId, MetricsGroup);
         _logger.LogDebug("Client {ConnectionId} unsubscribed from metrics", Context.ConnectionId);
     }
 
@@ -83,25 +140,7 @@ public class AdminMetricsHub : Hub
     public async Task RefreshMetrics()
     {
         var metrics = await _rateLimitService.GetMetricsAsync();
-        await Clients.Caller.SendAsync("MetricsUpdated", new
-        {
-            metrics.ActiveBuckets,
-            metrics.ActiveTimeouts,
-            Buckets = metrics.Buckets.Select(b => new
-            {
-                b.PartitionKey,
-                b.PolicyName,
-                b.PeriodSeconds,
-                b.CurrentCount,
-                b.SecondsRemaining
-            }).ToList(),
-            Timeouts = metrics.Timeouts.Select(t => new
-            {
-                t.PartitionKey,
-                t.PolicyName,
-                t.SecondsRemaining
-            }).ToList()
-        });
+        await _broadcaster.SendToConnectionAsync(Context.ConnectionId, "MetricsUpdated", FormatMetrics(metrics));
     }
 
     /// <summary>
@@ -149,10 +188,11 @@ public class AdminMetricsHub : Hub
 /// Service for broadcasting metrics updates to connected admin clients.
 /// Uses debounce pattern - broadcasts after activity stops for the debounce interval.
 /// Thread-safe and won't spam during high request volume.
+/// Uses EncryptedHubBroadcaster for per-user encryption of background pushes.
 /// </summary>
 public class AdminMetricsBroadcaster : IDisposable
 {
-    private readonly IHubContext<AdminMetricsHub> _hubContext;
+    private readonly EncryptedHubBroadcaster<AdminMetricsHub> _broadcaster;
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<AdminMetricsBroadcaster> _logger;
     
@@ -161,11 +201,11 @@ public class AdminMetricsBroadcaster : IDisposable
     private const int DebounceIntervalMs = 500; // Wait 500ms after last event
 
     public AdminMetricsBroadcaster(
-        IHubContext<AdminMetricsHub> hubContext,
+        EncryptedHubBroadcaster<AdminMetricsHub> broadcaster,
         IServiceProvider serviceProvider,
         ILogger<AdminMetricsBroadcaster> logger)
     {
-        _hubContext = hubContext;
+        _broadcaster = broadcaster;
         _serviceProvider = serviceProvider;
         _logger = logger;
     }
@@ -201,25 +241,9 @@ public class AdminMetricsBroadcaster : IDisposable
             // Record snapshot to Redis for historical tracking (pass metrics to avoid redundant fetch)
             await rateLimitService.RecordMetricsSnapshotAsync(metrics);
             
-            await _hubContext.Clients.Group("RateLimitMetrics").SendAsync("MetricsUpdated", new
-            {
-                ActiveBuckets = metrics.ActiveBuckets,
-                ActiveTimeouts = metrics.ActiveTimeouts,
-                Buckets = metrics.Buckets.Select(b => new
-                {
-                    b.PartitionKey,
-                    b.PolicyName,
-                    b.PeriodSeconds,
-                    b.CurrentCount,
-                    b.SecondsRemaining
-                }).ToList(),
-                Timeouts = metrics.Timeouts.Select(t => new
-                {
-                    t.PartitionKey,
-                    t.PolicyName,
-                    t.SecondsRemaining
-                }).ToList()
-            });
+            // Use encrypted broadcaster for per-user encryption
+            await _broadcaster.SendToGroupAsync("RateLimitMetrics", "MetricsUpdated", 
+                AdminMetricsHub.FormatMetrics(metrics));
             
             _logger.LogDebug("Broadcast metrics update: {Buckets} buckets, {Timeouts} timeouts", 
                 metrics.ActiveBuckets, metrics.ActiveTimeouts);

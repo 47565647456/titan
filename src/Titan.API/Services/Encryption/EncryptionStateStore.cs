@@ -1,0 +1,233 @@
+using MemoryPack;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using StackExchange.Redis;
+using System.Security.Cryptography;
+using Titan.API.Config;
+
+namespace Titan.API.Services.Encryption;
+
+/// <summary>
+/// Redis-backed storage for encryption state persistence.
+/// Handles persisting and loading server signing keys and per-user encryption state.
+/// </summary>
+public class EncryptionStateStore
+{
+    private readonly IConnectionMultiplexer _redis;
+    private readonly ILogger<EncryptionStateStore> _logger;
+    private readonly EncryptionOptions _options;
+
+    // Redis key prefixes
+    private const string SigningKeyPrefix = "encryption:signing-key";
+    private const string EncryptionStatePrefix = "encryption:state:";
+
+    public EncryptionStateStore(
+        [FromKeyedServices("encryption")] IConnectionMultiplexer redis,
+        ILogger<EncryptionStateStore> logger,
+        IOptions<EncryptionOptions> options)
+    {
+        _redis = redis;
+        _logger = logger;
+        _options = options.Value;
+    }
+
+    /// <summary>
+    /// Tries to load the server signing key from Redis.
+    /// Returns null if not found.
+    /// </summary>
+    public async Task<byte[]?> LoadSigningKeyAsync()
+    {
+        try
+        {
+            var db = _redis.GetDatabase();
+            var keyData = await db.StringGetAsync(SigningKeyPrefix);
+            
+            if (keyData.IsNullOrEmpty)
+            {
+                _logger.LogDebug("No signing key found in Redis");
+                return null;
+            }
+
+            _logger.LogInformation("Loaded server signing key from Redis");
+            return (byte[])keyData!;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load signing key from Redis, will generate new key");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Saves the server signing key to Redis (persists indefinitely).
+    /// </summary>
+    public async Task SaveSigningKeyAsync(byte[] privateKey)
+    {
+        try
+        {
+            var db = _redis.GetDatabase();
+            await db.StringSetAsync(SigningKeyPrefix, privateKey);
+            _logger.LogInformation("Saved server signing key to Redis");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save signing key to Redis");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Saves encryption state for a user.
+    /// </summary>
+    public async Task SaveEncryptionStateAsync(string userId, PersistedEncryptionState state)
+    {
+        try
+        {
+            var db = _redis.GetDatabase();
+            var key = GetStateKey(userId);
+            var data = MemoryPackSerializer.Serialize(state);
+            
+            // Set expiry based on configured StateExpiryHours
+            await db.StringSetAsync(key, data, TimeSpan.FromHours(_options.StateExpiryHours));
+            _logger.LogDebug("Saved encryption state for user {UserId}", userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save encryption state for user {UserId}", userId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Loads encryption state for a user.
+    /// </summary>
+    public async Task<PersistedEncryptionState?> LoadEncryptionStateAsync(string userId)
+    {
+        try
+        {
+            var db = _redis.GetDatabase();
+            var key = GetStateKey(userId);
+            var data = await db.StringGetAsync(key);
+
+            if (data.IsNullOrEmpty)
+            {
+                return null;
+            }
+
+            var state = MemoryPackSerializer.Deserialize<PersistedEncryptionState>((byte[])data!);
+            _logger.LogDebug("Loaded encryption state for user {UserId}", userId);
+            return state;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load encryption state for user {UserId}", userId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Removes encryption state for a user.
+    /// </summary>
+    public async Task RemoveEncryptionStateAsync(string userId)
+    {
+        try
+        {
+            var db = _redis.GetDatabase();
+            var key = GetStateKey(userId);
+            await db.KeyDeleteAsync(key);
+            _logger.LogDebug("Removed encryption state for user {UserId}", userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to remove encryption state for user {UserId}", userId);
+        }
+    }
+
+    /// <summary>
+    /// Loads all persisted encryption states (for startup recovery).
+    /// </summary>
+    public async Task<Dictionary<string, PersistedEncryptionState>> LoadAllEncryptionStatesAsync()
+    {
+        var states = new Dictionary<string, PersistedEncryptionState>();
+        
+        try
+        {
+            var db = _redis.GetDatabase();
+            var endpoints = _redis.GetEndPoints();
+            if (endpoints.Length == 0)
+            {
+                _logger.LogWarning("No Redis endpoints available, cannot load encryption states");
+                return states;
+            }
+            var server = _redis.GetServer(endpoints[0]);
+            
+            // Scan for all encryption state keys
+            var pattern = $"{EncryptionStatePrefix}*";
+            await foreach (var key in server.KeysAsync(pattern: pattern))
+            {
+                try
+                {
+                    var data = await db.StringGetAsync(key);
+                    if (!data.IsNullOrEmpty)
+                    {
+                        var state = MemoryPackSerializer.Deserialize<PersistedEncryptionState>((byte[])data!);
+                        if (state != null)
+                        {
+                            // Extract userId from key with validation
+                            var keyString = key.ToString();
+                            if (keyString.StartsWith(EncryptionStatePrefix) && keyString.Length > EncryptionStatePrefix.Length)
+                            {
+                                var userId = keyString[EncryptionStatePrefix.Length..];
+                                states[userId] = state;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Invalid encryption state key format: {Key}", key);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to deserialize encryption state for key {Key}", key);
+                }
+            }
+
+            _logger.LogInformation("Loaded {Count} encryption states from Redis", states.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load all encryption states from Redis");
+        }
+
+        return states;
+    }
+
+    private static string GetStateKey(string userId) => $"{EncryptionStatePrefix}{userId}";
+}
+
+/// <summary>
+/// Persisted encryption state for a user.
+/// Contains only the data needed to resume encrypted communication after restart.
+/// </summary>
+[MemoryPackable]
+public partial class PersistedEncryptionState
+{
+    public required string KeyId { get; init; }
+    public required byte[] AesKey { get; init; }
+    public required byte[] HkdfSalt { get; init; }
+    public required byte[] ClientSigningPublicKey { get; init; }
+    public required int UserIdHash { get; init; }
+    public required long NonceCounter { get; init; }
+    public required long MessageCount { get; init; }
+    public required long LastSequenceNumber { get; init; }
+    public required long ServerSequenceNumber { get; init; }
+    public required DateTimeOffset KeyCreatedAt { get; init; }
+    public required DateTimeOffset? LastActivityAt { get; init; }
+    
+    // Previous key for grace period
+    public string? PreviousKeyId { get; init; }
+    public byte[]? PreviousAesKey { get; init; }
+    public byte[]? PreviousClientSigningPublicKey { get; init; }
+    public DateTimeOffset? PreviousKeyExpiresAt { get; init; }
+}

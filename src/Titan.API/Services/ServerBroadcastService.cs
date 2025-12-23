@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.SignalR;
+using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Models;
 using Titan.API.Hubs;
+using Titan.API.Services.Encryption;
 
 namespace Titan.API.Services;
 
@@ -9,14 +11,14 @@ namespace Titan.API.Services;
 /// </summary>
 public class ServerBroadcastService
 {
-    private readonly IHubContext<BroadcastHub> _hubContext;
+    private readonly EncryptedHubBroadcaster<BroadcastHub> _broadcaster;
     private readonly ILogger<ServerBroadcastService> _logger;
 
     public ServerBroadcastService(
-        IHubContext<BroadcastHub> hubContext,
+        EncryptedHubBroadcaster<BroadcastHub> broadcaster,
         ILogger<ServerBroadcastService> logger)
     {
-        _hubContext = hubContext;
+        _broadcaster = broadcaster;
         _logger = logger;
     }
 
@@ -26,7 +28,7 @@ public class ServerBroadcastService
     /// <param name="message">The message to broadcast.</param>
     public async Task BroadcastAsync(ServerMessage message)
     {
-        await BroadcastHub.BroadcastToAllAsync(_hubContext, message);
+        await _broadcaster.SendToGroupAsync("all-players", nameof(IBroadcastHubClient.ReceiveServerMessage), message);
         _logger.LogInformation(
             "Broadcast message {MessageId} of type {Type}: {Title}",
             message.MessageId,

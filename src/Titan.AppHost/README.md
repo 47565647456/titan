@@ -44,7 +44,7 @@ The AppHost orchestrates the following projects:
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `Orleans:Replicas` | Number of instances per silo host | `2` |
-| `Jwt:Key` | Master key for token signing (injected into API) | *(Required)* |
+
 
 ### Database
 | Parameter | Description | Default |

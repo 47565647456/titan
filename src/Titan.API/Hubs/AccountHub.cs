@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services;
+using Titan.API.Services.Encryption;
 
 namespace Titan.API.Hubs;
 
@@ -15,8 +16,8 @@ public class AccountHub : TitanHubBase
 {
     private readonly HubValidationService _validation;
 
-    public AccountHub(IClusterClient clusterClient, HubValidationService validation, ILogger<AccountHub> logger)
-        : base(clusterClient, logger)
+    public AccountHub(IClusterClient clusterClient, IEncryptionService encryptionService, HubValidationService validation, ILogger<AccountHub> logger)
+        : base(clusterClient, encryptionService, logger)
     {
         _validation = validation;
     }

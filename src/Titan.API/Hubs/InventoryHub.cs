@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Grains.Items;
+using Titan.Abstractions.Models;
 using Titan.Abstractions.Models.Items;
+using Titan.API.Services.Encryption;
 using Titan.API.Services;
 
 namespace Titan.API.Hubs;
@@ -15,8 +17,8 @@ public class InventoryHub : TitanHubBase
 {
     private readonly HubValidationService _validation;
 
-    public InventoryHub(IClusterClient clusterClient, HubValidationService validation, ILogger<InventoryHub> logger)
-        : base(clusterClient, logger)
+    public InventoryHub(IClusterClient clusterClient, IEncryptionService encryptionService, HubValidationService validation, ILogger<InventoryHub> logger)
+        : base(clusterClient, encryptionService, logger)
     {
         _validation = validation;
     }

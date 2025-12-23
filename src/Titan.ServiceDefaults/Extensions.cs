@@ -96,11 +96,10 @@ public static class Extensions
     /// logs warnings for recommended config. Captures validation errors to Sentry if configured.
     /// </summary>
     /// <param name="builder">The host application builder.</param>
-    /// <param name="requireJwtKey">If true, requires Jwt:Key to be configured.</param>
+
     /// <param name="requireEosInProduction">If true, requires Eos:ClientId in non-development.</param>
     public static TBuilder ValidateTitanConfiguration<TBuilder>(
         this TBuilder builder,
-        bool requireJwtKey = false,
         bool requireEosInProduction = false) where TBuilder : IHostApplicationBuilder
     {
         var errors = new List<string>();
@@ -115,11 +114,7 @@ public static class Extensions
             ?? builder.Environment.EnvironmentName;
         var isDevelopment = string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase);
 
-        // JWT Key validation (for API only)
-        if (requireJwtKey && string.IsNullOrEmpty(config["Jwt:Key"]))
-        {
-            errors.Add("Jwt:Key is not configured. Set via environment variable: Jwt__Key");
-        }
+
 
         // Production-only validations
         if (!isDevelopment)
