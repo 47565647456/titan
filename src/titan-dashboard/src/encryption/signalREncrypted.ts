@@ -191,7 +191,9 @@ export class EncryptedSignalRConnection {
       console.error('[EncryptedSignalR] Failed to initialize encryption:', error);
       this.encryptor.reset(); // Clear bad state
       
-      // If encryption is required OR autoKeyExchange is enabled, re-throw to prevent fallback
+      // Re-throw to prevent silent fallback when:
+      // 1. Encryption is required by server config, OR
+      // 2. autoKeyExchange is explicitly enabled (caller expects encryption to work)
       if (this.isEncryptionRequired || this.options.autoKeyExchange === true) {
         throw error;
       }

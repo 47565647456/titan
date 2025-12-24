@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
@@ -19,17 +20,11 @@ public sealed class TitanClient : IAsyncDisposable
     private readonly HttpClient _httpClient;
     private readonly ILogger<TitanClient>? _logger;
 
-    private HubConnection? _accountHub;
-    private HubConnection? _characterHub;
-    private HubConnection? _inventoryHub;
-    private HubConnection? _tradeHub;
-    private HubConnection? _baseTypeHub;
-    private HubConnection? _seasonHub;
-    private HubConnection? _authHub;
-    private HubConnection? _encryptionHub;
+    // Hub connections stored by path for thread-safe access
+    private readonly ConcurrentDictionary<string, HubConnection> _hubs = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _hubLocks = new();
 
     private readonly Lock _sessionLock = new();
-    private readonly SemaphoreSlim _hubInitLock = new(1, 1);  // Thread-safe hub initialization
     private string? _currentSessionId;
     private Guid? _currentUserId;
     private DateTimeOffset? _sessionExpiresAt;
@@ -141,8 +136,8 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<IAccountHubClient> GetAccountClientAsync()
     {
-        _accountHub = await GetOrCreateHubAsync(_accountHub, "/hub/account");
-        return _accountHub.CreateHubProxy<IAccountHubClient>();
+        var hub = await GetOrCreateHubAsync("/hub/account");
+        return hub.CreateHubProxy<IAccountHubClient>();
     }
 
     /// <summary>
@@ -150,8 +145,8 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<ICharacterHubClient> GetCharacterClientAsync()
     {
-        _characterHub = await GetOrCreateHubAsync(_characterHub, "/hub/character");
-        return _characterHub.CreateHubProxy<ICharacterHubClient>();
+        var hub = await GetOrCreateHubAsync("/hub/character");
+        return hub.CreateHubProxy<ICharacterHubClient>();
     }
 
     /// <summary>
@@ -159,8 +154,8 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<IInventoryHubClient> GetInventoryClientAsync()
     {
-        _inventoryHub = await GetOrCreateHubAsync(_inventoryHub, "/hub/inventory");
-        return _inventoryHub.CreateHubProxy<IInventoryHubClient>();
+        var hub = await GetOrCreateHubAsync("/hub/inventory");
+        return hub.CreateHubProxy<IInventoryHubClient>();
     }
 
     /// <summary>
@@ -169,14 +164,14 @@ public sealed class TitanClient : IAsyncDisposable
     /// <param name="receiver">Optional receiver for trade update callbacks.</param>
     public async Task<ITradeHubClient> GetTradeClientAsync(ITradeHubReceiver? receiver = null)
     {
-        _tradeHub = await GetOrCreateHubAsync(_tradeHub, "/hub/trade");
+        var hub = await GetOrCreateHubAsync("/hub/trade");
 
         if (receiver != null)
         {
-            _tradeHub.Register(receiver);
+            hub.Register(receiver);
         }
 
-        return _tradeHub.CreateHubProxy<ITradeHubClient>();
+        return hub.CreateHubProxy<ITradeHubClient>();
     }
 
     /// <summary>
@@ -184,8 +179,8 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<IBaseTypeHubClient> GetBaseTypeClientAsync()
     {
-        _baseTypeHub = await GetOrCreateHubAsync(_baseTypeHub, "/hub/base-type");
-        return _baseTypeHub.CreateHubProxy<IBaseTypeHubClient>();
+        var hub = await GetOrCreateHubAsync("/hub/base-type");
+        return hub.CreateHubProxy<IBaseTypeHubClient>();
     }
 
     /// <summary>
@@ -193,8 +188,8 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<ISeasonHubClient> GetSeasonClientAsync()
     {
-        _seasonHub = await GetOrCreateHubAsync(_seasonHub, "/hub/season");
-        return _seasonHub.CreateHubProxy<ISeasonHubClient>();
+        var hub = await GetOrCreateHubAsync("/hub/season");
+        return hub.CreateHubProxy<ISeasonHubClient>();
     }
 
     /// <summary>
@@ -202,8 +197,8 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<IAuthHubClient> GetAuthHubClientAsync()
     {
-        _authHub = await GetOrCreateHubAsync(_authHub, "/hub/auth");
-        return _authHub.CreateHubProxy<IAuthHubClient>();
+        var hub = await GetOrCreateHubAsync("/hub/auth");
+        return hub.CreateHubProxy<IAuthHubClient>();
     }
 
     /// <summary>
@@ -217,24 +212,31 @@ public sealed class TitanClient : IAsyncDisposable
 
     /// <summary>
     /// Thread-safe helper to get or create a hub connection.
+    /// Uses per-hub locks to allow concurrent initialization of different hubs.
     /// </summary>
-    private async Task<HubConnection> GetOrCreateHubAsync(HubConnection? existing, string hubPath)
+    private async Task<HubConnection> GetOrCreateHubAsync(string hubPath)
     {
-        if (existing != null)
+        // Fast path: hub already exists
+        if (_hubs.TryGetValue(hubPath, out var existing))
             return existing;
 
-        await _hubInitLock.WaitAsync();
+        // Get or create a lock for this specific hub path
+        var hubLock = _hubLocks.GetOrAdd(hubPath, _ => new SemaphoreSlim(1, 1));
+
+        await hubLock.WaitAsync();
         try
         {
-            // Double-check after acquiring lock
-            if (existing != null)
+            // Double-check: another thread may have created it while we waited
+            if (_hubs.TryGetValue(hubPath, out existing))
                 return existing;
 
-            return await CreateAndConnectHubAsync(hubPath);
+            var hub = await CreateAndConnectHubAsync(hubPath);
+            _hubs[hubPath] = hub;
+            return hub;
         }
         finally
         {
-            _hubInitLock.Release();
+            hubLock.Release();
         }
     }
 
@@ -305,7 +307,7 @@ public sealed class TitanClient : IAsyncDisposable
     private async Task InitializeEncryptionAsync()
     {
         // Connect to the encryption hub
-        _encryptionHub = new HubConnectionBuilder()
+        var encryptionHub = new HubConnectionBuilder()
             .WithUrl($"{_options.BaseUrl}/hub/encryption", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(_currentSessionId);
@@ -313,14 +315,14 @@ public sealed class TitanClient : IAsyncDisposable
             .Build();
 
         // Register for key rotation messages
-        _encryptionHub.On<KeyRotationRequest>("KeyRotation", async request =>
+        encryptionHub.On<KeyRotationRequest>("KeyRotation", async request =>
         {
             try
             {
                 if (_encryptor != null)
                 {
                     var ack = _encryptor.HandleRotationRequest(request);
-                    await _encryptionHub.InvokeAsync("CompleteKeyRotation", ack);
+                    await encryptionHub.InvokeAsync("CompleteKeyRotation", ack);
                     _logger?.LogDebug("Completed key rotation, new KeyId: {KeyId}", request.KeyId);
                 }
             }
@@ -330,8 +332,11 @@ public sealed class TitanClient : IAsyncDisposable
             }
         });
 
-        await _encryptionHub.StartAsync();
+        await encryptionHub.StartAsync();
         _logger?.LogDebug("Connected to encryptionHub");
+        
+        // Store in dictionary for disposal
+        _hubs["/hub/encryption"] = encryptionHub;
 
         // Perform key exchange
         _encryptor = new ClientEncryptor();
@@ -339,7 +344,7 @@ public sealed class TitanClient : IAsyncDisposable
         var success = await _encryptor.PerformKeyExchangeAsync(async request =>
         {
             // Send key exchange request to server and get response
-            return await _encryptionHub.InvokeAsync<KeyExchangeResponse>("KeyExchange", request);
+            return await encryptionHub.InvokeAsync<KeyExchangeResponse>("KeyExchange", request);
         });
 
         if (success)
@@ -358,27 +363,30 @@ public sealed class TitanClient : IAsyncDisposable
         // This ensures no pending encryption operations are running before hub shutdown
         (_encryptor as IDisposable)?.Dispose();
         
-        var hubs = new[] { _accountHub, _characterHub, _inventoryHub, _tradeHub, _baseTypeHub, _seasonHub, _authHub, _encryptionHub };
-
-        foreach (var hub in hubs)
+        // Dispose all hub connections
+        foreach (var hub in _hubs.Values)
         {
-            if (hub != null)
+            try
             {
-                try
-                {
-                    await hub.StopAsync();
-                    await hub.DisposeAsync();
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex, "Error disposing hub connection");
-                }
+                await hub.StopAsync();
+                await hub.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Error disposing hub connection");
             }
         }
+        _hubs.Clear();
 
-        // Dispose the initialization locks
+        // Dispose the per-hub initialization locks
+        foreach (var hubLock in _hubLocks.Values)
+        {
+            hubLock.Dispose();
+        }
+        _hubLocks.Clear();
+
+        // Dispose the encryption initialization lock
         _encryptionInitLock.Dispose();
-        _hubInitLock.Dispose();
         
         _httpClient.Dispose();
         _httpHandler.Dispose();

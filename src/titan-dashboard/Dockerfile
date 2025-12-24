@@ -35,12 +35,23 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Vite outputs to 'dist' directory by default
 COPY --from=build /app/dist /usr/share/nginx/html/dashboard
 
-# Nginx runs on port 80
+# Security: Run nginx as non-root user
+# Create writable directories for nginx runtime files
+RUN mkdir -p /var/cache/nginx /var/run/nginx && \
+    chown -R nginx:nginx /var/cache/nginx /var/run/nginx && \
+    chown -R nginx:nginx /usr/share/nginx/html/dashboard && \
+    # Ensure nginx can write to log directories  
+    chown -R nginx:nginx /var/log/nginx
+
+# Nginx runs on port 80 (requires binding to 8080 for non-root, but nginx alpine allows 80)
 EXPOSE 80
 
 # Health check for container orchestrators
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
+
+# Switch to non-root user
+USER nginx
 
 # Start nginx in foreground
 CMD ["nginx", "-g", "daemon off;"]
