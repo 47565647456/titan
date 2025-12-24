@@ -116,7 +116,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
+        <BrowserRouter basename="/dashboard">
           <AppRoutes />
         </BrowserRouter>
       </AuthProvider>

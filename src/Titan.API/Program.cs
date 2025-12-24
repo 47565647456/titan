@@ -27,10 +27,6 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 // Register validation service for SignalR hubs
 builder.Services.AddScoped<HubValidationService>();
 
-
-// Validate configuration early (fails fast if critical config is missing)
-builder.ValidateTitanConfiguration(requireEosInProduction: true);
-
 // Add Aspire ServiceDefaults (OpenTelemetry, Health Checks, Service Discovery)
 builder.AddServiceDefaults();
 
@@ -352,7 +348,7 @@ app.UseCors();
 // Policy matching is configured in appsettings.json:
 // - /api/admin/auth/* -> "Auth" (strict)
 // - /api/admin/* -> "Admin" (1000/min, defense-in-depth)
-// - /hubs/admin* -> "AdminHub" (5000/min, real-time metrics)
+// - /hub/admin* -> "AdminHub" (5000/min, real-time metrics)
 // - Everything else -> "Global" (default)
 app.UseMiddleware<RateLimitMiddleware>();
 
@@ -360,22 +356,22 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Map WebSocket Hubs (replacing HTTP controllers)
-app.MapHub<AccountHub>("/accountHub");
-app.MapHub<AuthHub>("/authHub");
-app.MapHub<CharacterHub>("/characterHub");
-app.MapHub<InventoryHub>("/inventoryHub");
-app.MapHub<BaseTypeHub>("/baseTypeHub");
-app.MapHub<SeasonHub>("/seasonHub");
-app.MapHub<TradeHub>("/tradeHub");
-app.MapHub<BroadcastHub>("/broadcastHub");
+app.MapHub<AccountHub>("/hub/account");
+app.MapHub<AuthHub>("/hub/auth");
+app.MapHub<CharacterHub>("/hub/character");
+app.MapHub<InventoryHub>("/hub/inventory");
+app.MapHub<BaseTypeHub>("/hub/base-type");
+app.MapHub<SeasonHub>("/hub/season");
+app.MapHub<TradeHub>("/hub/trade");
+app.MapHub<BroadcastHub>("/hub/broadcast");
 
 // Encryption hub for key exchange and rotation
-app.MapHub<EncryptionHub>("/encryptionHub");
+app.MapHub<EncryptionHub>("/hub/encryption");
 
 // Admin dashboard SignalR hub for real-time metrics
-app.MapHub<AdminMetricsHub>("/hubs/admin-metrics");
+app.MapHub<AdminMetricsHub>("/hub/admin-metrics");
 
-// Map HTTP Authentication API (industry standard: HTTP for auth, WebSocket for real-time)
+// Map HTTP Authentication API (HTTP for auth, WebSocket for real-time)
 app.MapAuthEndpoints();
 
 // Map controllers for admin API

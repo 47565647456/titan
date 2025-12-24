@@ -1,0 +1,17 @@
+{
+    email {$ACME_EMAIL}
+    acme_ca {$ACME_CA}
+}
+
+{$DOMAIN} {
+    tls {
+        dns cloudflare {$CF_API_TOKEN}
+    }
+    # Block public access to internal health/alive endpoints
+    @internal_paths {
+        path /health /alive
+    }
+    respond @internal_paths "Forbidden" 403
+
+    reverse_proxy {$GATEWAY_URL}
+}

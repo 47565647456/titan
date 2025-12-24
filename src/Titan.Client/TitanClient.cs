@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.Logging;
 using Titan.Abstractions.Contracts;
@@ -14,6 +15,7 @@ namespace Titan.Client;
 public sealed class TitanClient : IAsyncDisposable
 {
     private readonly TitanClientOptions _options;
+    private readonly SocketsHttpHandler _httpHandler;
     private readonly HttpClient _httpClient;
     private readonly ILogger<TitanClient>? _logger;
 
@@ -78,7 +80,18 @@ public sealed class TitanClient : IAsyncDisposable
     public TitanClient(TitanClientOptions options)
     {
         _options = options;
-        _httpClient = new HttpClient { BaseAddress = new Uri(options.BaseUrl) };
+        
+        // Use SocketsHttpHandler with PooledConnectionLifetime to handle DNS changes
+        // while avoiding socket exhaustion (Microsoft recommended pattern for SDK clients)
+        _httpHandler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+        };
+        _httpClient = new HttpClient(_httpHandler, disposeHandler: false)
+        {
+            BaseAddress = new Uri(options.BaseUrl)
+        };
+        
         _logger = options.LoggerFactory?.CreateLogger<TitanClient>();
         Auth = new AuthClient(_httpClient, this);
     }
@@ -127,7 +140,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<IAccountHubClient> GetAccountClientAsync()
     {
-        _accountHub ??= await CreateAndConnectHubAsync("/accountHub");
+        _accountHub ??= await CreateAndConnectHubAsync("/hub/account");
         return _accountHub.CreateHubProxy<IAccountHubClient>();
     }
 
@@ -136,7 +149,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<ICharacterHubClient> GetCharacterClientAsync()
     {
-        _characterHub ??= await CreateAndConnectHubAsync("/characterHub");
+        _characterHub ??= await CreateAndConnectHubAsync("/hub/character");
         return _characterHub.CreateHubProxy<ICharacterHubClient>();
     }
 
@@ -145,7 +158,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<IInventoryHubClient> GetInventoryClientAsync()
     {
-        _inventoryHub ??= await CreateAndConnectHubAsync("/inventoryHub");
+        _inventoryHub ??= await CreateAndConnectHubAsync("/hub/inventory");
         return _inventoryHub.CreateHubProxy<IInventoryHubClient>();
     }
 
@@ -155,7 +168,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// <param name="receiver">Optional receiver for trade update callbacks.</param>
     public async Task<ITradeHubClient> GetTradeClientAsync(ITradeHubReceiver? receiver = null)
     {
-        _tradeHub ??= await CreateAndConnectHubAsync("/tradeHub");
+        _tradeHub ??= await CreateAndConnectHubAsync("/hub/trade");
 
         if (receiver != null)
         {
@@ -170,7 +183,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<IBaseTypeHubClient> GetBaseTypeClientAsync()
     {
-        _baseTypeHub ??= await CreateAndConnectHubAsync("/baseTypeHub");
+        _baseTypeHub ??= await CreateAndConnectHubAsync("/hub/base-type");
         return _baseTypeHub.CreateHubProxy<IBaseTypeHubClient>();
     }
 
@@ -179,7 +192,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<ISeasonHubClient> GetSeasonClientAsync()
     {
-        _seasonHub ??= await CreateAndConnectHubAsync("/seasonHub");
+        _seasonHub ??= await CreateAndConnectHubAsync("/hub/season");
         return _seasonHub.CreateHubProxy<ISeasonHubClient>();
     }
 
@@ -188,7 +201,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<IAuthHubClient> GetAuthHubClientAsync()
     {
-        _authHub ??= await CreateAndConnectHubAsync("/authHub");
+        _authHub ??= await CreateAndConnectHubAsync("/hub/auth");
         return _authHub.CreateHubProxy<IAuthHubClient>();
     }
 
@@ -269,7 +282,7 @@ public sealed class TitanClient : IAsyncDisposable
     {
         // Connect to the encryption hub
         _encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{_options.BaseUrl}/encryptionHub", options =>
+            .WithUrl($"{_options.BaseUrl}/hub/encryption", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(_currentSessionId);
             })
@@ -343,5 +356,6 @@ public sealed class TitanClient : IAsyncDisposable
         _encryptionInitLock.Dispose();
         
         _httpClient.Dispose();
+        _httpHandler.Dispose();
     }
 }

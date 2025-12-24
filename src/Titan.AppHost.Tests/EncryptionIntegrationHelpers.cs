@@ -47,7 +47,7 @@ public static class EncryptionIntegrationHelpers
         string sessionId)
     {
         var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{apiBaseUrl}/encryptionHub?access_token={sessionId}")
+            .WithUrl($"{apiBaseUrl}/hub/encryption?access_token={sessionId}")
             .Build();
         
         ClientEncryptor? encryptor = null;

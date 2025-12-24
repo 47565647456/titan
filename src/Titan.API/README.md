@@ -18,7 +18,7 @@ The API uses SignalR Hubs for full duplex communication, primarily for game stat
 | `CharacterHub` | `/characterHub` | Character creation and selection. |
 | `BaseTypeHub` | `/baseTypeHub` | Item metadata registry (defined in `ItemTypeHub.cs`). |
 | `SeasonHub` | `/seasonHub` | Season management and information. |
-| `AdminMetricsHub` | `/hubs/admin-metrics` | Real-time rate limiting and system metrics for Admin Dashboard. |
+| `AdminMetricsHub` | `/hub/admin-metrics` | Real-time rate limiting and system metrics for Admin Dashboard. |
 
 ### HTTP Endpoints (Authentication & Admin)
 The API uses REST principles for stateless operations like authentication and administrative management.

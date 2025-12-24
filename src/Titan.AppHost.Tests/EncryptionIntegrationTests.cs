@@ -211,7 +211,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         // Arrange
         var (sessionId, _, _) = await LoginAsUserAsync();
         var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
             .Build();
 
         await encryptionHub.StartAsync();
@@ -250,7 +250,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         // Arrange
         var (sessionId, _, _) = await LoginAsUserAsync();
         var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
             .Build();
 
         await encryptionHub.StartAsync();
@@ -277,7 +277,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         
         // Connect to encryption hub for key exchange
         var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
             .Build();
         await encryptionHub.StartAsync();
 
@@ -288,7 +288,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
         // Now connect to account hub
         var accountHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/accountHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/account?access_token={sessionId}")
             .Build();
         await accountHub.StartAsync();
         
@@ -315,10 +315,10 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         var (sessionId2, _, _) = await LoginAsUserAsync();
         
         var hub1 = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId1}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId1}")
             .Build();
         var hub2 = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId2}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId2}")
             .Build();
 
         await Task.WhenAll(hub1.StartAsync(), hub2.StartAsync());
@@ -355,7 +355,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         // Arrange
         var (sessionId, _, userId) = await LoginAsUserAsync();
         var accountHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/accountHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/account?access_token={sessionId}")
             .Build();
         await accountHub.StartAsync();
 
@@ -383,7 +383,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         // Arrange
         var (sessionId, _, _) = await LoginAsUserAsync();
         var accountHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/accountHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/account?access_token={sessionId}")
             .Build();
 
         var encryptedConnection = new EncryptedHubConnection(accountHub, null, false);
@@ -412,7 +412,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         // Create a user session with encryption
         var (sessionId, _, _) = await LoginAsUserAsync();
         var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
             .Build();
         await encryptionHub.StartAsync();
 
@@ -445,7 +445,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         // Arrange
         var (sessionId, _, _) = await LoginAsUserAsync();
         var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
             .Build();
         await encryptionHub.StartAsync();
 
@@ -491,7 +491,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         
         // First do key exchange
         var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
             .Build();
         await encryptionHub.StartAsync();
 
@@ -501,7 +501,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
         // Now make multiple account hub calls
         var accountHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/accountHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/account?access_token={sessionId}")
             .Build();
         await accountHub.StartAsync();
 
@@ -576,7 +576,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         var (sessionId, _, _) = await LoginAsUserAsync();
         
         var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
             .Build();
         await encryptionHub.StartAsync();
 
@@ -681,7 +681,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
         try
         {
             var encryptionHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
                 .Build();
             await encryptionHub.StartAsync();
 
@@ -748,7 +748,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
             // Step 2: Connect to encryption hub and perform key exchange
             var encryptionHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
                 .Build();
             await encryptionHub.StartAsync();
 
@@ -841,7 +841,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
             var (sessionId, _, _) = await LoginAsUserAsync();
 
             var encryptionHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
                 .Build();
             await encryptionHub.StartAsync();
 
@@ -896,7 +896,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
             // Step 2: Connect to EncryptionHub and do key exchange
             var encryptionHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
                 .Build();
             await encryptionHub.StartAsync();
 
@@ -911,7 +911,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
             // Step 3: Connect to AccountHub (DIFFERENT hub connection, SAME user)
             var accountHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/accountHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/account?access_token={sessionId}")
                 .Build();
             await accountHub.StartAsync();
 
@@ -989,7 +989,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
             // Step 1: Connect to encryption hub and do key exchange
             var rotationReceived = new TaskCompletionSource<KeyRotationRequest>();
             var encryptionHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
                 .Build();
             encryptionHub.On<KeyRotationRequest>("KeyRotation", req => rotationReceived.TrySetResult(req));
             await encryptionHub.StartAsync();
@@ -999,7 +999,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
             
             // Step 2: Connect to AccountHub (standard SignalR connection)
             var accountHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/accountHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/account?access_token={sessionId}")
                 .Build();
             await accountHub.StartAsync();
             
@@ -1068,7 +1068,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
             
             // Do key exchange
             var encryptionHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
                 .Build();
             await encryptionHub.StartAsync();
             using var encryptor = new ClientEncryptor();
@@ -1076,7 +1076,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
             // Connect to AdminMetricsHub
             var metricsHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/hubs/admin-metrics?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/admin-metrics?access_token={sessionId}")
                 .Build();
             await metricsHub.StartAsync();
             await using var encryptedMetricsHub = new EncryptedHubConnection(metricsHub, encryptor, true);
@@ -1127,7 +1127,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
             
             // Do key exchange
             var encryptionHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
                 .Build();
             await encryptionHub.StartAsync();
             using var encryptor = new ClientEncryptor();
@@ -1135,7 +1135,7 @@ public class EncryptionIntegrationTests : IntegrationTestBase
 
             // Connect to AccountHub (plain SignalR connection)
             var accountHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/accountHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/account?access_token={sessionId}")
                 .Build();
             await accountHub.StartAsync();
 

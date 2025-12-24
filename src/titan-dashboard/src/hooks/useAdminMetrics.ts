@@ -118,8 +118,8 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
         
         setEncryptionActive(encryptionSuccess);
         
-        // Connect to the actual hub
-        const hub = await manager.connectToHub('/hubs/admin-metrics');
+        // Connect to the actual hub (must be under /hub/ for routing)
+        const hub = await manager.connectToHub('/hub/admin-metrics');
         hubConnectionRef.current = hub;
         if (!isEffectActive) return;
 
@@ -151,7 +151,7 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
         
         console.error('[useAdminMetrics] Init failed:', err);
         setConnectionState('error');
-        setError(err instanceof Error ? err.message : 'Connection failed');
+        setError(err instanceof Error ? `Connection failed: ${err.message}` : 'Connection failed');
       }
     };
 

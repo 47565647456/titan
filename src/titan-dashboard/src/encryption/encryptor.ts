@@ -15,14 +15,6 @@ const NONCE_LENGTH = 12;
 const GCM_TAG_LENGTH = 128; // Bits
 const REPLAY_WINDOW_SECONDS = 60;
 const CLOCK_SKEW_SECONDS = 5;
-/**
- * Gap added to sequence number after session restore to account for in-flight messages.
- * When a page is refreshed, any messages sent immediately before the refresh may still be
- * in transit. Adding this buffer ensures the server won't reject the first post-restore
- * message as a replay. The server resets sequence tracking per-keyId, so this only matters
- * within the same key.
- */
-const MAX_SEQUENCE_GAP = 100;
 
 
 
@@ -52,7 +44,10 @@ export class Encryptor {
   /** Grace period duration in milliseconds (set from server during key exchange) */
   private gracePeriodMs = 30 * 1000; // Default to 30s as fallback
 
+  // Use localStorage for cross-tab sharing of encryption state
   private readonly STORAGE_KEY = 'titan_encryption_session';
+  // How old the saved session can be before we consider it stale and do fresh key exchange
+  private readonly SESSION_FRESHNESS_MS = 5 * 60 * 1000; // 5 minutes
 
   /**
    * Whether encryption is initialized and ready to use.
@@ -347,7 +342,7 @@ export class Encryptor {
       activeServerSigningKey = this.previousServerSigningPublicKey;
     } else {
         // Key ID mismatch. Checks if we can recover by reloading session (e.g. another tab/connection rotated the key)
-        const canRecover = await this.restoreSession();
+        const { restored: canRecover } = await this.restoreSession();
         if (canRecover) {
              // Re-evaluate keys after restore
              if (this.keyId && envelope.keyId === this.keyId) {
@@ -445,7 +440,7 @@ export class Encryptor {
   }
 
   /**
-   * Save session state to sessionStorage.
+   * Save session state to localStorage (cross-tab sharing).
    */
   async saveSession(): Promise<void> {
       try {
@@ -480,27 +475,35 @@ export class Encryptor {
               previousKeyId: this.previousKeyId,
               previousAesKey: prevAesJwk,
               previousServerSigningKey: prevServerSignJwk,
-              previousKeyExpiresAt: this.previousKeyExpiresAt
+              previousKeyExpiresAt: this.previousKeyExpiresAt,
+              // Timestamp for freshness checking (multi-tab support)
+              savedAt: Date.now()
           };
 
-          sessionStorage.setItem(this.STORAGE_KEY, JSON.stringify(minimalState));
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(minimalState));
       } catch (e) {
           console.warn('Failed to save encryption session', e);
       }
   }
 
   /**
-   * Restore session state from sessionStorage.
+   * Restore session state from localStorage (cross-tab sharing).
+   * Returns { restored: boolean, isFresh: boolean } where isFresh indicates
+   * the session was saved recently (within SESSION_FRESHNESS_MS) by another tab.
    */
-  async restoreSession(): Promise<boolean> {
+  async restoreSession(): Promise<{ restored: boolean; isFresh: boolean }> {
       try {
-          const stored = sessionStorage.getItem(this.STORAGE_KEY);
-          if (!stored) return false;
+          const stored = localStorage.getItem(this.STORAGE_KEY);
+          if (!stored) return { restored: false, isFresh: false };
 
           const state = JSON.parse(stored);
           if (!state.keyId || !state.aesKey || !state.serverSigningKey || !state.clientSigningKey) {
-              return false;
+              return { restored: false, isFresh: false };
           }
+
+          // Check if the session is fresh (saved recently by another tab)
+          const savedAt = state.savedAt || 0;
+          const isFresh = (Date.now() - savedAt) < this.SESSION_FRESHNESS_MS;
 
           // Import Keys
           const aesKey = await crypto.subtle.importKey(
@@ -540,15 +543,14 @@ export class Encryptor {
           this.aesKey = aesKey;
           this.serverSigningPublicKey = serverSigningKey;
           this.keyId = state.keyId;
-          this.sequenceNumber = state.sequenceNumber || 0;
-          
-          // Add small buffer to sequence number to avoid server replay rejection on refresh
-          this.sequenceNumber += MAX_SEQUENCE_GAP; 
+          // Restore sequence number for fresh sessions (multi-tab sharing)
+          // Add buffer to avoid collision with other tab's concurrent messages
+          this.sequenceNumber = (state.sequenceNumber || 0) + 10;
 
-          return true;
+          return { restored: true, isFresh };
       } catch (e) {
           console.warn('Failed to restore encryption session', e);
-          return false;
+          return { restored: false, isFresh: false };
       }
   }
 
@@ -648,7 +650,7 @@ export class Encryptor {
     this.previousAesKey = null;
     this.previousServerSigningPublicKey = null;
     this.previousKeyExpiresAt = null;
-    sessionStorage.removeItem(this.STORAGE_KEY);
+    localStorage.removeItem(this.STORAGE_KEY);
   }
 
   /**
