@@ -20,9 +20,9 @@
     <PackageReference Include="Aspire.Hosting.Orleans" />
     <PackageReference Include="Aspire.Hosting.PostgreSQL" />
     <PackageReference Include="Aspire.Hosting.Redis" />
+    <PackageReference Include="Aspire.Hosting.Yarp" />
 
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
-    <PackageReference Include="Aspire.Hosting.Yarp" />
   </ItemGroup>
 
 </Project>

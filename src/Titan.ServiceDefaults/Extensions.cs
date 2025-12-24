@@ -171,15 +171,15 @@ public static class Extensions
 
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        // Adding health checks endpoints to applications in non-development environments has security implications.
-        // See https://aka.ms/dotnet/aspire/healthchecks for details before enabling these endpoints in non-development environments.
+        // Development: detailed health check output for debugging
+        // Production: minimal output to avoid exposing infrastructure details
+        // See https://aka.ms/dotnet/aspire/healthchecks for security implications
+        var isDevelopment = app.Environment.IsDevelopment();
         
         // All health checks must pass for app to be considered ready to accept traffic after starting
-        // Returns detailed JSON with per-check status for dashboard consumption
-        app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
-        {
-            ResponseWriter = WriteDetailedHealthResponseAsync
-        });
+        app.MapHealthChecks(HealthEndpointPath, isDevelopment 
+            ? new HealthCheckOptions { ResponseWriter = WriteDetailedHealthResponseAsync }
+            : new HealthCheckOptions());
 
         // Only health checks tagged with the "live" tag must pass for app to be considered alive
         app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions

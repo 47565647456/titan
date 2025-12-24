@@ -22,6 +22,12 @@ const CLOCK_SKEW_SECONDS = 5;
  * Encryption client for SignalR hub communication.
  * Handles key exchange, encryption, decryption, and signing.
  * Supports key rotation grace periods and session persistence.
+ * 
+ * SECURITY NOTE: Uses localStorage for multi-tab session sharing.
+ * Trade-off: localStorage persists longer than sessionStorage and is shared
+ * across all tabs of the same origin. Keys are automatically invalidated
+ * when the server rotates them or the session expires. If XSS is a concern,
+ * consider additional mitigations like CSP and input sanitization.
  */
 export class Encryptor {
   private ecdhKeyPair: CryptoKeyPair | null = null;
@@ -544,8 +550,8 @@ export class Encryptor {
           this.serverSigningPublicKey = serverSigningKey;
           this.keyId = state.keyId;
           // Restore sequence number for fresh sessions (multi-tab sharing)
-          // Add buffer to avoid collision with other tab's concurrent messages
-          this.sequenceNumber = (state.sequenceNumber || 0) + 10;
+          // Add larger buffer to avoid collision with other tab's concurrent messages
+          this.sequenceNumber = (state.sequenceNumber || 0) + 100;
 
           return { restored: true, isFresh };
       } catch (e) {

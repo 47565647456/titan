@@ -38,5 +38,9 @@ COPY --from=build /app/dist /usr/share/nginx/html/dashboard
 # Nginx runs on port 80
 EXPOSE 80
 
+# Health check for container orchestrators
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
+
 # Start nginx in foreground
 CMD ["nginx", "-g", "daemon off;"]

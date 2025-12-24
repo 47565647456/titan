@@ -118,7 +118,7 @@ export function useAdminMetrics(): UseAdminMetricsReturn {
         
         setEncryptionActive(encryptionSuccess);
         
-        // Connect to the actual hub (must be under /hub/ for routing)
+        // Connect to the admin metrics hub
         const hub = await manager.connectToHub('/hub/admin-metrics');
         hubConnectionRef.current = hub;
         if (!isEffectActive) return;

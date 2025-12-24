@@ -7,9 +7,9 @@
     tls {
         dns cloudflare {$CF_API_TOKEN}
     }
-    # Block public access to internal health/alive endpoints
+    # Block public access to internal alive endpoint (health is allowed for orchestrators)
     @internal_paths {
-        path /health /alive
+        path /alive
     }
     respond @internal_paths "Forbidden" 403
 

@@ -111,8 +111,7 @@ var api = builder.AddProject<Projects.Titan_API>("api")
 // Dashboard runs in a container: Node.js builds the Vite app, Nginx serves static files
 var dashboard = builder.AddDockerfile("dashboard", "../titan-dashboard")
     .WithImageTag("latest")  // Use consistent tag to avoid image cache bloat
-    .WithHttpEndpoint(name: "http", targetPort: 80)
-    .WaitFor(api);
+    .WithHttpEndpoint(name: "http", targetPort: 80);
 
 // =============================================================================
 // YARP Gateway (reverse proxy and routing)
