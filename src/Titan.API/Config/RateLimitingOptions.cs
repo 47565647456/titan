@@ -18,29 +18,23 @@ public class RateLimitingOptions
     public string RedisConnectionName { get; set; } = "rate-limiting";
 
     /// <summary>
-    /// Default policies to seed if grain has no configuration.
+    /// Policies to seed if grain has no configuration.
+    /// Must be configured in appsettings.json - no hardcoded defaults.
     /// </summary>
-    public List<PolicyConfig> DefaultPolicies { get; set; } =
-    [
-        new() { Name = "Global", Rules = ["100:60:300"] },
-        new() { Name = "Auth", Rules = ["10:60:600", "30:300:1800"] },
-        new() { Name = "Trade", Rules = ["60:60:120"] },
-        new() { Name = "Relaxed", Rules = ["1000:60:60"] }
-    ];
+    public List<PolicyConfig> DefaultPolicies { get; set; } = [];
 
     /// <summary>
-    /// Default endpoint-to-policy mappings.
+    /// Endpoint-to-policy mappings.
+    /// Must be configured in appsettings.json - no hardcoded defaults.
+    /// All endpoints must have a mapping or requests will fail.
     /// </summary>
-    public List<EndpointMappingConfig> DefaultEndpointMappings { get; set; } =
-    [
-        new() { Pattern = "/api/auth/*", PolicyName = "Auth" },
-        new() { Pattern = "TradeHub.*", PolicyName = "Trade" }
-    ];
+    public List<EndpointMappingConfig> DefaultEndpointMappings { get; set; } = [];
 
     /// <summary>
     /// Default policy name when no endpoint mapping matches.
+    /// Note: With strict mode, unmatched endpoints throw - this is a fallback for legacy compatibility.
     /// </summary>
-    public string DefaultPolicyName { get; set; } = "Global";
+    public string? DefaultPolicyName { get; set; }
 
     /// <summary>
     /// How long to cache configuration from grain (seconds).

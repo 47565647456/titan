@@ -48,7 +48,7 @@ public class RateLimitConfigInitializer : IHostedService
                 Enabled = config.Enabled,
                 Policies = policies,
                 EndpointMappings = mappings,
-                DefaultPolicyName = config.DefaultPolicyName
+                DefaultPolicyName = config.DefaultPolicyName ?? string.Empty
             };
 
             // Initialize grain with defaults (will skip if already configured)

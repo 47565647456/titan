@@ -31,7 +31,7 @@ export interface UseHealthCheckReturn {
 export function useHealthCheck(): UseHealthCheckReturn {
   const { data, isLoading, isError, refetch } = useQuery<HealthCheckResponse>({
     queryKey: ['health'],
-    queryFn: ({ signal }) => healthApi.getStatus(signal),
+    queryFn: () => healthApi.getStatus(),
     refetchInterval: 30000, // Poll every 30 seconds
     staleTime: 10000, // Consider data fresh for 10 seconds
     // Retry with exponential backoff (1s, 2s, 4s)
@@ -49,7 +49,7 @@ export function useHealthCheck(): UseHealthCheckReturn {
     name: check.name,
     displayName: CHECK_DISPLAY_NAMES[check.name] || check.name,
     status: check.status,
-    duration: check.duration,
+    duration: `${check.duration.toFixed(0)}ms`,
   })) ?? [];
 
   return {

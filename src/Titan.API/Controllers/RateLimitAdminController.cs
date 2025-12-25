@@ -213,7 +213,7 @@ public class RateLimitAdminController : ControllerBase
         var defaults = new RateLimitingConfiguration
         {
             Enabled = opts.Enabled,
-            DefaultPolicyName = opts.DefaultPolicyName,
+            DefaultPolicyName = opts.DefaultPolicyName ?? string.Empty,
             Policies = opts.DefaultPolicies
                 .Select(p => new RateLimitPolicy(
                     p.Name, 

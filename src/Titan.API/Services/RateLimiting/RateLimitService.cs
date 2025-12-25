@@ -552,7 +552,7 @@ public partial class RateLimitService
             Enabled = opts.Enabled,
             Policies = policies,
             EndpointMappings = mappings,
-            DefaultPolicyName = opts.DefaultPolicyName
+            DefaultPolicyName = opts.DefaultPolicyName ?? string.Empty
         };
     }
 

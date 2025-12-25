@@ -42,8 +42,10 @@ public class RateLimitMiddleware
             var policy = await rateLimitService.GetPolicyForEndpointAsync(endpoint);
             if (policy == null)
             {
-                await _next(context);
-                return;
+                // All endpoints must have an explicit rate limit policy configured
+                throw new InvalidOperationException(
+                    $"No rate limit policy configured for endpoint: {endpoint}. " +
+                    "Add a mapping in rate limiting configuration or use the admin API.");
             }
 
             // Get partition key: user ID for authenticated, IP for anonymous
