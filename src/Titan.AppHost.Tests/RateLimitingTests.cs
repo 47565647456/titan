@@ -808,7 +808,7 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
         
         // Act - Connect to SignalR and clear the bucket
         var connection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(loginResult.SessionId);
             })
@@ -877,7 +877,7 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
         
         // Connect to SignalR
         var connection = new Microsoft.AspNetCore.SignalR.Client.HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(loginResult!.SessionId);
             })

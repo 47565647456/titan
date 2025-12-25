@@ -101,7 +101,10 @@ public class EncryptionHubFilter : IHubFilter
         }
 
         // User IS encrypted. Enforce that they use the __encrypted__ gateway.
-        bool isGatewayCall = methodName.Equals("__encrypted__", StringComparison.OrdinalIgnoreCase);
+        // Note: methodName contains the actual method name ("InvokeEncrypted"), not the [HubMethodName] attribute value.
+        // We need to check for both since clients call "__encrypted__" but SignalR resolves it to the actual method name.
+        bool isGatewayCall = methodName.Equals("__encrypted__", StringComparison.OrdinalIgnoreCase)
+                          || methodName.Equals("InvokeEncrypted", StringComparison.OrdinalIgnoreCase);
         
         if (!isGatewayCall && config.Required)
         {

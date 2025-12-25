@@ -189,7 +189,7 @@ public abstract class IntegrationTestBase
     /// </summary>
     protected async Task EnsureBaseTypeExistsAsync(string adminToken, string baseTypeId, bool isTradeable = true)
     {
-        var hub = await ConnectToHubAsync("/baseTypeHub", adminToken);
+        var hub = await ConnectToHubAsync("/hub/base-type", adminToken);
         try
         {
             // Try to get it first

@@ -49,13 +49,13 @@ public class UserSession : IAsyncDisposable
     }
 
     // Hub accessors - lazily connected on first access
-    public Task<HubConnection> GetAccountHubAsync() => GetOrCreateHubAsync("/accountHub");
-    public Task<HubConnection> GetCharacterHubAsync() => GetOrCreateHubAsync("/characterHub");
-    public Task<HubConnection> GetInventoryHubAsync() => GetOrCreateHubAsync("/inventoryHub");
-    public Task<HubConnection> GetTradeHubAsync() => GetOrCreateHubAsync("/tradeHub");
-    public Task<HubConnection> GetBaseTypeHubAsync() => GetOrCreateHubAsync("/baseTypeHub");
-    public Task<HubConnection> GetSeasonHubAsync() => GetOrCreateHubAsync("/seasonHub");
-    public Task<HubConnection> GetBroadcastHubAsync() => GetOrCreateHubAsync("/broadcastHub");
+    public Task<HubConnection> GetAccountHubAsync() => GetOrCreateHubAsync("/hub/account");
+    public Task<HubConnection> GetCharacterHubAsync() => GetOrCreateHubAsync("/hub/character");
+    public Task<HubConnection> GetInventoryHubAsync() => GetOrCreateHubAsync("/hub/inventory");
+    public Task<HubConnection> GetTradeHubAsync() => GetOrCreateHubAsync("/hub/trade");
+    public Task<HubConnection> GetBaseTypeHubAsync() => GetOrCreateHubAsync("/hub/base-type");
+    public Task<HubConnection> GetSeasonHubAsync() => GetOrCreateHubAsync("/hub/season");
+    public Task<HubConnection> GetBroadcastHubAsync() => GetOrCreateHubAsync("/hub/broadcast");
 
     /// <summary>
     /// Gets the number of active hub connections.

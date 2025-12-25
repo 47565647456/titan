@@ -59,7 +59,7 @@ public class AuthenticationTests : IntegrationTestBase
 
         // Connect to AuthHub with the session
         var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionId}")
+            .WithUrl($"{ApiBaseUrl}/hub/auth?access_token={sessionId}")
             .Build();
 
         await authHub.StartAsync();
@@ -72,7 +72,7 @@ public class AuthenticationTests : IntegrationTestBase
             // After logout, creating a new connection with the same session should fail
             // when trying to call an authenticated method
             var authHub2 = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/auth?access_token={sessionId}")
                 .Build();
 
             try 
@@ -128,7 +128,7 @@ public class AuthenticationTests : IntegrationTestBase
     {
         // Arrange - create connection without token
         var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub")
+            .WithUrl($"{ApiBaseUrl}/hub/auth")
             .Build();
 
         await authHub.StartAsync();
@@ -161,7 +161,7 @@ public class AuthenticationTests : IntegrationTestBase
 
         // 3. Connect as Device A and Revoke All
         var authHubA = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionA}")
+            .WithUrl($"{ApiBaseUrl}/hub/auth?access_token={sessionA}")
             .Build();
         await authHubA.StartAsync();
         
@@ -175,7 +175,7 @@ public class AuthenticationTests : IntegrationTestBase
 
             // 4. Verify Session B is revoked by trying to call protected method
             var authHubB = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionB}")
+                .WithUrl($"{ApiBaseUrl}/hub/auth?access_token={sessionB}")
                 .Build();
 
             try
@@ -217,7 +217,7 @@ public class AuthenticationTests : IntegrationTestBase
         
         // 3. Verify sessions are invalidated by trying to call protected method
         var authHub = new HubConnectionBuilder()
-            .WithUrl($"{ApiBaseUrl}/authHub?access_token={sessionB}")
+            .WithUrl($"{ApiBaseUrl}/hub/auth?access_token={sessionB}")
             .Build();
 
         try

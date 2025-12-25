@@ -91,90 +91,6 @@ public static class Extensions
         return builder;
     }
 
-    /// <summary>
-    /// Validates critical configuration at startup. Throws if required config is missing,
-    /// logs warnings for recommended config. Captures validation errors to Sentry if configured.
-    /// </summary>
-    /// <param name="builder">The host application builder.</param>
-
-    /// <param name="requireEosInProduction">If true, requires Eos:ClientId in non-development.</param>
-    public static TBuilder ValidateTitanConfiguration<TBuilder>(
-        this TBuilder builder,
-        bool requireEosInProduction = false) where TBuilder : IHostApplicationBuilder
-    {
-        var errors = new List<string>();
-        var warnings = new List<string>();
-        var config = builder.Configuration;
-        
-        // Get environment from env var (Aspire sets this) or fallback to IHostEnvironment
-        // We check env var directly because IHostEnvironment is resolved at CreateBuilder() time,
-        // before Aspire injects environment variables via launch profiles
-        var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") 
-            ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")
-            ?? builder.Environment.EnvironmentName;
-        var isDevelopment = string.Equals(environmentName, "Development", StringComparison.OrdinalIgnoreCase);
-
-
-
-        // Production-only validations
-        if (!isDevelopment)
-        {
-            // EOS ClientId (for API only)
-            if (requireEosInProduction && string.IsNullOrEmpty(config["Eos:ClientId"]))
-            {
-                errors.Add("Eos:ClientId is required in production. Set via environment variable: Eos__ClientId");
-            }
-
-            // Sentry DSN recommended for all hosts
-            if (string.IsNullOrEmpty(config["Sentry:Dsn"]))
-            {
-                warnings.Add("Sentry:Dsn is not configured. Errors won't be tracked. Set via: Sentry__Dsn");
-            }
-        }
-
-        // Log warnings first
-        foreach (var warning in warnings)
-        {
-            Console.WriteLine($"⚠️  WARNING: {warning}");
-        }
-
-        // Throw if there are errors
-        if (errors.Count > 0)
-        {
-            var message = "Configuration validation failed:\n" +
-                string.Join("\n", errors.Select(e => $"  ❌ {e}"));
-            var exception = new InvalidOperationException(message);
-            
-            // Capture to Sentry if DSN is configured (so we're alerted in production)
-            var sentryDsn = config["Sentry:Dsn"];
-            if (!string.IsNullOrEmpty(sentryDsn))
-            {
-                try
-                {
-                    // Initialize Sentry temporarily just to capture this error
-                    using (SentrySdk.Init(o =>
-                    {
-                        o.Dsn = sentryDsn;
-                        o.Environment = config["Sentry:Environment"] ?? environmentName;
-                    }))
-                    {
-                        SentrySdk.CaptureException(exception);
-                        // Flush to ensure the event is sent before the app crashes
-                        SentrySdk.FlushAsync(TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
-                    }
-                }
-                catch
-                {
-                    // Don't let Sentry errors mask the config error
-                }
-            }
-            
-            throw exception;
-        }
-
-        return builder;
-    }
-
     public static TBuilder ConfigureOpenTelemetry<TBuilder>(this TBuilder builder) where TBuilder : IHostApplicationBuilder
     {
         builder.Logging.AddOpenTelemetry(logging =>
@@ -255,23 +171,21 @@ public static class Extensions
 
     public static WebApplication MapDefaultEndpoints(this WebApplication app)
     {
-        // Adding health checks endpoints to applications in non-development environments has security implications.
-        // See https://aka.ms/dotnet/aspire/healthchecks for details before enabling these endpoints in non-development environments.
-        if (app.Environment.IsDevelopment())
-        {
-            // All health checks must pass for app to be considered ready to accept traffic after starting
-            // Returns detailed JSON with per-check status for dashboard consumption
-            app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
-            {
-                ResponseWriter = WriteDetailedHealthResponseAsync
-            });
+        // Development: detailed health check output for debugging
+        // Production: minimal output to avoid exposing infrastructure details
+        // See https://aka.ms/dotnet/aspire/healthchecks for security implications
+        var isDevelopment = app.Environment.IsDevelopment();
+        
+        // All health checks must pass for app to be considered ready to accept traffic after starting
+        app.MapHealthChecks(HealthEndpointPath, isDevelopment 
+            ? new HealthCheckOptions { ResponseWriter = WriteDetailedHealthResponseAsync }
+            : new HealthCheckOptions());
 
-            // Only health checks tagged with the "live" tag must pass for app to be considered alive
-            app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
-            {
-                Predicate = r => r.Tags.Contains("live")
-            });
-        }
+        // Only health checks tagged with the "live" tag must pass for app to be considered alive
+        app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
+        {
+            Predicate = r => r.Tags.Contains("live")
+        });
 
         return app;
     }

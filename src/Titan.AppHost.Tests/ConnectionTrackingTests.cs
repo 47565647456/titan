@@ -66,7 +66,7 @@ public class ConnectionTrackingTests : IntegrationTestBase
         Assert.Equal(1, session.ConnectionCount);
 
         // Act - Disconnect
-        await session.DisconnectHubAsync("/accountHub");
+        await session.DisconnectHubAsync("/hub/account");
 
         // Assert
         Assert.Equal(0, session.ConnectionCount);
@@ -102,7 +102,7 @@ public class ConnectionTrackingTests : IntegrationTestBase
         // Connect, use, disconnect
         var hub1 = await session.GetAccountHubAsync();
         await hub1.InvokeAsync<Account>("GetAccount");
-        await session.DisconnectHubAsync("/accountHub");
+        await session.DisconnectHubAsync("/hub/account");
         Assert.Equal(0, session.ConnectionCount);
 
         // Act - Reconnect

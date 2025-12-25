@@ -21,7 +21,7 @@ public class AdminMetricsHubTests : IntegrationTestBase
     {
         // Arrange - Build connection without token
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics")
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics")
             .Build();
 
         // Act & Assert - Should fail to connect
@@ -35,7 +35,7 @@ public class AdminMetricsHubTests : IntegrationTestBase
         var token = await GetAuthTokenAsync();
         
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })
@@ -67,7 +67,7 @@ public class AdminMetricsHubTests : IntegrationTestBase
         var metricsReceived = new TaskCompletionSource<MetricsDto>();
         
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })
@@ -108,7 +108,7 @@ public class AdminMetricsHubTests : IntegrationTestBase
         var metricsReceived = new TaskCompletionSource<MetricsDto>();
         
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })
@@ -144,7 +144,7 @@ public class AdminMetricsHubTests : IntegrationTestBase
         var token = await GetAuthTokenAsync();
         
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })
@@ -176,7 +176,7 @@ public class AdminMetricsHubTests : IntegrationTestBase
         var metricsReceived = new TaskCompletionSource<MetricsDto>();
         
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })
@@ -248,7 +248,7 @@ public class AdminMetricsHubTests : IntegrationTestBase
         
         // Connect to hub
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })
@@ -286,7 +286,7 @@ public class AdminMetricsHubTests : IntegrationTestBase
         
         // Connect to hub
         var connection = new HubConnectionBuilder()
-            .WithUrl($"{Fixture.ApiBaseUrl}/hubs/admin-metrics", options =>
+            .WithUrl($"{Fixture.ApiBaseUrl}/hub/admin-metrics", options =>
             {
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })

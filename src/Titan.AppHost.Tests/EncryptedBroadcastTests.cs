@@ -46,7 +46,7 @@ public class EncryptedBroadcastTests : IntegrationTestBase
 
             // Step 1: Crypto Setup
             encryptionHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/encryptionHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/encryption?access_token={sessionId}")
                 .Build();
             await encryptionHub.StartAsync();
 
@@ -55,7 +55,7 @@ public class EncryptedBroadcastTests : IntegrationTestBase
             
             // Step 2: Connect to SeasonHub and Subscribe
             seasonHub = new HubConnectionBuilder()
-                .WithUrl($"{ApiBaseUrl}/seasonHub?access_token={sessionId}")
+                .WithUrl($"{ApiBaseUrl}/hub/season?access_token={sessionId}")
                 .Build();
 
             var tcs = new TaskCompletionSource<SecureEnvelope>();

@@ -114,7 +114,7 @@ export class EncryptedSignalRConnection {
 
     // Create temporary connection to get config
     const tempHub = new signalR.HubConnectionBuilder()
-      .withUrl(`${this.options.baseUrl || ''}/encryptionHub`, {
+      .withUrl(`${this.options.baseUrl || ''}/hub/encryption`, {
         accessTokenFactory: () => token,
       })
       .build();
@@ -149,16 +149,16 @@ export class EncryptedSignalRConnection {
         return false;
       }
 
-      // Try to restore previous session state to handle graceful rotation on refresh
+      // Try to restore previous session state (from localStorage, shared across tabs)
       // This allows us to decrypt messages sent with the "old" key while we negotiate a new one
-      const restored = await this.encryptor.restoreSession();
+      const { restored, isFresh } = await this.encryptor.restoreSession();
       if (restored) {
-          console.log('[EncryptedSignalR] Restored previous encryption session');
+          console.log('[EncryptedSignalR] Restored encryption session', isFresh ? '(fresh from another tab)' : '(stale)');
       }
 
       // Connect to encryption hub
       this.encryptionHub = new signalR.HubConnectionBuilder()
-        .withUrl(`${this.options.baseUrl || ''}/encryptionHub`, {
+        .withUrl(`${this.options.baseUrl || ''}/hub/encryption`, {
           accessTokenFactory: () => token,
         })
         .withAutomaticReconnect()
@@ -171,11 +171,16 @@ export class EncryptedSignalRConnection {
       await this.encryptionHub.start();
       console.log('[EncryptedSignalR] Connected to encryption hub');
 
-      // Perform key exchange only if not restored
-      if (!restored) {
-          await this.performKeyExchange();
+      // Skip key exchange if we restored a fresh session from another tab
+      // Fresh means another tab recently did key exchange and the server knows about these keys
+      if (restored && isFresh) {
+          console.log('[EncryptedSignalR] Using fresh session from another tab, skipping key exchange');
+          // Save immediately to update savedAt and the bumped sequence number
+          // This prevents sequence regression on subsequent refreshes
+          await this.encryptor.saveSession();
       } else {
-          console.log('[EncryptedSignalR] Skipping key exchange (session restored)');
+          // Need to do key exchange: either no session, stale session, or this is first tab
+          await this.performKeyExchange();
       }
 
       // Register key rotation handler
@@ -185,7 +190,11 @@ export class EncryptedSignalRConnection {
     } catch (error) {
       console.error('[EncryptedSignalR] Failed to initialize encryption:', error);
       this.encryptor.reset(); // Clear bad state
-      if (this.isEncryptionRequired) {
+      
+      // Re-throw to prevent silent fallback when:
+      // 1. Encryption is required by server config, OR
+      // 2. autoKeyExchange is explicitly enabled (caller expects encryption to work)
+      if (this.isEncryptionRequired || this.options.autoKeyExchange === true) {
         throw error;
       }
       return false;
