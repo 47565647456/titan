@@ -4,6 +4,7 @@ using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.Abstractions.Contracts;
 using Titan.API.Services.Encryption;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Hubs;
 
@@ -12,6 +13,7 @@ namespace Titan.API.Hubs;
 /// Players connect to receive server-wide announcements.
 /// </summary>
 [Authorize]
+[RateLimitPolicy("GameHub")]
 public class BroadcastHub : TitanHubBase
 {
     private const string AllPlayersGroup = "all-players";

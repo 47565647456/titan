@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Titan.Abstractions.Models;
 using Titan.API.Services;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Controllers;
 
@@ -13,6 +14,7 @@ namespace Titan.API.Controllers;
 [Route("api/admin/broadcast")]
 [Tags("Admin - Broadcast")]
 [Authorize(Policy = "SuperAdmin")]
+[RateLimitPolicy("Admin")]
 public class BroadcastAdminController : ControllerBase
 {
     private readonly ServerBroadcastService _broadcastService;

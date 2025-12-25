@@ -34,4 +34,9 @@
     <!-- Built-in Orleans telemetry does not require a separate instrumentation package -->
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Titan.Abstractions\Titan.Abstractions.csproj" />
+  </ItemGroup>
+
 </Project>
+

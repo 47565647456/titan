@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Services.RateLimiting;
 
@@ -39,12 +40,38 @@ public class RateLimitHubFilter : IHubFilter
                 ? $"user:{userId}"
                 : $"conn:{invocationContext.Context.ConnectionId}";
 
-            // Get policy for this endpoint
+            // Get policy: first check grain mappings (dashboard overrides), then attribute
             var policy = await _rateLimitService.GetPolicyForEndpointAsync(endpoint);
+            
             if (policy == null)
             {
-                return await next(invocationContext);
+                // No grain mapping - check for attribute on method, then hub class
+                var hubType = invocationContext.Hub.GetType();
+                var methodInfo = invocationContext.HubMethod;
+                
+                var policyAttribute = methodInfo?.GetCustomAttributes(typeof(RateLimitPolicyAttribute), true)
+                    .FirstOrDefault() as RateLimitPolicyAttribute
+                    ?? hubType.GetCustomAttributes(typeof(RateLimitPolicyAttribute), true)
+                        .FirstOrDefault() as RateLimitPolicyAttribute;
+                
+                if (policyAttribute != null)
+                {
+                    // First try grain (for dashboard overrides)
+                    policy = await _rateLimitService.GetPolicyAsync(policyAttribute.PolicyName);
+                    
+                    // Fallback to code-defined defaults if grain not seeded yet
+                    policy ??= RateLimitDefaults.Policies.FirstOrDefault(p => p.Name == policyAttribute.PolicyName);
+                }
             }
+            
+            if (policy == null)
+            {
+                // No mapping and no attribute - fail
+                throw new HubException(
+                    $"No rate limit policy configured for hub method: {endpoint}. " +
+                    "Add a [RateLimitPolicy] attribute to the hub class.");
+            }
+
 
             // Check rate limit
             var result = await _rateLimitService.CheckAsync(partitionKey, policy.Name);

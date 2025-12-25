@@ -4,6 +4,7 @@ using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services.Encryption;
 using Titan.API.Services;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Hubs;
 
@@ -12,6 +13,7 @@ namespace Titan.API.Hubs;
 /// All operations verify that the caller owns the character they're acting as.
 /// </summary>
 [Authorize]
+[RateLimitPolicy("Trade")]
 public class TradeHub : TitanHubBase
 {
     private readonly TradeStreamSubscriber _streamSubscriber;

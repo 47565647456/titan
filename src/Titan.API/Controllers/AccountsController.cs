@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Titan.Abstractions.Grains;
 using Titan.API.Services;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Controllers;
 
@@ -12,6 +13,7 @@ namespace Titan.API.Controllers;
 [Route("api/admin/accounts")]
 [Tags("Admin - Accounts")]
 [Authorize(Policy = "AdminDashboard")]
+[RateLimitPolicy("Admin")]
 public class AccountsController : ControllerBase
 {
     private readonly IClusterClient _clusterClient;

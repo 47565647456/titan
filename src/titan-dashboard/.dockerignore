@@ -10,6 +10,7 @@ dist/
 *.md
 .vscode/
 .idea/
+.github/
 
 # Test files
 *.test.ts
@@ -17,7 +18,17 @@ dist/
 *.spec.ts
 *.spec.tsx
 __tests__/
+coverage/
 
 # Environment files (handled by Docker build args if needed)
+.env
 .env.local
 .env.*.local
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

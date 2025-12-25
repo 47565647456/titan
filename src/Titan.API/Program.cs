@@ -344,12 +344,14 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors();
 
+// Routing must run before rate limiting middleware to populate endpoint metadata
+app.UseRouting();
+
 // Rate limiting middleware - applies to all routes
-// Policy matching is configured in appsettings.json:
-// - /api/admin/auth/* -> "Auth" (strict)
-// - /api/admin/* -> "Admin" (1000/min, defense-in-depth)
-// - /hub/admin* -> "AdminHub" (5000/min, real-time metrics)
-// - Everything else -> "Global" (default)
+// Policy lookup order:
+// 1. Dashboard-managed grain mappings (runtime overrides)
+// 2. [RateLimitPolicy] attribute on controller/hub
+// 3. Fail if neither exists (all endpoints must have a policy)
 app.UseMiddleware<RateLimitMiddleware>();
 
 app.UseAuthentication();

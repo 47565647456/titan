@@ -4,6 +4,7 @@ using Orleans;
 using Orleans.Runtime;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.Grains;
 
@@ -63,7 +64,9 @@ public class RateLimitConfigGrain : Grain, IRateLimitConfigGrain
 
     public async Task SetDefaultPolicyAsync(string policyName)
     {
-        if (!_state.State.Policies.ContainsKey(policyName))
+        // Validate policy exists in grain state OR in code-defined defaults
+        if (!_state.State.Policies.ContainsKey(policyName) && 
+            !RateLimitDefaults.IsDefaultPolicy(policyName))
         {
             throw new ArgumentException($"Policy '{policyName}' does not exist");
         }
@@ -79,8 +82,9 @@ public class RateLimitConfigGrain : Grain, IRateLimitConfigGrain
         if (string.IsNullOrWhiteSpace(mapping.Pattern))
             throw new ArgumentException("Pattern cannot be empty");
 
-        // Validate policy exists
-        if (!_state.State.Policies.ContainsKey(mapping.PolicyName))
+        // Validate policy exists in grain state OR in code-defined defaults
+        if (!_state.State.Policies.ContainsKey(mapping.PolicyName) && 
+            !RateLimitDefaults.IsDefaultPolicy(mapping.PolicyName))
             throw new ArgumentException($"Policy '{mapping.PolicyName}' does not exist");
 
         // Remove existing mapping for same pattern

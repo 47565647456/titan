@@ -4,6 +4,7 @@ using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services;
 using Titan.API.Services.Encryption;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Hubs;
 
@@ -12,6 +13,7 @@ namespace Titan.API.Hubs;
 /// All operations are scoped to the authenticated user's account.
 /// </summary>
 [Authorize]
+[RateLimitPolicy("GameHub")]
 public class AccountHub : TitanHubBase
 {
     private readonly HubValidationService _validation;

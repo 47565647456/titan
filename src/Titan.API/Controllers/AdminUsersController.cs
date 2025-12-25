@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Titan.API.Data;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Controllers;
 
@@ -13,8 +14,9 @@ namespace Titan.API.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/admin/users")]
-[Tags("Admin Users")]
-[Authorize(Policy = "AdminDashboard")]
+[Tags("Admin - Users")]
+[Authorize(Policy = "SuperAdmin")]
+[RateLimitPolicy("Admin")]
 public class AdminUsersController : ControllerBase
 {
     private readonly UserManager<AdminUser> _userManager;

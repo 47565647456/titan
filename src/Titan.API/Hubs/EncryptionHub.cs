@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Models;
 using Titan.API.Services.Encryption;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Hubs;
 
@@ -11,6 +12,7 @@ namespace Titan.API.Hubs;
 /// Clients connect to this hub to establish encrypted communication.
 /// </summary>
 [Authorize(AuthenticationSchemes = "SessionTicket")]
+[RateLimitPolicy("GameHub")]
 public class EncryptionHub : Hub<IEncryptionHubReceiver>
 {
     private readonly IEncryptionService _encryptionService;
