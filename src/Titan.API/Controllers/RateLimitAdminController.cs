@@ -6,6 +6,7 @@ using Orleans;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Config;
+using Titan.Abstractions.RateLimiting;
 using Titan.API.Services.RateLimiting;
 
 namespace Titan.API.Controllers;
@@ -18,6 +19,7 @@ namespace Titan.API.Controllers;
 [Route("api/admin/rate-limiting")]
 [Tags("Admin - Rate Limiting")]
 [Authorize(Policy = "SuperAdmin")]
+[RateLimitPolicy("Admin")]
 public class RateLimitAdminController : ControllerBase
 {
     private readonly IClusterClient _clusterClient;
@@ -57,6 +59,13 @@ public class RateLimitAdminController : ControllerBase
     public async Task<ActionResult<RateLimitingConfiguration>> GetConfiguration()
     {
         var config = await GetGrain().GetConfigurationAsync();
+        
+        // Fallback to code-defined defaults if grain is empty (not seeded yet)
+        if (config.Policies.Count == 0)
+        {
+            config = config with { Policies = RateLimitDefaults.Policies.ToList() };
+        }
+        
         return Ok(config);
     }
 
@@ -203,33 +212,34 @@ public class RateLimitAdminController : ControllerBase
 
     private async Task<ActionResult> PerformResetAsync()
     {
-        var grain = GetGrain();
-        
-        // First clear the state
-        await grain.ResetToDefaultsAsync();
-        
-        // Then reinitialize with defaults from appsettings
-        var opts = _options.Value;
-        var defaults = new RateLimitingConfiguration
+        try
         {
-            Enabled = opts.Enabled,
-            DefaultPolicyName = opts.DefaultPolicyName ?? string.Empty,
-            Policies = opts.DefaultPolicies
-                .Select(p => new RateLimitPolicy(
-                    p.Name, 
-                    p.Rules.Select(RateLimitRule.Parse).ToList()))
-                .ToList(),
-            EndpointMappings = opts.DefaultEndpointMappings
-                .Select(m => new EndpointRateLimitConfig(m.Pattern, m.PolicyName))
-                .ToList()
-        };
-        
-        await grain.InitializeDefaultsAsync(defaults);
-        _rateLimitService.ClearCache();
-        
-        _logger.LogInformation("Reset rate limiting configuration to defaults with {PolicyCount} policies", 
-            defaults.Policies.Count);
-        return Ok(new { success = true, policiesRestored = defaults.Policies.Count });
+            var grain = GetGrain();
+            
+            // First clear the state
+            await grain.ResetToDefaultsAsync();
+            
+            // Reinitialize with code-defined defaults from RateLimitDefaults
+            var defaults = new RateLimitingConfiguration
+            {
+                Enabled = _options.Value.Enabled,
+                DefaultPolicyName = string.Empty,
+                Policies = RateLimitDefaults.Policies.ToList(),
+                EndpointMappings = [] // No default mappings - rely on attributes
+            };
+            
+            await grain.InitializeDefaultsAsync(defaults);
+            _rateLimitService.ClearCache();
+            
+            _logger.LogInformation("Reset rate limiting configuration to defaults with {PolicyCount} policies", 
+                defaults.Policies.Count);
+            return Ok(new { success = true, policiesRestored = defaults.Policies.Count });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reset rate limiting configuration to defaults");
+            return StatusCode(500, new { error = ex.Message, innerError = ex.InnerException?.Message });
+        }
     }
 
     /// <summary>

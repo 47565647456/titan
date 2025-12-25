@@ -5,6 +5,7 @@ using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services.Encryption;
 using Titan.API.Services;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Hubs;
 
@@ -14,6 +15,7 @@ namespace Titan.API.Hubs;
 /// Management operations require Admin role.
 /// </summary>
 [Authorize]
+[RateLimitPolicy("GameHub")]
 public class SeasonHub : TitanHubBase
 {
     private readonly HubValidationService _validation;

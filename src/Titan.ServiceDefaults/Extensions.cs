@@ -11,6 +11,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using Serilog;
 using Sentry.Serilog;
+using Titan.Abstractions.RateLimiting;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -176,16 +177,21 @@ public static class Extensions
         // See https://aka.ms/dotnet/aspire/healthchecks for security implications
         var isDevelopment = app.Environment.IsDevelopment();
         
+        // Rate limit attribute for infrastructure endpoints
+        // Using Global policy for health checks
+        var rateLimitMetadata = new RateLimitPolicyAttribute("Global");
+        
         // All health checks must pass for app to be considered ready to accept traffic after starting
         app.MapHealthChecks(HealthEndpointPath, isDevelopment 
             ? new HealthCheckOptions { ResponseWriter = WriteDetailedHealthResponseAsync }
-            : new HealthCheckOptions());
+            : new HealthCheckOptions())
+            .WithMetadata(rateLimitMetadata);
 
         // Only health checks tagged with the "live" tag must pass for app to be considered alive
         app.MapHealthChecks(AlivenessEndpointPath, new HealthCheckOptions
         {
             Predicate = r => r.Tags.Contains("live")
-        });
+        }).WithMetadata(rateLimitMetadata);
 
         return app;
     }

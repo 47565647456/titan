@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Titan.Abstractions.Grains.Items;
 using Titan.Abstractions.Models.Items;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Controllers;
 
@@ -13,6 +14,7 @@ namespace Titan.API.Controllers;
 [Route("api/admin/base-types")]
 [Tags("Admin - Base Types")]
 [Authorize(Policy = "AdminDashboard")]
+[RateLimitPolicy("Admin")]
 public class BaseTypesController : ControllerBase
 {
     private readonly IClusterClient _clusterClient;

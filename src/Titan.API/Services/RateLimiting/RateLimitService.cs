@@ -6,6 +6,7 @@ using Orleans;
 using StackExchange.Redis;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
+using Titan.Abstractions.RateLimiting;
 using Titan.API.Config;
 using Titan.API.Hubs;
 
@@ -155,7 +156,8 @@ public partial class RateLimitService
     }
 
     /// <summary>
-    /// Gets the policy for an endpoint/hub method, with caching.
+    /// Gets the policy for an endpoint/hub method based on grain endpoint mappings.
+    /// Returns null if no explicit mapping exists (middleware will then check for attributes).
     /// </summary>
     public async Task<RateLimitPolicy?> GetPolicyForEndpointAsync(string endpoint)
     {
@@ -166,10 +168,13 @@ public partial class RateLimitService
         var mapping = config.EndpointMappings.FirstOrDefault(m => MatchesPattern(endpoint, m.Pattern));
         if (mapping is not null)
         {
-            return config.Policies.FirstOrDefault(p => p.Name == mapping.PolicyName);
+            // Look up policy in grain state first, then code defaults
+            return config.Policies.FirstOrDefault(p => p.Name == mapping.PolicyName)
+                ?? RateLimitDefaults.Policies.FirstOrDefault(p => p.Name == mapping.PolicyName);
         }
 
-        return config.Policies.FirstOrDefault(p => p.Name == config.DefaultPolicyName);
+        // No explicit mapping - return null to let middleware check attributes
+        return null;
     }
 
     /// <summary>
@@ -445,11 +450,14 @@ public partial class RateLimitService
 
     /// <summary>
     /// Checks if metrics collection is enabled.
-    /// Uses the cached configuration from the grain.
+    /// Queries the grain directly to avoid fallback to defaults.
     /// </summary>
     public async Task<bool> IsMetricsCollectionEnabledAsync()
     {
-        var config = await GetConfigAsync();
+        // Query grain directly to get accurate MetricsCollectionEnabled state
+        // (GetConfigAsync may fall back to BuildDefaultConfig which has MetricsCollectionEnabled=false)
+        var grain = _clusterClient.GetGrain<IRateLimitConfigGrain>("default");
+        var config = await grain.GetConfigurationAsync();
         return config.MetricsCollectionEnabled;
     }
 
@@ -509,11 +517,12 @@ public partial class RateLimitService
             var grain = _clusterClient.GetGrain<IRateLimitConfigGrain>("default");
             config = await grain.GetConfigurationAsync();
 
-            // If grain has no policies yet, use appsettings defaults
+            // If grain has no policies yet, use code-defined defaults
+            // Only preserve endpoint mappings (dashboard overrides), not other transient state
             if (config.Policies.Count == 0)
             {
-                config = BuildDefaultConfig();
-                _logger.LogDebug("Grain returned empty policies, using appsettings defaults");
+                config = BuildDefaultConfig(config.EndpointMappings);
+                _logger.LogDebug("Grain returned empty policies, using code-defined defaults");
             }
         }
         catch (Exception ex)
@@ -533,26 +542,22 @@ public partial class RateLimitService
         return config;
     }
 
-    private RateLimitingConfiguration BuildDefaultConfig()
+    private RateLimitingConfiguration BuildDefaultConfig(IReadOnlyList<EndpointRateLimitConfig>? existingMappings = null)
     {
         var opts = _options.Value;
 
-        var policies = opts.DefaultPolicies
-            .Select(p => new RateLimitPolicy(
-                p.Name,
-                p.Rules.Select(RateLimitRule.Parse).ToList()))
-            .ToList();
+        // Use code-defined policies from RateLimitDefaults
+        var policies = RateLimitDefaults.Policies.ToList();
 
-        var mappings = opts.DefaultEndpointMappings
-            .Select(m => new EndpointRateLimitConfig(m.Pattern, m.PolicyName))
-            .ToList();
+        // Preserve existing endpoint mappings if provided, otherwise empty (rely on attributes)
+        var mappings = existingMappings?.ToList() ?? [];
 
         return new RateLimitingConfiguration
         {
             Enabled = opts.Enabled,
             Policies = policies,
             EndpointMappings = mappings,
-            DefaultPolicyName = opts.DefaultPolicyName ?? string.Empty
+            DefaultPolicyName = string.Empty
         };
     }
 

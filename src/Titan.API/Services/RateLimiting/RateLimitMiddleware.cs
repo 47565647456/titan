@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Titan.Abstractions.RateLimiting;
 using Titan.API.Services.Auth;
 
 namespace Titan.API.Services.RateLimiting;
@@ -38,15 +39,34 @@ public class RateLimitMiddleware
             }
 
             var endpoint = context.Request.Path.Value ?? "/";
-            // Get policy for this endpoint
+            
+            // Get policy: first check grain mappings (dashboard overrides), then attribute
             var policy = await rateLimitService.GetPolicyForEndpointAsync(endpoint);
+            
             if (policy == null)
             {
-                // All endpoints must have an explicit rate limit policy configured
+                // No grain mapping - check for attribute on endpoint
+                var aspEndpoint = context.GetEndpoint();
+                var policyAttribute = aspEndpoint?.Metadata.GetMetadata<RateLimitPolicyAttribute>();
+                
+                if (policyAttribute != null)
+                {
+                    // First try grain (for dashboard overrides)
+                    policy = await rateLimitService.GetPolicyAsync(policyAttribute.PolicyName);
+                    
+                    // Fallback to code-defined defaults if grain not seeded yet
+                    policy ??= RateLimitDefaults.Policies.FirstOrDefault(p => p.Name == policyAttribute.PolicyName);
+                }
+            }
+            
+            if (policy == null)
+            {
+                // No mapping and no attribute - fail
                 throw new InvalidOperationException(
                     $"No rate limit policy configured for endpoint: {endpoint}. " +
-                    "Add a mapping in rate limiting configuration or use the admin API.");
+                    "Add a [RateLimitPolicy] attribute to the controller/action.");
             }
+
 
             // Get partition key: user ID for authenticated, IP for anonymous
             // First check if already authenticated (avoids duplicate session validation)

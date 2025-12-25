@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Titan.Abstractions.Contracts;
 using Titan.API.Data;
 using Titan.API.Services.Auth;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Controllers;
 
@@ -17,6 +18,7 @@ namespace Titan.API.Controllers;
 [ApiController]
 [Route("api/admin/auth")]
 [Tags("Admin Authentication")]
+[RateLimitPolicy("Auth")]
 public class AdminAuthController : ControllerBase
 {
     private readonly UserManager<AdminUser> _userManager;

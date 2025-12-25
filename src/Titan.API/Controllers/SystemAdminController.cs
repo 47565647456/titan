@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Controllers;
 
@@ -10,6 +11,7 @@ namespace Titan.API.Controllers;
 [ApiController]
 [Route("api/admin/system")]
 [Authorize(Policy = "SuperAdmin")]
+[RateLimitPolicy("Admin")]
 public class SystemAdminController : ControllerBase
 {
     private readonly HealthCheckService _healthCheckService;

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Titan.API.Services.Encryption;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Controllers;
 
@@ -10,6 +11,7 @@ namespace Titan.API.Controllers;
 [ApiController]
 [Route("api/admin/encryption")]
 [Authorize(Policy = "SuperAdmin")]
+[RateLimitPolicy("Admin")]
 public class EncryptionAdminController : ControllerBase
 {
     private readonly IEncryptionService _encryptionService;
