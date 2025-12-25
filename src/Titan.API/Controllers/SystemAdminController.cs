@@ -43,7 +43,7 @@ public class SystemAdminController : ControllerBase
         {
             Status = report.Status.ToString(),
             TotalDuration = report.TotalDuration.TotalMilliseconds,
-            Checks = report.Entries.Select(e => new HealthCheckResult
+            Checks = report.Entries.Select(e => new HealthCheckItem
             {
                 Name = e.Key,
                 Status = e.Value.Status.ToString(),
@@ -72,13 +72,14 @@ public class SystemHealthResponse
     public double TotalDuration { get; set; }
     
     /// <summary>Individual health check results</summary>
-    public required List<HealthCheckResult> Checks { get; set; }
+    public required List<HealthCheckItem> Checks { get; set; }
 }
 
 /// <summary>
-/// Individual health check result.
+/// Individual health check item.
+/// Named to avoid collision with Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.
 /// </summary>
-public class HealthCheckResult
+public class HealthCheckItem
 {
     /// <summary>Name of the health check (e.g., "titan-db", "orleans-redis")</summary>
     public required string Name { get; set; }

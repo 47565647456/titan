@@ -34,6 +34,17 @@ public sealed class TitanClient : IAsyncDisposable
     private bool _encryptionEnabled;
     private readonly SemaphoreSlim _encryptionInitLock = new(1, 1);
 
+    // Disposal state
+    private readonly CancellationTokenSource _disposalCts = new();
+    private readonly Lock _disposalLock = new();
+    private bool _disposed;
+    private int _activeHubOperations;
+
+    private bool IsDisposed
+    {
+        get { lock (_disposalLock) { return _disposed; } }
+    }
+
     /// <summary>
     /// HTTP authentication client.
     /// </summary>
@@ -216,27 +227,42 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     private async Task<HubConnection> GetOrCreateHubAsync(string hubPath)
     {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+
         // Fast path: hub already exists
         if (_hubs.TryGetValue(hubPath, out var existing))
             return existing;
 
-        // Get or create a lock for this specific hub path
-        var hubLock = _hubLocks.GetOrAdd(hubPath, _ => new SemaphoreSlim(1, 1));
-
-        await hubLock.WaitAsync();
+        // Track active operation to prevent disposal during hub creation
+        Interlocked.Increment(ref _activeHubOperations);
         try
         {
-            // Double-check: another thread may have created it while we waited
-            if (_hubs.TryGetValue(hubPath, out existing))
-                return existing;
+            // Get or create a lock for this specific hub path
+            var hubLock = _hubLocks.GetOrAdd(hubPath, _ => new SemaphoreSlim(1, 1));
 
-            var hub = await CreateAndConnectHubAsync(hubPath);
-            _hubs[hubPath] = hub;
-            return hub;
+            // Wait with disposal cancellation token
+            await hubLock.WaitAsync(_disposalCts.Token);
+            try
+            {
+                // Check disposal again after acquiring lock
+                ObjectDisposedException.ThrowIf(IsDisposed, this);
+
+                // Double-check: another thread may have created it while we waited
+                if (_hubs.TryGetValue(hubPath, out existing))
+                    return existing;
+
+                var hub = await CreateAndConnectHubAsync(hubPath);
+                _hubs[hubPath] = hub;
+                return hub;
+            }
+            finally
+            {
+                hubLock.Release();
+            }
         }
         finally
         {
-            hubLock.Release();
+            Interlocked.Decrement(ref _activeHubOperations);
         }
     }
 
@@ -282,14 +308,26 @@ public sealed class TitanClient : IAsyncDisposable
         {
             connection.On<KeyRotationRequest>("KeyRotation", async request =>
             {
+                // Skip if client is being disposed
+                if (IsDisposed || _disposalCts.IsCancellationRequested)
+                {
+                    _logger?.LogDebug("Skipping key rotation - client is disposing");
+                    return;
+                }
+
                 try
                 {
                     if (_encryptor != null)
                     {
                         var ack = _encryptor.HandleRotationRequest(request);
-                        await connection.InvokeAsync("CompleteKeyRotation", ack);
+                        await connection.InvokeAsync("CompleteKeyRotation", ack, _disposalCts.Token);
                         _logger?.LogDebug("Completed key rotation, new KeyId: {KeyId}", request.KeyId);
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected during shutdown
+                    _logger?.LogDebug("Key rotation cancelled - client is disposing");
                 }
                 catch (Exception ex)
                 {
@@ -352,8 +390,31 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        // Dispose encryptor first (cleans up cryptographic key material securely)
-        // This ensures no pending encryption operations are running before hub shutdown
+        if (IsDisposed)
+            return;
+
+        // Mark as disposed first to prevent new operations
+        lock (_disposalLock)
+        {
+            _disposed = true;
+        }
+
+        // Signal cancellation to unblock any waiters
+        _disposalCts.Cancel();
+
+        // Wait for active hub operations to complete (with timeout)
+        var timeout = Task.Delay(TimeSpan.FromSeconds(5));
+        while (_activeHubOperations > 0)
+        {
+            var delay = Task.Delay(10);
+            if (await Task.WhenAny(delay, timeout) == timeout)
+            {
+                _logger?.LogWarning("Timed out waiting for {Count} active hub operations to complete", _activeHubOperations);
+                break;
+            }
+        }
+
+        // Dispose encryptor (cleans up cryptographic key material securely)
         (_encryptor as IDisposable)?.Dispose();
         
         // Dispose all hub connections
@@ -371,7 +432,7 @@ public sealed class TitanClient : IAsyncDisposable
         }
         _hubs.Clear();
 
-        // Dispose the per-hub initialization locks
+        // Dispose the per-hub initialization locks (safe now - no waiters)
         foreach (var hubLock in _hubLocks.Values)
         {
             hubLock.Dispose();
@@ -380,6 +441,9 @@ public sealed class TitanClient : IAsyncDisposable
 
         // Dispose the encryption initialization lock
         _encryptionInitLock.Dispose();
+
+        // Dispose the cancellation token source
+        _disposalCts.Dispose();
         
         _httpClient.Dispose();
         _httpHandler.Dispose();

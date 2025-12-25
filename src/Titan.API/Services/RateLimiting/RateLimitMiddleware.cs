@@ -95,9 +95,10 @@ public class RateLimitMiddleware
         }
         catch (Exception ex)
         {
-            // If rate limiting fails (Redis/Orleans unavailable), allow the request through
-            // This ensures the application remains functional during startup or infrastructure issues
-            _logger.LogWarning(ex, "Rate limiting check failed, allowing request through");
+            // Rate limiting failures fail hard - no silent pass-through
+            // This catches: no policy configured, Redis down, Orleans unavailable, etc.
+            _logger.LogError(ex, "Rate limiting failed for {Endpoint}", context.Request.Path);
+            throw;
         }
 
         await _next(context);

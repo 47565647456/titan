@@ -31,8 +31,9 @@ public class RateLimitingOptions
     public List<EndpointMappingConfig> DefaultEndpointMappings { get; set; } = [];
 
     /// <summary>
-    /// Default policy name when no endpoint mapping matches.
-    /// Note: With strict mode, unmatched endpoints throw - this is a fallback for legacy compatibility.
+    /// Default policy name used when initializing the grain's configuration.
+    /// Note: This is only used for grain seeding. The HTTP middleware throws 
+    /// an exception for any endpoint without an explicit mapping in DefaultEndpointMappings.
     /// </summary>
     public string? DefaultPolicyName { get; set; }
 
