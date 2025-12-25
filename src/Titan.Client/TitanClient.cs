@@ -277,11 +277,32 @@ public sealed class TitanClient : IAsyncDisposable
             return Task.CompletedTask;
         };
 
+        // Register key rotation handler for encryption hub
+        if (hubPath == "/hub/encryption")
+        {
+            connection.On<KeyRotationRequest>("KeyRotation", async request =>
+            {
+                try
+                {
+                    if (_encryptor != null)
+                    {
+                        var ack = _encryptor.HandleRotationRequest(request);
+                        await connection.InvokeAsync("CompleteKeyRotation", ack);
+                        _logger?.LogDebug("Completed key rotation, new KeyId: {KeyId}", request.KeyId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Key rotation failed for KeyId: {KeyId}", request.KeyId);
+                }
+            });
+        }
+
         await connection.StartAsync();
         _logger?.LogDebug("Connected to {HubPath}", hubPath);
 
-        // Perform key exchange if encryption is enabled
-        if (_options.EnablePayloadEncryption && !_encryptionEnabled)
+        // Perform key exchange if encryption is enabled (skip for encryption hub itself to avoid recursion)
+        if (_options.EnablePayloadEncryption && !_encryptionEnabled && hubPath != "/hub/encryption")
         {
             await _encryptionInitLock.WaitAsync();
             try
@@ -306,37 +327,9 @@ public sealed class TitanClient : IAsyncDisposable
 
     private async Task InitializeEncryptionAsync()
     {
-        // Connect to the encryption hub
-        var encryptionHub = new HubConnectionBuilder()
-            .WithUrl($"{_options.BaseUrl}/hub/encryption", options =>
-            {
-                options.AccessTokenProvider = () => Task.FromResult<string?>(_currentSessionId);
-            })
-            .Build();
-
-        // Register for key rotation messages
-        encryptionHub.On<KeyRotationRequest>("KeyRotation", async request =>
-        {
-            try
-            {
-                if (_encryptor != null)
-                {
-                    var ack = _encryptor.HandleRotationRequest(request);
-                    await encryptionHub.InvokeAsync("CompleteKeyRotation", ack);
-                    _logger?.LogDebug("Completed key rotation, new KeyId: {KeyId}", request.KeyId);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError(ex, "Key rotation failed for KeyId: {KeyId}", request.KeyId);
-            }
-        });
-
-        await encryptionHub.StartAsync();
+        // Use GetOrCreateHubAsync to avoid resource leaks - encryption hub uses same pattern as other hubs
+        var encryptionHub = await GetOrCreateHubAsync("/hub/encryption");
         _logger?.LogDebug("Connected to encryptionHub");
-        
-        // Store in dictionary for disposal
-        _hubs["/hub/encryption"] = encryptionHub;
 
         // Perform key exchange
         _encryptor = new ClientEncryptor();
