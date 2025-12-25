@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Titan.Abstractions.Models;
 
 namespace Titan.Abstractions.RateLimiting;
@@ -12,9 +13,9 @@ public static class RateLimitDefaults
     /// <summary>
     /// Default rate limit policies.
     /// Format: "MaxHits:PeriodSeconds:TimeoutSeconds"
-    /// Note: Uses explicit List<> to ensure Orleans/MemoryPack can serialize correctly.
+    /// Note: Uses explicit List<> for Orleans/MemoryPack serialization when passed to grains.
     /// </summary>
-    public static readonly List<RateLimitPolicy> Policies =
+    public static readonly IReadOnlyList<RateLimitPolicy> Policies =
     [
         new("Global",   new List<RateLimitRule> { RateLimitRule.Parse("100:60:300") }),
         new("Auth",     new List<RateLimitRule> { RateLimitRule.Parse("10:60:600"), RateLimitRule.Parse("30:300:1800") }),
@@ -27,9 +28,10 @@ public static class RateLimitDefaults
     
     /// <summary>
     /// Set of valid policy names from code-defined defaults.
+    /// Uses FrozenSet for thread-safe, immutable, and fast lookup.
     /// </summary>
-    public static readonly HashSet<string> PolicyNames = 
-        new(Policies.Select(p => p.Name));
+    public static readonly FrozenSet<string> PolicyNames = 
+        Policies.Select(p => p.Name).ToFrozenSet();
     
     /// <summary>
     /// Checks if a policy name exists in the code-defined defaults.

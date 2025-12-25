@@ -39,7 +39,7 @@ public class SystemAdminController : ControllerBase
     [ProducesResponseType(typeof(SystemHealthResponse), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetHealth()
     {
-        var report = await _healthCheckService.CheckHealthAsync();
+        var report = await _healthCheckService.CheckHealthAsync(HttpContext.RequestAborted);
         
         var response = new SystemHealthResponse
         {

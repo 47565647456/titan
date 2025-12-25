@@ -9,7 +9,7 @@ namespace Titan.API.Services.RateLimiting;
 
 /// <summary>
 /// Hosted service that initializes rate limit configuration on startup.
-/// Seeds default policies from appsettings if grain has no configuration.
+/// Seeds default policies from RateLimitDefaults if grain has no configuration.
 /// </summary>
 public class RateLimitConfigInitializer : IHostedService
 {
@@ -54,7 +54,6 @@ public class RateLimitConfigInitializer : IHostedService
             _logger.LogError(ex, "Failed to initialize rate limit configuration");
         }
     }
-
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

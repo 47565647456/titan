@@ -238,7 +238,7 @@ public class RateLimitAdminController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to reset rate limiting configuration to defaults");
-            return StatusCode(500, new { error = ex.Message, innerError = ex.InnerException?.Message });
+            return StatusCode(500, new { error = "Failed to reset configuration. Check server logs for details." });
         }
     }
 

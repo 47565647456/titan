@@ -10,14 +10,16 @@ This project acts as an **Orleans Client**, forwarding requests from SignalR Hub
 The API uses SignalR Hubs for full duplex communication, primarily for game state and interactions.
 
 | Hub Class | Route | Purpose |
-|-----------|-------|---------|
-| `AuthHub` | `/authHub` | Session management over WebSocket. Login is handled via HTTP. |
-| `AccountHub` | `/accountHub` | User profile management. |
-| `InventoryHub` | `/inventoryHub` | Remote inventory view. |
-| `TradeHub` | `/tradeHub` | Real-time trading updates and negotiation. |
-| `CharacterHub` | `/characterHub` | Character creation and selection. |
-| `BaseTypeHub` | `/baseTypeHub` | Item metadata registry (defined in `ItemTypeHub.cs`). |
-| `SeasonHub` | `/seasonHub` | Season management and information. |
+|-----------|-------|---------| 
+| `AuthHub` | `/hub/auth` | Session management over WebSocket. Login is handled via HTTP. |
+| `AccountHub` | `/hub/account` | User profile management. |
+| `InventoryHub` | `/hub/inventory` | Remote inventory view. |
+| `TradeHub` | `/hub/trade` | Real-time trading updates and negotiation. |
+| `CharacterHub` | `/hub/character` | Character creation and selection. |
+| `ItemTypeHub` | `/hub/base-type` | Item metadata registry. |
+| `SeasonHub` | `/hub/season` | Season management and information. |
+| `BroadcastHub` | `/hub/broadcast` | Server-wide broadcast messages. |
+| `EncryptionHub` | `/hub/encryption` | Key exchange and rotation for encrypted messaging. |
 | `AdminMetricsHub` | `/hub/admin-metrics` | Real-time rate limiting and system metrics for Admin Dashboard. |
 
 ### HTTP Endpoints (Authentication & Admin)
@@ -30,7 +32,7 @@ The API uses REST principles for stateless operations like authentication and ad
 - **Admin Routes**: `/api/admin`
     - `/api/admin/auth`: Admin dashboard authentication.
     - `/api/admin/users`: User management for admins.
-    - `/api/admin/ratelimit`: Dynamics management of rate limiting policies.
+    - `/api/admin/rate-limiting`: Dynamic management of rate limiting policies.
 
 ### Authentication
 The API uses a **Redis-backed Session Ticket** system.
@@ -43,8 +45,6 @@ The API uses a **Redis-backed Session Ticket** system.
 Key configuration in `appsettings.json` or Environment Variables:
 - `Eos:ClientId`: **Required in Production**. EOS Client ID.
 - `Cors:AllowedOrigins`: Array of allowed origins for web clients.
-- `RateLimiting`: Flexible policy-based limiting.
-    - `DefaultPolicies`: Named sets of rules (e.g., "Global", "Auth", "Admin").
-    - `DefaultEndpointMappings`: Maps routes to specific policies.
+- `RateLimiting`: Policy-based rate limiting (policies defined in `RateLimitDefaults.cs`).
 - `Sentry:Dsn`: Optional. Enables Sentry error tracking.
 - `Redis`: Keyed services `orleans-clustering` and `rate-limiting` used for state and coordination.
