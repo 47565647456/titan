@@ -207,7 +207,7 @@ public sealed class TitanClient : IAsyncDisposable
     /// </summary>
     public async Task<HubConnection> GetHubConnectionAsync(string hubPath)
     {
-        return await CreateAndConnectHubAsync(hubPath);
+        return await GetOrCreateHubAsync(hubPath);
     }
 
     /// <summary>
