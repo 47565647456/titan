@@ -2,6 +2,7 @@
 **/bin/
 **/obj/
 **/out/
+**/k8s-artifacts/
 
 # SDKs (proprietary, do not commit)
 SDKs/

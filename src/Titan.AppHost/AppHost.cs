@@ -7,6 +7,12 @@ var builder = DistributedApplication.CreateBuilder(args);
 var env = builder.Environment.EnvironmentName.ToLowerInvariant();
 
 // =============================================================================
+// Kubernetes Environment (for K3s deployment)
+// =============================================================================
+
+var k8s = builder.AddKubernetesEnvironment("k8s");
+
+// =============================================================================
 // Container Image Configuration
 // =============================================================================
 
@@ -38,8 +44,8 @@ var encryptionRedis = builder.AddRedis("encryption")
 // Database password
 var dbPassword = builder.AddParameter("postgres-password");
 
-// Database resource - PostgreSQL (returns both titan and titan-admin connections)
-var (titanDb, titanAdminDb) = DatabaseResources.AddDatabase(builder, dbPassword, env);
+// Database resource - PostgreSQL (returns databases and init container)
+var (titanDb, titanAdminDb, dbInit) = DatabaseResources.AddDatabase(builder, dbPassword, env);
 
 // =============================================================================
 // Orleans Cluster Configuration
@@ -63,6 +69,7 @@ var identityHost = builder.AddProject<Projects.Titan_IdentityHost>("identity-hos
     .WithReference(titanDb)
     .WaitFor(redis)  // Orleans clustering requires Redis
     .WaitFor(titanDb)
+    .WaitForCompletion(dbInit)  // Wait for database initialization
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
     .WithReplicas(replicas);
 
@@ -71,6 +78,7 @@ var inventoryHost = builder.AddProject<Projects.Titan_InventoryHost>("inventory-
     .WithReference(titanDb)
     .WaitFor(redis)  // Orleans clustering requires Redis
     .WaitFor(titanDb)
+    .WaitForCompletion(dbInit)  // Wait for database initialization
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
     .WithReplicas(replicas);
 
@@ -79,6 +87,7 @@ var tradingHost = builder.AddProject<Projects.Titan_TradingHost>("trading-host")
     .WithReference(titanDb)
     .WaitFor(redis)  // Orleans clustering requires Redis
     .WaitFor(titanDb)
+    .WaitForCompletion(dbInit)  // Wait for database initialization
     .WithEnvironment("DOTNET_ENVIRONMENT", environment)
     .WithReplicas(replicas);
 
@@ -105,13 +114,12 @@ var api = builder.AddProject<Projects.Titan_API>("api")
     .WithEnvironment("Encryption__RequireEncryption", builder.Configuration["Encryption:RequireEncryption"] ?? "false");
 
 // =============================================================================
-// Admin Dashboard (Containerized React SPA)
+// Admin Dashboard (React SPA via Vite)
 // =============================================================================
 
-// Dashboard runs in a container: Node.js builds the Vite app, Nginx serves static files
-var dashboard = builder.AddDockerfile("dashboard", "../titan-dashboard")
-    .WithImageTag("latest")  // Use consistent tag to avoid image cache bloat
-    .WithHttpEndpoint(name: "http", targetPort: 80);
+// Dashboard: npm run dev for local development, builds as container for K8s
+var dashboard = builder.AddJavaScriptApp("dashboard", "../titan-dashboard", "dev")
+    .WithHttpEndpoint(targetPort: 5173, env: "PORT");
 
 // =============================================================================
 // YARP Gateway (reverse proxy and routing)
@@ -148,7 +156,7 @@ var gateway = builder.AddYarp("gateway")
         // Dashboard SPA - needs catch-all for client-side routing
         if (gatewayRoutes.GetValue("Dashboard:Enabled", true))
         {
-            yarp.AddRoute("/dashboard/{**catch-all}", dashboard.GetEndpoint("http"));
+            yarp.AddRoute("/dashboard/{**catch-all}", dashboard);
         }
     })
     .WaitFor(api)
@@ -166,24 +174,22 @@ if (!builder.Environment.IsDevelopment())
     // Only add Caddy TLS terminator if Cloudflare API token is configured
     if (!string.IsNullOrEmpty(cfApiToken))
     {
-        var caddyImage = builder.Configuration["ContainerImages:Caddy:Image"] ?? "caddybuilds/caddy-cloudflare";
-        var caddyTag = builder.Configuration["ContainerImages:Caddy:Tag"] ?? "2.10.2";
         var cfToken = builder.AddParameter("cloudflare-api-token", secret: true);
 
-        var tls = builder.AddContainer("tls", caddyImage, caddyTag)
+        // Use Dockerfile that bakes in the Caddyfile (bind mounts not supported in K8s)
+        var tls = builder.AddDockerfile("tls", "./caddy")
             .WithReference(gateway)
             .WithEnvironment("DOMAIN", gatewayConfig["Domain"] ?? throw new InvalidOperationException("Gateway:Domain must be configured for production"))
             .WithEnvironment("ACME_EMAIL", gatewayConfig["AcmeEmail"] ?? throw new InvalidOperationException("Gateway:AcmeEmail must be configured for production"))
             .WithEnvironment("CF_API_TOKEN", cfToken)
             .WithEnvironment("ACME_CA", gatewayConfig["AcmeCa"] ?? "") // Empty = production Let's Encrypt
             .WithEnvironment("GATEWAY_URL", gateway.GetEndpoint("http")) // For Caddyfile reverse_proxy
-            .WithBindMount("./caddy/Caddyfile", "/etc/caddy/Caddyfile")
             .WithVolume("titan-caddy-data", "/data")
             .WithHttpsEndpoint(port: 443, targetPort: 443)
             .WithExternalHttpEndpoints()
             .WaitFor(gateway);
 
-        Console.WriteLine($"🔐 Production mode: Caddy TLS terminator ({caddyImage}:{caddyTag}) with Let's Encrypt DNS challenge");
+        Console.WriteLine("🔐 Production mode: Caddy TLS terminator with Let's Encrypt DNS challenge");
     }
     else
     {

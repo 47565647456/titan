@@ -6,4 +6,8 @@ export default defineConfig({
   // Base path for gateway routing - all assets prefixed with /dashboard
   base: '/dashboard',
   plugins: [react()],
+  server: {
+    // Allow Aspire's JavaScript app hosting proxy
+    allowedHosts: ['host.docker.internal'],
+  },
 })
