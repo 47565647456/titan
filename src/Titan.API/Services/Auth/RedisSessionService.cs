@@ -85,7 +85,7 @@ public class RedisSessionService : ISessionService
             return null;
         }
 
-        var ticket = MemoryPackSerializer.Deserialize<SessionTicket>(data!);
+        var ticket = MemoryPackSerializer.Deserialize<SessionTicket>((byte[])data!);
         if (ticket == null)
         {
             return null;
@@ -143,7 +143,7 @@ public class RedisSessionService : ISessionService
             return false;
         }
 
-        var ticket = MemoryPackSerializer.Deserialize<SessionTicket>(data!);
+        var ticket = MemoryPackSerializer.Deserialize<SessionTicket>((byte[])data!);
         if (ticket != null)
         {
             // Remove from user's session set
@@ -210,7 +210,7 @@ public class RedisSessionService : ISessionService
             
             if (!data.IsNullOrEmpty)
             {
-                var ticket = MemoryPackSerializer.Deserialize<SessionTicket>(data!);
+                var ticket = MemoryPackSerializer.Deserialize<SessionTicket>((byte[])data!);
                 if (ticket != null)
                 {
                     sessionDetails.Add((ticketId, ticket.CreatedAt));
@@ -326,7 +326,7 @@ public class RedisSessionService : ISessionService
             var data = values[i];
             if (!data.IsNullOrEmpty)
             {
-                var ticket = MemoryPackSerializer.Deserialize<SessionTicket>(data!);
+                var ticket = MemoryPackSerializer.Deserialize<SessionTicket>((byte[])data!);
                 if (ticket != null)
                 {
                     // Extract ticket ID from key: "session:ticketId"
@@ -375,7 +375,7 @@ public class RedisSessionService : ISessionService
             var data = values[i];
             if (!data.IsNullOrEmpty)
             {
-                var ticket = MemoryPackSerializer.Deserialize<SessionTicket>(data!);
+                var ticket = MemoryPackSerializer.Deserialize<SessionTicket>((byte[])data!);
                 if (ticket != null)
                 {
                     var ticketId = ticketIds[i].ToString()!;

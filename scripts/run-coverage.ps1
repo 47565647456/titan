@@ -18,7 +18,7 @@
     ./scripts/run-coverage.ps1
 
 .EXAMPLE
-    ./scripts/run-coverage.ps1 -ReportGeneratorPath "C:\Users\Dan\Documents\Unreal Projects\ReportGenerator\src\ReportGenerator.Console.NetCore\bin\Release\net10.0\ReportGenerator.exe"
+    ./scripts/run-coverage.ps1 -ReportGeneratorPath "C:\Users\Dan\Documents\Unreal Projects\ReportGenerator\src\ReportGenerator.Console.NetCore\bin\Release\net9.0\ReportGenerator.exe"
 #>
 
 param(

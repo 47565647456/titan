@@ -2,13 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Titan.API\Titan.API.csproj" />
+    <ProjectReference Include="..\Titan.DbMigrator\Titan.DbMigrator.csproj" />
     <ProjectReference Include="..\Titan.IdentityHost\Titan.IdentityHost.csproj" />
     <ProjectReference Include="..\Titan.InventoryHost\Titan.InventoryHost.csproj" />
     <ProjectReference Include="..\Titan.TradingHost\Titan.TradingHost.csproj" />
@@ -20,6 +21,7 @@
     <PackageReference Include="Aspire.Hosting.Orleans" />
     <PackageReference Include="Aspire.Hosting.PostgreSQL" />
     <PackageReference Include="Aspire.Hosting.Redis" />
+    <PackageReference Include="Aspire.Hosting.Kubernetes" />
     <PackageReference Include="Aspire.Hosting.Yarp" />
 
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
