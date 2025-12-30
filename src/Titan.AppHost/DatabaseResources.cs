@@ -15,12 +15,12 @@ public static class DatabaseResources
 
     /// <summary>
     /// Adds PostgreSQL database resources to the Aspire application.
-    /// Returns the main database, admin database, and initialization container.
+    /// Returns the main database, admin database, and initialization project.
     /// Configures SSL/TLS for encrypted connections.
     /// </summary>
     public static (IResourceBuilder<PostgresDatabaseResource> Database,
                    IResourceBuilder<PostgresDatabaseResource> AdminDatabase,
-                   IResourceBuilder<ContainerResource> DbInit) AddDatabase(
+                   IResourceBuilder<ProjectResource> DbInit) AddDatabase(
         IDistributedApplicationBuilder builder,
         IResourceBuilder<ParameterResource> password,
         string env)
@@ -32,72 +32,92 @@ public static class DatabaseResources
         var isEphemeral = volumeConfig?.Equals("ephemeral", StringComparison.OrdinalIgnoreCase) == true ||
                           volumeConfig?.Equals("none", StringComparison.OrdinalIgnoreCase) == true;
 
-        // For Kubernetes compatibility, always use Docker volumes (bind mounts not supported)
-        // Use unique volume name for ephemeral mode to avoid conflicts
-        string certsVolumeName = isEphemeral 
-            ? $"titan-postgres-certs-ephemeral-{Guid.NewGuid():N}" 
-            : CertsVolumeName;
-
-        Console.WriteLine("📦 Using PostgreSQL (SSL enabled) as database backend");
-
-        // Certificate generator container - creates self-signed certs for PostgreSQL
-        var certsGen = AddPostgresCerts(builder, certsVolumeName);
-
-        var postgres = builder.AddPostgres("postgres", password: password)
-            .WithImage(postgresImage, postgresTag)
-            .WithPgAdmin()
-            .WaitForCompletion(certsGen)  // Wait for cert generation to complete (not just start)
-            .WithVolume(certsVolumeName, CertsMountPath);
-
-        // Configure PostgreSQL to use SSL via command-line args
-        // These args are passed to the postgres server process
-        // Server settings can be configured in appsettings.json Database:Server section
-        var maxConnections = builder.Configuration.GetValue("Database:Server:MaxConnections", 500);
-        var sharedBuffersMb = builder.Configuration.GetValue("Database:Server:SharedBuffersMB", 256);
+        IResourceBuilder<ContainerResource>? certsGen = null;
         
-        postgres.WithArgs(
-            "-c", "ssl=on",
-            "-c", $"ssl_cert_file={CertsMountPath}/server.crt",
-            "-c", $"ssl_key_file={CertsMountPath}/server.key",
-            "-c", $"max_connections={maxConnections}",
-            "-c", $"shared_buffers={sharedBuffersMb}MB"
-        );
-
-        // Configure data persistence
         if (isEphemeral)
         {
-            // Ephemeral mode - no persistent volume for data
-        }
-        else if (string.IsNullOrEmpty(volumeConfig))
-        {
-            postgres.WithDataVolume($"titan-postgres-data-{env}");
+            // Ephemeral mode (tests) - skip SSL for speed and no lingering volumes
+            Console.WriteLine("📦 Using PostgreSQL (ephemeral mode, no SSL) as database backend");
         }
         else
         {
-            postgres.WithDataVolume(volumeConfig);
+            // Production mode - use SSL with persistent volume for certificates
+            Console.WriteLine("📦 Using PostgreSQL (SSL enabled) as database backend");
+            certsGen = AddPostgresCerts(builder, CertsVolumeName);
         }
 
-        // Database initialization using container with baked-in SQL scripts (K8s compatible)
-        var dbInit = AddDatabaseInit(builder, postgres);
+        var postgres = builder.AddPostgres("postgres", password: password)
+            .WithImage(postgresImage, postgresTag)
+            .WithPgAdmin();
 
-        // Create databases
+        // Configure SSL only for non-ephemeral mode
+        if (!isEphemeral && certsGen != null)
+        {
+            postgres
+                .WaitForCompletion(certsGen)
+                .WithVolume(CertsVolumeName, CertsMountPath);
+            
+            // Configure PostgreSQL to use SSL via command-line args
+            var maxConnections = builder.Configuration.GetValue("Database:Server:MaxConnections", 500);
+            var sharedBuffersMb = builder.Configuration.GetValue("Database:Server:SharedBuffersMB", 256);
+            
+            postgres.WithArgs(
+                "-c", "ssl=on",
+                "-c", $"ssl_cert_file={CertsMountPath}/server.crt",
+                "-c", $"ssl_key_file={CertsMountPath}/server.key",
+                "-c", $"max_connections={maxConnections}",
+                "-c", $"shared_buffers={sharedBuffersMb}MB"
+            );
+        }
+        else
+        {
+            // Non-SSL mode (ephemeral) - just configure connection limits
+            var maxConnections = builder.Configuration.GetValue("Database:Server:MaxConnections", 500);
+            var sharedBuffersMb = builder.Configuration.GetValue("Database:Server:SharedBuffersMB", 256);
+            
+            postgres.WithArgs(
+                "-c", $"max_connections={maxConnections}",
+                "-c", $"shared_buffers={sharedBuffersMb}MB"
+            );
+        }
+
+        // Configure data persistence (only for non-ephemeral mode)
+        if (!isEphemeral)
+        {
+            if (string.IsNullOrEmpty(volumeConfig))
+            {
+                postgres.WithDataVolume($"titan-postgres-data-{env}");
+            }
+            else
+            {
+                postgres.WithDataVolume(volumeConfig);
+            }
+        }
+
+        // Create databases first
         var titanDb = postgres.AddDatabase("titan");
         var titanAdminDb = postgres.AddDatabase("titan-admin");
+
+        // Database initialization using .NET console app (K8s compatible)
+        var dbInit = AddDatabaseInit(builder, titanDb, titanAdminDb);
 
         return (titanDb, titanAdminDb, dbInit);
     }
 
     /// <summary>
-    /// Creates a database initialization container that applies SQL scripts.
-    /// Uses AddDockerfile to bake scripts into the container for Kubernetes compatibility.
+    /// Creates a database initialization project that applies SQL scripts and EF migrations.
+    /// Uses a .NET console app for Kubernetes compatibility.
     /// </summary>
-    private static IResourceBuilder<ContainerResource> AddDatabaseInit(
+    private static IResourceBuilder<ProjectResource> AddDatabaseInit(
         IDistributedApplicationBuilder builder,
-        IResourceBuilder<PostgresServerResource> postgres)
+        IResourceBuilder<PostgresDatabaseResource> titanDb,
+        IResourceBuilder<PostgresDatabaseResource> titanAdminDb)
     {
-        return builder.AddDockerfile("postgres-init", "./scripts/postgres-init")
-            .WithReference(postgres)
-            .WaitFor(postgres);  // Wait for PostgreSQL to be accepting connections
+        return builder.AddProject<Projects.Titan_DbMigrator>("postgres-init")
+            .WithReference(titanDb)        // Orleans schema goes here
+            .WithReference(titanAdminDb)   // Admin Identity schema goes here
+            .WaitFor(titanDb)
+            .WaitFor(titanAdminDb);
     }
 
     /// <summary>
