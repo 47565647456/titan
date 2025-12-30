@@ -5,6 +5,7 @@ using Titan.Abstractions.Models;
 using Titan.Abstractions.Models.Items;
 using Titan.API.Services.Encryption;
 using Titan.API.Services;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Hubs;
 
@@ -14,6 +15,7 @@ namespace Titan.API.Hubs;
 /// Write operations (Create/Update/Delete) require Admin role.
 /// </summary>
 [Authorize]
+[RateLimitPolicy("GameHub")]
 public class BaseTypeHub : TitanHubBase
 {
     private readonly ILogger<BaseTypeHub> _logger;

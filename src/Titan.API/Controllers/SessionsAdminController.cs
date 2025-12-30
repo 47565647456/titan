@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Titan.Abstractions.Contracts;
 using Titan.API.Services.Auth;
+using Titan.Abstractions.RateLimiting;
 using Titan.API.Validators;
 
 namespace Titan.API.Controllers;
@@ -15,6 +16,7 @@ namespace Titan.API.Controllers;
 [Route("api/admin/sessions")]
 [Tags("Sessions")]
 [Authorize(Policy = "AdminDashboard")]
+[RateLimitPolicy("Admin")]
 public class SessionsAdminController : ControllerBase
 {
     private readonly ISessionService _sessionService;

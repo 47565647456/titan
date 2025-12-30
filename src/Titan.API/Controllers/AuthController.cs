@@ -4,6 +4,7 @@ using Titan.Abstractions.Contracts;
 using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services.Auth;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Controllers;
 
@@ -17,7 +18,8 @@ public static class AuthController
     public static void MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/auth")
-            .WithTags("Authentication");
+            .WithTags("Authentication")
+            .WithMetadata(new RateLimitPolicyAttribute("Auth"));
         
         group.MapPost("/login", LoginAsync)
             .WithName("Login")

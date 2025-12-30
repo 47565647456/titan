@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Titan.API.Services.RateLimiting;
+using Titan.Abstractions.RateLimiting;
 using Titan.API.Services.Encryption;
+using Titan.API.Services.RateLimiting;
 using Titan.Abstractions.Grains;
 
 namespace Titan.API.Hubs;
@@ -11,6 +12,7 @@ namespace Titan.API.Hubs;
 /// Provides push updates for rate limiting metrics instead of polling.
 /// </summary>
 [Authorize(Policy = "AdminDashboard")]
+[RateLimitPolicy("AdminHub")]
 public class AdminMetricsHub : TitanHubBase
 {
     private readonly RateLimitService _rateLimitService;

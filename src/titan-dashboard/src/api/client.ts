@@ -297,41 +297,32 @@ export interface MetricsCollectionStatus {
   enabled: boolean;
 }
 
-// Health Check API (unauthenticated - uses fetch directly)
+// System Health API (authenticated - requires admin login)
 export interface HealthCheckResult {
   name: string;
   status: 'Healthy' | 'Degraded' | 'Unhealthy';
-  duration: string;
+  duration: number;
+  description?: string;
+  exception?: string;
 }
 
 export interface HealthCheckResponse {
   status: 'Healthy' | 'Degraded' | 'Unhealthy';
+  totalDuration: number;
   checks: HealthCheckResult[];
 }
 
+export const systemApi = {
+  getHealth: async (): Promise<HealthCheckResponse> => {
+    const response = await api.get<HealthCheckResponse>('/admin/system/health');
+    return response.data;
+  },
+};
+
+// Backwards compatibility alias
 export const healthApi = {
-  getStatus: async (signal?: AbortSignal): Promise<HealthCheckResponse> => {
-    const baseUrl = import.meta.env.VITE_API_URL || '';
-    
-    // Create timeout controller (10 second timeout)
-    const timeoutMs = 10000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    
-    // Link external abort signal if provided
-    signal?.addEventListener('abort', () => controller.abort());
-    
-    try {
-      const response = await fetch(`${baseUrl}/health`, { 
-        signal: controller.signal 
-      });
-      if (!response.ok) {
-        throw new Error(`Health check failed: ${response.status}`);
-      }
-      return response.json();
-    } finally {
-      clearTimeout(timeoutId);
-    }
+  getStatus: async (): Promise<HealthCheckResponse> => {
+    return systemApi.getHealth();
   },
 };
 

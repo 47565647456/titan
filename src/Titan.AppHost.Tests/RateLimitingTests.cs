@@ -539,6 +539,56 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
     }
 
     [Fact]
+    public async Task DashboardMapping_OverridesAttributeDefinedPolicy()
+    {
+        // This test verifies that when an admin creates an endpoint mapping via the dashboard,
+        // it takes precedence over the [RateLimitPolicy] attribute defined on the controller.
+        // The /api/auth/login endpoint has [RateLimitPolicy("Auth")] via the AuthController.
+        
+        await AuthenticateAsSuperAdminAsync();
+        var overridePattern = "/api/auth/login";
+        
+        try
+        {
+            // Step 1: Verify the endpoint uses the attribute-defined "Auth" policy by default
+            var initialRequest = new { token = $"mock:{Guid.NewGuid()}", provider = "Mock" };
+            var initialResponse = await HttpClient.PostAsJsonAsync("/api/auth/login", initialRequest);
+            
+            Assert.True(initialResponse.Headers.Contains("X-Rate-Limit-Policy"),
+                "Expected X-Rate-Limit-Policy header");
+            var initialPolicyName = initialResponse.Headers.GetValues("X-Rate-Limit-Policy").FirstOrDefault();
+            Assert.Equal("Auth", initialPolicyName); // Default from [RateLimitPolicy("Auth")] attribute
+            
+            // Step 2: Create an admin mapping that overrides to use "Admin" policy
+            var createResponse = await HttpClient.PostAsJsonAsync("/api/admin/rate-limiting/mappings", 
+                new { Pattern = overridePattern, PolicyName = "Admin" });
+            Assert.Equal(HttpStatusCode.OK, createResponse.StatusCode);
+            
+            // Verify the mapping was saved
+            var configResponse = await HttpClient.GetAsync("/api/admin/rate-limiting/config");
+            var config = await configResponse.Content.ReadFromJsonAsync<RateLimitingConfiguration>();
+            Assert.Contains(config!.EndpointMappings, m => m.Pattern == overridePattern && m.PolicyName == "Admin");
+            
+            // Allow cache to fully clear (increase delay for reliable test)
+            await Task.Delay(100);
+            
+            // Step 3: Verify the endpoint now uses the dashboard-defined "Admin" policy
+            var overrideRequest = new { token = $"mock:{Guid.NewGuid()}", provider = "Mock" };
+            var overrideResponse = await HttpClient.PostAsJsonAsync("/api/auth/login", overrideRequest);
+            
+            Assert.True(overrideResponse.Headers.Contains("X-Rate-Limit-Policy"),
+                "Expected X-Rate-Limit-Policy header after override");
+            var overriddenPolicyName = overrideResponse.Headers.GetValues("X-Rate-Limit-Policy").FirstOrDefault();
+            Assert.Equal("Admin", overriddenPolicyName); // Should be "Admin" from dashboard override
+        }
+        finally
+        {
+            // Cleanup - remove the override mapping
+            await HttpClient.DeleteAsync($"/api/admin/rate-limiting/mappings/{Uri.EscapeDataString(overridePattern)}");
+        }
+    }
+
+    [Fact]
     public async Task SetDefaultPolicy_ChangesDefault()
     {
         // Arrange
@@ -694,8 +744,9 @@ public class RateLimitAdminApiTests : RateLimitingTestBase
         // Act - Reset to defaults
         var response = await HttpClient.PostAsync("/api/admin/rate-limiting/reset", null);
 
-        // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        // Assert - read body for error message if failed
+        var responseBody = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.OK, $"Expected OK but got {response.StatusCode}. Body: {responseBody}");
         
         // Verify the test policy is gone and defaults are restored
         var configAfter = await GetConfigAsync();

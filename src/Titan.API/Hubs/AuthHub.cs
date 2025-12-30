@@ -5,6 +5,7 @@ using Titan.Abstractions.Grains;
 using Titan.Abstractions.Models;
 using Titan.API.Services.Auth;
 using Titan.API.Services.Encryption;
+using Titan.Abstractions.RateLimiting;
 
 namespace Titan.API.Hubs;
 
@@ -13,7 +14,7 @@ namespace Titan.API.Hubs;
 /// Login is handled via HTTP (POST /api/auth/login) following industry standards.
 /// This hub provides session management utilities.
 /// </summary>
-
+[RateLimitPolicy("Auth")]
 public class AuthHub : TitanHubBase
 {
     private readonly ISessionService _sessionService;

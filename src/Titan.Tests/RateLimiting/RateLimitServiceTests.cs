@@ -167,7 +167,7 @@ public class RateLimitServiceTests
     }
 
     [Fact]
-    public async Task GetPolicyForEndpointAsync_NoMatch_ReturnsDefault()
+    public async Task GetPolicyForEndpointAsync_NoMatch_ReturnsNull()
     {
         // Arrange
         var globalPolicy = new RateLimitPolicy("Global", [new RateLimitRule(100, 60, 300)]);
@@ -185,9 +185,8 @@ public class RateLimitServiceTests
         // Act
         var policy = await service.GetPolicyForEndpointAsync("/api/users/123");
 
-        // Assert
-        Assert.NotNull(policy);
-        Assert.Equal("Global", policy.Name);
+        // Assert - no explicit mapping means null (middleware will check for [RateLimitPolicy] attribute)
+        Assert.Null(policy);
     }
 
     [Fact]
