@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Orleans;
 using Orleans.Configuration;
+using Orleans.Hosting;
 using Scalar.AspNetCore;
 using Titan.Abstractions;
 using Titan.API.Auth;
@@ -92,9 +94,16 @@ if (!string.IsNullOrEmpty(sentryDsn))
 builder.AddTitanLogging("api");
 
 // Configure Orleans Client
-// Clustering is auto-configured by Aspire via Redis
+// Clustering is auto-configured by Aspire via Redis, but explicit registration ensures provider discovery
 builder.UseOrleansClient(client =>
 {
+    // Register Redis clustering provider using Aspire-injected connection string
+    var connectionString = builder.Configuration.GetConnectionString("orleans-clustering");
+    if (!string.IsNullOrEmpty(connectionString))
+    {
+        client.UseRedisClustering(connectionString);
+    }
+
     // CRITICAL: Must match ServiceId used by silos for clustering to work
     client.Configure<ClusterOptions>(options => options.ServiceId = "titan-service");
     

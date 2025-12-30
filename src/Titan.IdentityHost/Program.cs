@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Orleans;
 using Orleans.Configuration;
+using Orleans.Hosting;
 using Orleans.Serialization;
 using Titan.Abstractions;
 using Titan.Abstractions.Rules;
@@ -53,11 +55,17 @@ builder.Services.AddSingleton<IRule<TradeRequestContext>, SameSeasonRule>();
 builder.Services.AddSingleton<IRule<TradeRequestContext>, SoloSelfFoundRule>();
 
 // Configure Orleans Silo
-// Clustering is auto-configured by Aspire via Redis
+// Clustering is auto-configured by Aspire via Redis, but explicit registration ensures provider discovery
 builder.UseOrleans(silo =>
 {
+    // Register Redis clustering provider using Aspire-injected connection string
+    var connectionString = builder.Configuration.GetConnectionString("orleans-clustering");
+    if (!string.IsNullOrEmpty(connectionString))
+    {
+        silo.UseRedisClustering(connectionString);
+    }
+
     // CRITICAL: Set a stable ServiceId for grain state persistence across restarts
-    // Without this, Aspire generates a random ServiceId each time and grain state is "lost"
     silo.Configure<ClusterOptions>(options => options.ServiceId = "titan-service");
     
     // Enable Orleans transactions for atomic multi-grain operations
