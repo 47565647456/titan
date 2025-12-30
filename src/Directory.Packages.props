@@ -17,33 +17,34 @@
     <!-- Orleans -->
     <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageVersion Include="Microsoft.OpenApi" Version="2.3.10" />
-    <PackageVersion Include="Microsoft.Orleans.Client" Version="9.2.2-nightly.20251124.2" />
-    <PackageVersion Include="Microsoft.Orleans.Clustering.Redis" Version="9.2.2-nightly.20251124.2" />
-    <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="9.2.2-nightly.20251124.2" />
-    <PackageVersion Include="Microsoft.Orleans.Sdk" Version="9.2.2-nightly.20251124.2" />
-    <PackageVersion Include="Microsoft.Orleans.Serialization" Version="9.2.2-nightly.20251124.2" />
-    <PackageVersion Include="Microsoft.Orleans.Server" Version="9.2.2-nightly.20251124.2" />
-    <PackageVersion Include="Microsoft.Orleans.Streaming" Version="9.2.2-nightly.20251124.2" />
-    <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="9.2.2-nightly.20251124.2" />
-    <PackageVersion Include="Microsoft.Orleans.Transactions" Version="9.2.2-nightly.20251124.2" />
+    <PackageVersion Include="Microsoft.Orleans.Client" Version="9.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.Clustering.Redis" Version="9.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="9.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.Sdk" Version="9.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.Serialization" Version="9.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.Server" Version="9.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.Streaming" Version="9.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="9.2.1" />
+    <PackageVersion Include="Microsoft.Orleans.Transactions" Version="9.2.1" />
     <!-- ASP.NET Core -->
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.11" />
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.11" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.1.0" />
     <PackageVersion Include="Microsoft.AspNetCore.WebUtilities" Version="10.1.0" />
     <!-- Serialization -->
     <PackageVersion Include="MemoryPack" Version="1.21.4" />
+    <PackageVersion Include="System.Linq.AsyncEnumerable" Version="10.0.1" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
     <!-- Database -->
     <PackageVersion Include="Npgsql" Version="10.0.0" />
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <!-- Observability -->
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />

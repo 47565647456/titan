@@ -20,7 +20,7 @@ public class SeedDataLoadingTests
     }
 
     [Fact]
-    public async Task EmbeddedResource_Exists()
+    public void EmbeddedResource_Exists()
     {
         // Arrange
         var assembly = typeof(Titan.Grains.Hosting.BaseTypeSeedStartupTask).Assembly;
